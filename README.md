@@ -4,6 +4,9 @@ Operational inventory app for a single-branch pharmacy in Nigeria. It tracks med
 
 ## What Is Included
 
+- Vercel serverless API backed by Postgres
+- Shared inventory data across devices/users
+- Server-side password hashing and session tokens
 - First-run workspace setup for the pharmacy and first administrator
 - Staff access requests with no default demo accounts
 - Admin-controlled role assignment and account activation/suspension
@@ -33,7 +36,19 @@ npm install
 npm run dev
 ```
 
-Open the local URL shown by Vite, usually:
+Create a `.env.local` file before using API-backed flows locally:
+
+```bash
+DATABASE_URL="postgresql://USER:PASSWORD@HOST/database?sslmode=require"
+```
+
+For local API testing, run through Vercel's local runtime:
+
+```bash
+npx vercel dev
+```
+
+Open the local URL shown by Vite or Vercel, usually:
 
 ```text
 http://127.0.0.1:5173/
@@ -48,4 +63,4 @@ npm run build
 
 ## Production Note
 
-This app currently persists data in browser storage. That is useful for a fast operational prototype, but a real multi-user pharmacy deployment needs a shared backend database and server-side authentication so staff on different devices see the same inventory and user approvals.
+Set `DATABASE_URL` or `POSTGRES_URL` in Vercel project environment variables. Neon Postgres works well for this deployment style. The API automatically creates the required `app_state` and `sessions` tables on first request.

@@ -28,6 +28,17 @@ import {
   Users,
   XCircle,
 } from 'lucide-react'
+import {
+  bootstrap,
+  clearStoredToken,
+  getStoredToken,
+  loadState,
+  login as apiLogin,
+  logout as apiLogout,
+  registerUser as apiRegisterUser,
+  runAction,
+  setupWorkspace,
+} from './api'
 import './App.css'
 
 type Role = 'admin' | 'pharmacist' | 'inventory' | 'viewer'
@@ -51,7 +62,6 @@ type User = {
   phone: string
   role: Role
   status: UserStatus
-  passwordHash: string
   createdAt: string
   approvedAt?: string
   approvedBy?: string
@@ -171,9 +181,6 @@ type StockRow = {
 type ReportRow = Record<string, string | number>
 type AuthMode = 'login' | 'register' | 'setup'
 
-const STORAGE_KEY = 'pcn-nafdac-pharmacy-inventory-v2'
-const SESSION_KEY = 'pcn-nafdac-pharmacy-session-v2'
-
 const views: Array<{ id: View; label: string; icon: typeof LayoutDashboard; adminOnly?: boolean }> = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'medicines', label: 'Medicines', icon: Pill },
@@ -210,7 +217,6 @@ const movementLabels: Record<LedgerType, string> = {
 }
 
 const today = () => new Date().toISOString().slice(0, 10)
-const nowIso = () => new Date().toISOString()
 const money = new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' })
 const number = new Intl.NumberFormat('en-NG')
 
@@ -222,10 +228,6 @@ function daysUntil(date: string) {
   const todayDate = new Date(`${today()}T00:00:00`)
   const target = new Date(`${date}T00:00:00`)
   return Math.ceil((target.getTime() - todayDate.getTime()) / 86_400_000)
-}
-
-function clone<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T
 }
 
 function createEmptyDatabase(): Database {
@@ -244,28 +246,6 @@ function createEmptyDatabase(): Database {
       approvalThreshold: 25_000,
     },
   }
-}
-
-async function hashPassword(password: string) {
-  const bytes = new TextEncoder().encode(password)
-  const hash = await crypto.subtle.digest('SHA-256', bytes)
-  return Array.from(new Uint8Array(hash))
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('')
-}
-
-function usePersistentState<T>(key: string, initialValue: T | (() => T)) {
-  const [value, setValue] = useState<T>(() => {
-    const saved = localStorage.getItem(key)
-    if (saved) return JSON.parse(saved) as T
-    return typeof initialValue === 'function' ? (initialValue as () => T)() : initialValue
-  })
-
-  useEffect(() => {
-    localStorage.setItem(key, JSON.stringify(value))
-  }, [key, value])
-
-  return [value, setValue] as const
 }
 
 function getStockRows(db: Database): StockRow[] {
@@ -327,20 +307,16 @@ function exportCsv(filename: string, rows: ReportRow[]) {
   URL.revokeObjectURL(url)
 }
 
-type AppCommit = (
-  action: string,
-  entity: string,
-  entityId: string,
-  updater: (draft: Database, actorId: string) => void,
-  before?: unknown,
-  after?: unknown,
-) => void
+type ExecuteAction = (action: string, payload: Record<string, unknown>, successMessage: string) => Promise<void>
 
 function App() {
-  const [db, setDb] = usePersistentState<Database>(STORAGE_KEY, createEmptyDatabase)
-  const [sessionUserId, setSessionUserId] = usePersistentState<string | null>(SESSION_KEY, null)
+  const [db, setDb] = useState<Database>(createEmptyDatabase)
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null)
   const [activeView, setActiveView] = useState<View>('dashboard')
   const [notice, setNotice] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [connectionError, setConnectionError] = useState('')
+  const [hasUsers, setHasUsers] = useState(false)
 
   const currentUser = db.users.find((user) => user.id === sessionUserId && user.status === 'active') ?? null
   const stockRows = useMemo(() => getStockRows(db), [db])
@@ -350,111 +326,79 @@ function App() {
   const canAdmin = currentUser?.role === 'admin'
 
   useEffect(() => {
-    if (sessionUserId && !currentUser) setSessionUserId(null)
-  }, [currentUser, sessionUserId, setSessionUserId])
+    async function load() {
+      try {
+        setConnectionError('')
+        const boot = await bootstrap()
+        setHasUsers(boot.hasUsers)
+        setDb((previous) => ({ ...previous, settings: boot.settings }))
+        if (getStoredToken()) {
+          const state = await loadState()
+          setDb(state.db)
+          setSessionUserId(state.currentUser.id)
+        }
+      } catch (error) {
+        clearStoredToken()
+        setSessionUserId(null)
+        setConnectionError(error instanceof Error ? error.message : 'Unable to connect to the pharmacy backend')
+      } finally {
+        setLoading(false)
+      }
+    }
+    void load()
+  }, [])
 
   function flash(message: string) {
     setNotice(message)
     window.setTimeout(() => setNotice(''), 2800)
   }
 
-  function commit(action: string, entity: string, entityId: string, updater: (draft: Database, actorId: string) => void, before?: unknown, after?: unknown) {
-    if (!currentUser) return
-    setDb((previous) => {
-      const next = clone(previous)
-      updater(next, currentUser.id)
-      next.auditLogs.unshift({
-        id: id('aud'),
-        userId: currentUser.id,
-        action,
-        entity,
-        entityId,
-        before,
-        after,
-        createdAt: nowIso(),
-      })
-      return next
-    })
+  async function executeAction(action: string, payload: Record<string, unknown>, successMessage: string) {
+    try {
+      const result = await runAction(action, payload)
+      setDb(result.db)
+      setSessionUserId(result.currentUser.id)
+      flash(successMessage)
+    } catch (error) {
+      flash(error instanceof Error ? error.message : 'Unable to complete action')
+    }
   }
 
   async function createFirstAdmin(input: SetupInput) {
-    const passwordHash = await hashPassword(input.password)
-    const adminId = id('usr')
-    setDb((previous) => {
-      const next = clone(previous)
-      next.users = [
-        {
-          id: adminId,
-          name: input.name.trim(),
-          email: input.email.trim().toLowerCase(),
-          phone: input.phone.trim(),
-          role: 'admin',
-          status: 'active',
-          passwordHash,
-          createdAt: nowIso(),
-          approvedAt: nowIso(),
-          approvedBy: adminId,
-        },
-      ]
-      next.settings.pharmacyName = input.pharmacyName.trim()
-      next.settings.branchName = input.branchName.trim()
-      next.auditLogs.unshift({
-        id: id('aud'),
-        userId: adminId,
-        action: 'Completed first-run pharmacy setup',
-        entity: 'system',
-        entityId: 'setup',
-        createdAt: nowIso(),
-      })
-      return next
-    })
-    setSessionUserId(adminId)
+    const result = await setupWorkspace(input)
+    setDb(result.db)
+    setSessionUserId(result.currentUser.id)
+    setHasUsers(true)
     setActiveView('dashboard')
   }
 
   async function registerUser(input: RegisterInput) {
-    const email = input.email.trim().toLowerCase()
-    if (db.users.some((user) => user.email === email)) {
-      throw new Error('An account already exists for this email address')
-    }
-    const passwordHash = await hashPassword(input.password)
-    const user: User = {
-      id: id('usr'),
-      name: input.name.trim(),
-      email,
-      phone: input.phone.trim(),
-      role: 'viewer',
-      status: 'pending',
-      passwordHash,
-      createdAt: nowIso(),
-    }
-    setDb((previous) => ({
-      ...previous,
-      users: [...previous.users, user],
-      auditLogs: [
-        {
-          id: id('aud'),
-          userId: user.id,
-          action: 'Submitted staff access request',
-          entity: 'user',
-          entityId: user.id,
-          after: { name: user.name, email: user.email, status: user.status },
-          createdAt: nowIso(),
-        },
-        ...previous.auditLogs,
-      ],
-    }))
+    await apiRegisterUser(input)
   }
+
+  async function signIn(email: string, password: string) {
+    const result = await apiLogin(email, password)
+    setDb(result.db)
+    setSessionUserId(result.currentUser.id)
+    setActiveView('dashboard')
+  }
+
+  async function signOut() {
+    await apiLogout()
+    setSessionUserId(null)
+  }
+
+  if (loading) return <LoadingScreen />
 
   if (!currentUser) {
     return (
       <AuthScreen
-        hasUsers={db.users.length > 0}
+        hasUsers={hasUsers}
         pharmacyName={db.settings.pharmacyName}
+        connectionError={connectionError}
         createFirstAdmin={createFirstAdmin}
+        login={signIn}
         registerUser={registerUser}
-        users={db.users}
-        setSessionUserId={setSessionUserId}
       />
     )
   }
@@ -499,7 +443,7 @@ function App() {
             <strong>{currentUser.name}</strong>
             <span>{roleLabels[currentUser.role]}</span>
           </div>
-          <button className="icon-button" type="button" onClick={() => setSessionUserId(null)} title="Log out">
+          <button className="icon-button" type="button" onClick={() => { void signOut() }} title="Log out">
             <LogOut size={18} />
           </button>
         </div>
@@ -523,15 +467,15 @@ function App() {
         </header>
 
         {activeView === 'dashboard' && <Dashboard db={db} stockRows={stockRows} stockTotals={stockTotals} setActiveView={setActiveView} />}
-        {activeView === 'medicines' && <Medicines db={db} stockTotals={stockTotals} canWrite={canWrite} commit={commit} flash={flash} />}
-        {activeView === 'suppliers' && <Suppliers db={db} canWrite={canWrite} commit={commit} flash={flash} />}
-        {activeView === 'receive' && <ReceiveStock db={db} canWrite={canWrite} commit={commit} flash={flash} />}
-        {activeView === 'issue' && <IssueStock db={db} stockRows={stockRows} canWrite={canWrite} currentUser={currentUser} commit={commit} flash={flash} />}
-        {activeView === 'adjust' && <Adjustments stockRows={stockRows} canAdjust={canAdjust} commit={commit} flash={flash} />}
+        {activeView === 'medicines' && <Medicines db={db} stockTotals={stockTotals} canWrite={canWrite} executeAction={executeAction} flash={flash} />}
+        {activeView === 'suppliers' && <Suppliers db={db} canWrite={canWrite} executeAction={executeAction} />}
+        {activeView === 'receive' && <ReceiveStock db={db} canWrite={canWrite} executeAction={executeAction} flash={flash} />}
+        {activeView === 'issue' && <IssueStock db={db} stockRows={stockRows} canWrite={canWrite} executeAction={executeAction} flash={flash} />}
+        {activeView === 'adjust' && <Adjustments stockRows={stockRows} canAdjust={canAdjust} executeAction={executeAction} flash={flash} />}
         {activeView === 'reports' && <Reports db={db} stockRows={stockRows} stockTotals={stockTotals} />}
         {activeView === 'audit' && <Audit db={db} />}
-        {activeView === 'users' && <UserManagement db={db} currentUser={currentUser} commit={commit} flash={flash} />}
-        {activeView === 'settings' && <SettingsView db={db} canAdmin={canAdmin} commit={commit} flash={flash} />}
+        {activeView === 'users' && <UserManagement db={db} currentUser={currentUser} executeAction={executeAction} flash={flash} />}
+        {activeView === 'settings' && <SettingsView db={db} canAdmin={canAdmin} executeAction={executeAction} />}
       </main>
     </div>
   )
@@ -553,20 +497,37 @@ type RegisterInput = {
   password: string
 }
 
+function LoadingScreen() {
+  return (
+    <main className="login-screen">
+      <section className="login-panel auth-panel">
+        <div className="brand-mark large">
+          <Pill size={30} />
+        </div>
+        <div>
+          <span className="eyebrow">Connecting</span>
+          <h1>Loading pharmacy workspace</h1>
+          <p>Connecting to the shared inventory database.</p>
+        </div>
+      </section>
+    </main>
+  )
+}
+
 function AuthScreen({
   hasUsers,
   pharmacyName,
+  connectionError,
   createFirstAdmin,
+  login,
   registerUser,
-  users,
-  setSessionUserId,
 }: {
   hasUsers: boolean
   pharmacyName: string
+  connectionError: string
   createFirstAdmin: (input: SetupInput) => Promise<void>
+  login: (email: string, password: string) => Promise<void>
   registerUser: (input: RegisterInput) => Promise<void>
-  users: User[]
-  setSessionUserId: (id: string) => void
 }) {
   const [mode, setMode] = useState<AuthMode>(hasUsers ? 'login' : 'setup')
   const [error, setError] = useState('')
@@ -593,9 +554,10 @@ function AuthScreen({
         )}
 
         {activeMode === 'setup' && <SetupForm createFirstAdmin={createFirstAdmin} setError={setError} />}
-        {activeMode === 'login' && <LoginForm users={users} setSessionUserId={setSessionUserId} setError={setError} setSuccess={setSuccess} />}
+        {activeMode === 'login' && <LoginForm login={login} setError={setError} setSuccess={setSuccess} />}
         {activeMode === 'register' && <RegisterForm registerUser={registerUser} setError={setError} setSuccess={setSuccess} />}
 
+        {connectionError && <div className="form-error">{connectionError}</div>}
         {error && <div className="form-error">{error}</div>}
         {success && <div className="form-success">{success}</div>}
       </section>
@@ -642,13 +604,11 @@ function SetupForm({ createFirstAdmin, setError }: { createFirstAdmin: (input: S
 }
 
 function LoginForm({
-  users,
-  setSessionUserId,
+  login,
   setError,
   setSuccess,
 }: {
-  users: User[]
-  setSessionUserId: (id: string) => void
+  login: (email: string, password: string) => Promise<void>
   setError: (message: string) => void
   setSuccess: (message: string) => void
 }) {
@@ -659,20 +619,11 @@ function LoginForm({
     event.preventDefault()
     setError('')
     setSuccess('')
-    const user = users.find((item) => item.email === email.trim().toLowerCase())
-    if (!user || user.passwordHash !== (await hashPassword(password))) {
-      setError('Invalid email or password.')
-      return
+    try {
+      await login(email, password)
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Unable to log in.')
     }
-    if (user.status === 'pending') {
-      setError('Your account is waiting for admin approval.')
-      return
-    }
-    if (user.status === 'suspended') {
-      setError('Your account is suspended. Contact an administrator.')
-      return
-    }
-    setSessionUserId(user.id)
   }
 
   return (
@@ -840,13 +791,13 @@ function Medicines({
   db,
   stockTotals,
   canWrite,
-  commit,
+  executeAction,
   flash,
 }: {
   db: Database
   stockTotals: Map<string, number>
   canWrite: boolean
-  commit: AppCommit
+  executeAction: ExecuteAction
   flash: (message: string) => void
 }) {
   const empty = {
@@ -889,20 +840,8 @@ function Medicines({
       return
     }
     const record: Medicine = { ...form, id: form.id || id('med'), barcodes, reorderLevel: Number(form.reorderLevel) || 0 }
-    const before = form.id ? db.medicines.find((medicine) => medicine.id === form.id) : null
-    commit(
-      form.id ? 'Updated medicine record' : 'Created medicine record',
-      'medicine',
-      record.id,
-      (draft) => {
-        if (form.id) draft.medicines = draft.medicines.map((medicine) => (medicine.id === form.id ? record : medicine))
-        else draft.medicines.unshift(record)
-      },
-      before,
-      record,
-    )
+    void executeAction('upsertMedicine', { record }, 'Medicine saved')
     setForm(empty)
-    flash('Medicine saved')
   }
 
   return (
@@ -992,25 +931,14 @@ function Medicines({
   )
 }
 
-function Suppliers({ db, canWrite, commit, flash }: { db: Database; canWrite: boolean; commit: AppCommit; flash: (message: string) => void }) {
+function Suppliers({ db, canWrite, executeAction }: { db: Database; canWrite: boolean; executeAction: ExecuteAction }) {
   const [form, setForm] = useState({ id: '', name: '', contact: '', address: '', licenseRef: '', active: true })
 
   function submit(event: FormEvent) {
     event.preventDefault()
     const record: Supplier = { ...form, id: form.id || id('sup') }
-    const before = form.id ? db.suppliers.find((supplier) => supplier.id === form.id) : null
-    commit(
-      form.id ? 'Updated supplier' : 'Created supplier',
-      'supplier',
-      record.id,
-      (draft) => {
-        draft.suppliers = form.id ? draft.suppliers.map((supplier) => (supplier.id === form.id ? record : supplier)) : [record, ...draft.suppliers]
-      },
-      before,
-      record,
-    )
+    void executeAction('upsertSupplier', { record }, 'Supplier saved')
     setForm({ id: '', name: '', contact: '', address: '', licenseRef: '', active: true })
-    flash('Supplier saved')
   }
 
   return (
@@ -1069,7 +997,7 @@ function Suppliers({ db, canWrite, commit, flash }: { db: Database; canWrite: bo
   )
 }
 
-function ReceiveStock({ db, canWrite, commit, flash }: { db: Database; canWrite: boolean; commit: AppCommit; flash: (message: string) => void }) {
+function ReceiveStock({ db, canWrite, executeAction, flash }: { db: Database; canWrite: boolean; executeAction: ExecuteAction; flash: (message: string) => void }) {
   const [scan, setScan] = useState('')
   const [form, setForm] = useState({
     medicineId: '',
@@ -1106,52 +1034,19 @@ function ReceiveStock({ db, canWrite, commit, flash }: { db: Database; canWrite:
       flash('Batch number, expiry, and quantity are required')
       return
     }
-    const batch: Batch = {
-      id: id('bat'),
+    void executeAction('receiveStock', {
       medicineId: selectedMedicineId,
       supplierId: selectedSupplierId,
+      invoiceRef: form.invoiceRef,
       batchNumber: form.batchNumber,
       expiryDate: form.expiryDate,
-      unitCost: Number(form.unitCost),
-      sellingPrice: Number(form.sellingPrice),
-      receivedDate: today(),
+      quantity: form.quantity,
+      unitCost: form.unitCost,
+      sellingPrice: form.sellingPrice,
       location: form.location,
-      branchId: 'main',
-    }
-    const ledger: LedgerEntry = {
-      id: id('led'),
-      medicineId: selectedMedicineId,
-      batchId: batch.id,
-      type: 'stock-in',
-      quantity: Number(form.quantity),
-      reason: 'Goods received',
-      reference: form.invoiceRef || 'GRN',
-      userId: '',
-      createdAt: nowIso(),
-    }
-    const receipt: Receipt = {
-      id: id('grn'),
-      supplierId: selectedSupplierId,
-      invoiceRef: form.invoiceRef || 'Manual receive',
-      receivedAt: nowIso(),
-      userId: '',
-      items: [{ medicineId: selectedMedicineId, batchId: batch.id, quantity: Number(form.quantity), unitCost: Number(form.unitCost) }],
-    }
-    commit(
-      'Received stock',
-      'batch',
-      batch.id,
-      (draft, actor) => {
-        draft.batches.unshift(batch)
-        draft.ledger.unshift({ ...ledger, userId: actor })
-        draft.receipts.unshift({ ...receipt, userId: actor })
-      },
-      null,
-      { batch, quantity: form.quantity },
-    )
+    }, 'Stock received and ledger updated')
     setForm({ ...form, invoiceRef: '', batchNumber: '', expiryDate: '', quantity: 1 })
     setScan('')
-    flash('Stock received and ledger updated')
   }
 
   return (
@@ -1188,15 +1083,13 @@ function IssueStock({
   db,
   stockRows,
   canWrite,
-  currentUser,
-  commit,
+  executeAction,
   flash,
 }: {
   db: Database
   stockRows: StockRow[]
   canWrite: boolean
-  currentUser: User
-  commit: AppCommit
+  executeAction: ExecuteAction
   flash: (message: string) => void
 }) {
   const [scan, setScan] = useState('')
@@ -1232,30 +1125,14 @@ function IssueStock({
       flash('Stock-out blocked: quantity exceeds available non-expired stock')
       return
     }
-    const entries: LedgerEntry[] = suggested.map((item) => ({
-      id: id('led'),
+    void executeAction('issueStock', {
       medicineId: selectedMedicineId,
-      batchId: item.row.batch.id,
-      type: 'stock-out',
-      quantity: -item.quantity,
+      quantity,
       reason: form.reason,
-      reference: form.reference || 'Manual issue',
-      userId: currentUser.id,
-      createdAt: nowIso(),
-    }))
-    commit(
-      'Issued stock using FEFO',
-      'ledger',
-      entries[0]?.id ?? id('led'),
-      (draft) => {
-        draft.ledger.unshift(...entries)
-      },
-      null,
-      entries,
-    )
+      reference: form.reference,
+    }, 'Stock issued and FEFO ledger entries posted')
     setForm({ ...form, quantity: 1, reference: '' })
     setScan('')
-    flash('Stock issued and FEFO ledger entries posted')
   }
 
   return (
@@ -1311,7 +1188,7 @@ function allocateFefo(rows: StockRow[], quantity: number) {
   return allocation
 }
 
-function Adjustments({ stockRows, canAdjust, commit, flash }: { stockRows: StockRow[]; canAdjust: boolean; commit: AppCommit; flash: (message: string) => void }) {
+function Adjustments({ stockRows, canAdjust, executeAction, flash }: { stockRows: StockRow[]; canAdjust: boolean; executeAction: ExecuteAction; flash: (message: string) => void }) {
   const positiveRows = stockRows.filter((row) => row.quantity > 0)
   const [form, setForm] = useState({
     batchId: '',
@@ -1323,7 +1200,6 @@ function Adjustments({ stockRows, canAdjust, commit, flash }: { stockRows: Stock
   const selectedBatchId = form.batchId || positiveRows[0]?.batch.id || ''
   const selected = stockRows.find((row) => row.batch.id === selectedBatchId)
   const isPositive = form.mode === 'adjustment' || form.mode === 'customer-return'
-  const signedQuantity = isPositive ? Number(form.quantity) : -Number(form.quantity)
 
   function submit(event: FormEvent) {
     event.preventDefault()
@@ -1332,29 +1208,14 @@ function Adjustments({ stockRows, canAdjust, commit, flash }: { stockRows: Stock
       flash('Adjustment blocked: cannot reduce more than available stock')
       return
     }
-    const entry: LedgerEntry = {
-      id: id('led'),
-      medicineId: selected.medicine.id,
+    void executeAction('adjustStock', {
       batchId: selected.batch.id,
-      type: form.mode,
-      quantity: signedQuantity,
+      mode: form.mode,
+      quantity: Number(form.quantity),
       reason: form.reason,
-      reference: form.reference || movementLabels[form.mode],
-      userId: '',
-      createdAt: nowIso(),
-    }
-    commit(
-      `Posted ${movementLabels[form.mode].toLowerCase()}`,
-      'ledger',
-      entry.id,
-      (draft, actor) => {
-        draft.ledger.unshift({ ...entry, userId: actor })
-      },
-      null,
-      entry,
-    )
+      reference: form.reference,
+    }, 'Adjustment posted')
     setForm({ ...form, quantity: 1, reference: '', reason: '' })
-    flash('Adjustment posted')
   }
 
   return (
@@ -1506,7 +1367,7 @@ function Audit({ db }: { db: Database }) {
   )
 }
 
-function UserManagement({ db, currentUser, commit, flash }: { db: Database; currentUser: User; commit: AppCommit; flash: (message: string) => void }) {
+function UserManagement({ db, currentUser, executeAction, flash }: { db: Database; currentUser: User; executeAction: ExecuteAction; flash: (message: string) => void }) {
   function updateUser(userId: string, updates: Partial<Pick<User, 'role' | 'status'>>) {
     const target = db.users.find((user) => user.id === userId)
     if (!target) return
@@ -1514,23 +1375,7 @@ function UserManagement({ db, currentUser, commit, flash }: { db: Database; curr
       flash('You cannot suspend your own active admin account')
       return
     }
-    const after = {
-      ...target,
-      ...updates,
-      approvedAt: updates.status === 'active' ? nowIso() : target.approvedAt,
-      approvedBy: updates.status === 'active' ? currentUser.id : target.approvedBy,
-    }
-    commit(
-      'Updated user access',
-      'user',
-      userId,
-      (draft) => {
-        draft.users = draft.users.map((user) => (user.id === userId ? after : user))
-      },
-      target,
-      after,
-    )
-    flash('User access updated')
+    void executeAction('updateUser', { userId, updates }, 'User access updated')
   }
 
   return (
@@ -1586,23 +1431,12 @@ function UserManagement({ db, currentUser, commit, flash }: { db: Database; curr
   )
 }
 
-function SettingsView({ db, canAdmin, commit, flash }: { db: Database; canAdmin: boolean; commit: AppCommit; flash: (message: string) => void }) {
+function SettingsView({ db, canAdmin, executeAction }: { db: Database; canAdmin: boolean; executeAction: ExecuteAction }) {
   const [form, setForm] = useState(db.settings)
 
   function submit(event: FormEvent) {
     event.preventDefault()
-    const before = db.settings
-    commit(
-      'Updated system settings',
-      'settings',
-      'main',
-      (draft) => {
-        draft.settings = { ...form, nearExpiryDays: Number(form.nearExpiryDays), approvalThreshold: Number(form.approvalThreshold) }
-      },
-      before,
-      form,
-    )
-    flash('Settings saved')
+    void executeAction('updateSettings', form, 'Settings saved')
   }
 
   return (
