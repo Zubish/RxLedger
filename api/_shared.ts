@@ -12,6 +12,7 @@ type User = {
   phone: string
   role: Role
   status: UserStatus
+  lastChatSeenAt?: string
   passwordHash?: string
   passwordSalt?: string
   createdAt: string
@@ -69,6 +70,13 @@ type LedgerEntry = {
   createdAt: string
 }
 
+type ChatMessage = {
+  id: string
+  userId: string
+  body: string
+  createdAt: string
+}
+
 type Database = {
   users: User[]
   medicines: Medicine[]
@@ -83,6 +91,7 @@ type Database = {
     userId: string
     items: Array<{ medicineId: string; batchId: string; quantity: number; unitCost: number }>
   }>
+  chatMessages: ChatMessage[]
   auditLogs: Array<{
     id: string
     userId: string
@@ -124,6 +133,7 @@ export function createEmptyDatabase(): Database {
     batches: [],
     ledger: [],
     receipts: [],
+    chatMessages: [],
     auditLogs: [],
     settings: {
       pharmacyName: 'Pharmacy Inventory',
@@ -134,7 +144,7 @@ export function createEmptyDatabase(): Database {
   }
 }
 
-export type { Database, HandlerRequest, HandlerResponse, LedgerType, Medicine, Role, Supplier, User }
+export type { ChatMessage, Database, HandlerRequest, HandlerResponse, LedgerType, Medicine, Role, Supplier, User }
 
 export function id(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${randomBytes(4).toString('hex')}`
@@ -201,7 +211,7 @@ export async function loadDatabase() {
   await ensureSchema()
   const sql = getSql()
   const rows = await sql`SELECT data FROM app_state WHERE id = 1`
-  return rows[0].data as Database
+  return normalizeDatabase(rows[0].data as Partial<Database>)
 }
 
 export async function saveDatabase(db: Database) {
@@ -212,6 +222,26 @@ export async function saveDatabase(db: Database) {
         updated_at = now()
     WHERE id = 1
   `
+}
+
+export function normalizeDatabase(raw: Partial<Database>): Database {
+  const empty = createEmptyDatabase()
+  return {
+    ...empty,
+    ...raw,
+    users: raw.users ?? empty.users,
+    medicines: raw.medicines ?? empty.medicines,
+    suppliers: raw.suppliers ?? empty.suppliers,
+    batches: raw.batches ?? empty.batches,
+    ledger: raw.ledger ?? empty.ledger,
+    receipts: raw.receipts ?? empty.receipts,
+    chatMessages: raw.chatMessages ?? empty.chatMessages,
+    auditLogs: raw.auditLogs ?? empty.auditLogs,
+    settings: {
+      ...empty.settings,
+      ...(raw.settings ?? {}),
+    },
+  }
 }
 
 export function sanitizeDatabase(db: Database) {

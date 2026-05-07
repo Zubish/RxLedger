@@ -279,6 +279,20 @@ td span,
   align-items: flex-start;
 }
 
+.notification-item {
+  width: 100%;
+  background: #ffffff;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.notification-item:hover {
+  border-color: #b9cacb;
+  background: #f7fbfa;
+}
+
 .alert-item.good svg,
 .pill.good {
   color: #237a52;
@@ -373,6 +387,31 @@ td strong {
   gap: 12px;
 }
 
+.line-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.line-card {
+  border: 1px solid #dfe7e8;
+  border-radius: 8px;
+  background: #fbfdfd;
+  padding: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.line-card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.line-card-heading strong {
+  font-size: 14px;
+}
+
 label {
   color: #54636a;
   display: grid;
@@ -445,6 +484,7 @@ button:disabled {
 
 .primary-button,
 .ghost-button,
+.file-button,
 .icon-button {
   border-radius: 8px;
   min-height: 38px;
@@ -472,6 +512,25 @@ button:disabled {
 
 .ghost-button:hover {
   background: #dfe9e8;
+}
+
+.file-button {
+  background: #eef4f3;
+  color: #24343a;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  gap: 8px;
+  justify-content: center;
+  padding: 0 12px;
+}
+
+.file-button:hover {
+  background: #dfe9e8;
+}
+
+.file-button input {
+  display: none;
 }
 
 .icon-button {
@@ -593,6 +652,63 @@ button:disabled {
   width: min(560px, 100%);
 }
 
+.chat-section {
+  display: grid;
+  gap: 16px;
+}
+
+.chat-list {
+  display: grid;
+  gap: 10px;
+  max-height: 58vh;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.chat-message {
+  width: min(720px, 92%);
+  border: 1px solid #dfe7e8;
+  border-radius: 8px;
+  background: #f8fbfb;
+  padding: 11px 12px;
+}
+
+.chat-message.mine {
+  justify-self: end;
+  background: #e9f6ef;
+  border-color: #b7e2ce;
+}
+
+.chat-message div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.chat-message span {
+  color: #68777e;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.chat-message p {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chat-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.chat-composer textarea {
+  min-height: 74px;
+}
+
 .auth-tabs {
   margin-bottom: 0;
 }
@@ -665,6 +781,14 @@ button:disabled {
   .scan-field > div {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .chat-composer {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-message {
+    width: 100%;
   }
 
   .form-actions {

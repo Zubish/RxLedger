@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
+import { readSheet } from 'read-excel-file/browser'
 import {
   Activity,
   AlertTriangle,
   Archive,
   Barcode,
+  Bell,
   Boxes,
   CheckCircle2,
   ClipboardList,
@@ -13,16 +15,21 @@ import {
   LayoutDashboard,
   Lock,
   LogOut,
+  MessageSquare,
   PackageCheck,
   PackageMinus,
   PackagePlus,
   Pill,
+  Plus,
   Printer,
   RotateCcw,
   Search,
+  Send,
   Settings,
   ShieldCheck,
+  Trash2,
   Truck,
+  Upload,
   UserCheck,
   UserPlus,
   Users,
@@ -51,6 +58,8 @@ type View =
   | 'issue'
   | 'adjust'
   | 'reports'
+  | 'chat'
+  | 'notifications'
   | 'audit'
   | 'users'
   | 'settings'
@@ -62,6 +71,7 @@ type User = {
   phone: string
   role: Role
   status: UserStatus
+  lastChatSeenAt?: string
   createdAt: string
   approvedAt?: string
   approvedBy?: string
@@ -150,6 +160,13 @@ type AuditLog = {
   createdAt: string
 }
 
+type ChatMessage = {
+  id: string
+  userId: string
+  body: string
+  createdAt: string
+}
+
 type AppSettings = {
   pharmacyName: string
   branchName: string
@@ -164,6 +181,7 @@ type Database = {
   batches: Batch[]
   ledger: LedgerEntry[]
   receipts: Receipt[]
+  chatMessages: ChatMessage[]
   auditLogs: AuditLog[]
   settings: AppSettings
 }
@@ -180,6 +198,15 @@ type StockRow = {
 
 type ReportRow = Record<string, string | number>
 type AuthMode = 'login' | 'register' | 'setup'
+type NotificationTone = 'danger' | 'warning' | 'info' | 'good'
+type AppNotification = {
+  id: string
+  tone: NotificationTone
+  title: string
+  detail: string
+  view: View
+  createdAt?: string
+}
 
 const views: Array<{ id: View; label: string; icon: typeof LayoutDashboard; adminOnly?: boolean }> = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -189,6 +216,8 @@ const views: Array<{ id: View; label: string; icon: typeof LayoutDashboard; admi
   { id: 'issue', label: 'Issue Stock', icon: PackageMinus },
   { id: 'adjust', label: 'Adjust/Returns', icon: RotateCcw },
   { id: 'reports', label: 'Reports', icon: FileText },
+  { id: 'chat', label: 'Team Chat', icon: MessageSquare },
+  { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'audit', label: 'Audit', icon: ShieldCheck },
   { id: 'users', label: 'Users', icon: Users, adminOnly: true },
   { id: 'settings', label: 'Settings', icon: Settings, adminOnly: true },
@@ -238,6 +267,7 @@ function createEmptyDatabase(): Database {
     batches: [],
     ledger: [],
     receipts: [],
+    chatMessages: [],
     auditLogs: [],
     settings: {
       pharmacyName: 'Pharmacy Inventory',
@@ -307,7 +337,86 @@ function exportCsv(filename: string, rows: ReportRow[]) {
   URL.revokeObjectURL(url)
 }
 
-type ExecuteAction = (action: string, payload: Record<string, unknown>, successMessage: string) => Promise<void>
+function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Map<string, number>, currentUser: User): AppNotification[] {
+  const notifications: AppNotification[] = []
+  const lastChatSeen = currentUser.lastChatSeenAt ? new Date(currentUser.lastChatSeenAt).getTime() : 0
+  const unreadChat = db.chatMessages.filter((message) => message.userId !== currentUser.id && new Date(message.createdAt).getTime() > lastChatSeen)
+  const pendingUsers = db.users.filter((user) => user.status === 'pending')
+  const expired = stockRows.filter((row) => row.quantity > 0 && row.status === 'expired')
+  const nearExpiry = stockRows.filter((row) => row.quantity > 0 && row.status === 'near-expiry')
+  const lowStock = db.medicines.filter((medicine) => (stockTotals.get(medicine.id) ?? 0) <= medicine.reorderLevel)
+  const outOfStock = db.medicines.filter((medicine) => (stockTotals.get(medicine.id) ?? 0) <= 0)
+
+  if (unreadChat.length) {
+    notifications.push({
+      id: 'chat-unread',
+      tone: 'info',
+      title: `${unreadChat.length} unread team message${unreadChat.length > 1 ? 's' : ''}`,
+      detail: `Latest from ${db.users.find((user) => user.id === unreadChat[0].userId)?.name ?? 'a team member'}.`,
+      view: 'chat',
+      createdAt: unreadChat[0].createdAt,
+    })
+  }
+
+  if (currentUser.role === 'admin') {
+    pendingUsers.forEach((user) => {
+      notifications.push({
+        id: `pending-${user.id}`,
+        tone: 'warning',
+        title: `${user.name} is waiting for access`,
+        detail: 'Admin should assign the correct role and activate the account.',
+        view: 'users',
+        createdAt: user.createdAt,
+      })
+    })
+  }
+
+  expired.forEach((row) => {
+    notifications.push({
+      id: `expired-${row.batch.id}`,
+      tone: 'danger',
+      title: `${row.medicine.brandName} has expired stock`,
+      detail: `${row.batch.batchNumber} has ${number.format(row.quantity)} ${row.medicine.unit} in ${row.batch.location}.`,
+      view: 'reports',
+    })
+  })
+
+  nearExpiry.slice(0, 12).forEach((row) => {
+    notifications.push({
+      id: `near-${row.batch.id}`,
+      tone: 'warning',
+      title: `${row.medicine.brandName} expires in ${row.daysToExpiry} days`,
+      detail: `${row.batch.batchNumber}, ${number.format(row.quantity)} ${row.medicine.unit} available.`,
+      view: 'reports',
+    })
+  })
+
+  outOfStock.forEach((medicine) => {
+    notifications.push({
+      id: `out-${medicine.id}`,
+      tone: 'danger',
+      title: `${medicine.brandName} is out of stock`,
+      detail: `Reorder level is ${number.format(medicine.reorderLevel)} ${medicine.unit}.`,
+      view: 'medicines',
+    })
+  })
+
+  lowStock
+    .filter((medicine) => (stockTotals.get(medicine.id) ?? 0) > 0)
+    .forEach((medicine) => {
+      notifications.push({
+        id: `low-${medicine.id}`,
+        tone: 'info',
+        title: `${medicine.brandName} is low on stock`,
+        detail: `Available: ${number.format(stockTotals.get(medicine.id) ?? 0)}. Reorder level: ${number.format(medicine.reorderLevel)}.`,
+        view: 'medicines',
+      })
+    })
+
+  return notifications.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
+}
+
+type ExecuteAction = (action: string, payload: Record<string, unknown>, successMessage?: string) => Promise<void>
 
 function App() {
   const [db, setDb] = useState<Database>(createEmptyDatabase)
@@ -324,6 +433,7 @@ function App() {
   const canWrite = currentUser ? currentUser.role !== 'viewer' : false
   const canAdjust = currentUser ? currentUser.role === 'admin' || currentUser.role === 'pharmacist' : false
   const canAdmin = currentUser?.role === 'admin'
+  const notifications = useMemo(() => currentUser ? buildNotifications(db, stockRows, stockTotals, currentUser) : [], [currentUser, db, stockRows, stockTotals])
 
   useEffect(() => {
     async function load() {
@@ -353,12 +463,12 @@ function App() {
     window.setTimeout(() => setNotice(''), 2800)
   }
 
-  async function executeAction(action: string, payload: Record<string, unknown>, successMessage: string) {
+  async function executeAction(action: string, payload: Record<string, unknown>, successMessage?: string) {
     try {
       const result = await runAction(action, payload)
       setDb(result.db)
       setSessionUserId(result.currentUser.id)
-      flash(successMessage)
+      if (successMessage) flash(successMessage)
     } catch (error) {
       flash(error instanceof Error ? error.message : 'Unable to complete action')
     }
@@ -404,6 +514,7 @@ function App() {
   }
 
   const pendingUsers = db.users.filter((user) => user.status === 'pending').length
+  const unreadChat = notifications.some((notification) => notification.id === 'chat-unread') ? db.chatMessages.filter((message) => message.userId !== currentUser.id && new Date(message.createdAt).getTime() > (currentUser.lastChatSeenAt ? new Date(currentUser.lastChatSeenAt).getTime() : 0)).length : 0
 
   return (
     <div className="app-shell">
@@ -433,6 +544,8 @@ function App() {
                 <Icon size={18} />
                 <span>{label}</span>
                 {viewId === 'users' && pendingUsers > 0 && <b className="nav-badge">{pendingUsers}</b>}
+                {viewId === 'chat' && unreadChat > 0 && <b className="nav-badge">{unreadChat}</b>}
+                {viewId === 'notifications' && notifications.length > 0 && <b className="nav-badge">{notifications.length}</b>}
               </button>
             )
           })}
@@ -463,6 +576,12 @@ function App() {
                 {pendingUsers} pending
               </button>
             )}
+            {notifications.length > 0 && (
+              <button className="ghost-button" type="button" onClick={() => setActiveView('notifications')}>
+                <Bell size={16} />
+                {notifications.length} notification{notifications.length > 1 ? 's' : ''}
+              </button>
+            )}
           </div>
         </header>
 
@@ -473,6 +592,8 @@ function App() {
         {activeView === 'issue' && <IssueStock db={db} stockRows={stockRows} canWrite={canWrite} executeAction={executeAction} flash={flash} />}
         {activeView === 'adjust' && <Adjustments stockRows={stockRows} canAdjust={canAdjust} executeAction={executeAction} flash={flash} />}
         {activeView === 'reports' && <Reports db={db} stockRows={stockRows} stockTotals={stockTotals} />}
+        {activeView === 'chat' && <ChatView db={db} currentUser={currentUser} executeAction={executeAction} />}
+        {activeView === 'notifications' && <NotificationsView notifications={notifications} setActiveView={setActiveView} />}
         {activeView === 'audit' && <Audit db={db} />}
         {activeView === 'users' && <UserManagement db={db} currentUser={currentUser} executeAction={executeAction} flash={flash} />}
         {activeView === 'settings' && <SettingsView db={db} canAdmin={canAdmin} executeAction={executeAction} />}
@@ -787,6 +908,51 @@ function AlertItem({ title, detail, tone }: { title: string; detail: string; ton
   )
 }
 
+async function readWorkbookFile(file: File): Promise<Array<Record<string, unknown>>> {
+  const rows = await readSheet(file)
+  const [headerRow, ...dataRows] = rows
+  const headers = headerRow.map((cell) => String(cell ?? ''))
+  return dataRows.map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? ''])))
+}
+
+async function readCsvFile(file: File): Promise<Array<Record<string, unknown>>> {
+  const text = await file.text()
+  const rows = parseCsv(text)
+  const [headers = [], ...dataRows] = rows
+  return dataRows.map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? ''])))
+}
+
+function parseCsv(text: string) {
+  const rows: string[][] = []
+  let row: string[] = []
+  let cell = ''
+  let quoted = false
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]
+    const next = text[index + 1]
+    if (char === '"' && quoted && next === '"') {
+      cell += '"'
+      index += 1
+    } else if (char === '"') {
+      quoted = !quoted
+    } else if (char === ',' && !quoted) {
+      row.push(cell.trim())
+      cell = ''
+    } else if ((char === '\n' || char === '\r') && !quoted) {
+      if (char === '\r' && next === '\n') index += 1
+      row.push(cell.trim())
+      if (row.some(Boolean)) rows.push(row)
+      row = []
+      cell = ''
+    } else {
+      cell += char
+    }
+  }
+  row.push(cell.trim())
+  if (row.some(Boolean)) rows.push(row)
+  return rows
+}
+
 function Medicines({
   db,
   stockTotals,
@@ -800,7 +966,13 @@ function Medicines({
   executeAction: ExecuteAction
   flash: (message: string) => void
 }) {
-  const empty = {
+  type MedicineDraft = Omit<Medicine, 'barcodes' | 'reorderLevel'> & {
+    rowId: string
+    barcodes: string
+    reorderLevel: number | string
+  }
+  const createBlank = (): MedicineDraft => ({
+    rowId: id('row'),
     id: '',
     sku: '',
     brandName: '',
@@ -814,9 +986,10 @@ function Medicines({
     barcodes: '',
     reorderLevel: 20,
     active: true,
-  }
-  const [form, setForm] = useState(empty)
+  })
+  const [drafts, setDrafts] = useState<MedicineDraft[]>([createBlank()])
   const [query, setQuery] = useState('')
+  const isEditing = drafts.length === 1 && Boolean(drafts[0].id)
 
   const visible = db.medicines.filter((medicine) => {
     const text = `${medicine.sku} ${medicine.brandName} ${medicine.genericName} ${medicine.nafdacNumber} ${medicine.barcodes.join(' ')}`.toLowerCase()
@@ -824,24 +997,105 @@ function Medicines({
   })
 
   function edit(medicine: Medicine) {
-    setForm({ ...medicine, barcodes: medicine.barcodes.join(', ') })
+    setDrafts([{ ...medicine, rowId: id('row'), barcodes: medicine.barcodes.join(', ') }])
+  }
+
+  function updateDraft(rowId: string, updates: Partial<MedicineDraft>) {
+    setDrafts((current) => current.map((draft) => (draft.rowId === rowId ? { ...draft, ...updates } : draft)))
+  }
+
+  function addDraft() {
+    setDrafts((current) => [...current, createBlank()])
+  }
+
+  function removeDraft(rowId: string) {
+    setDrafts((current) => current.length > 1 ? current.filter((draft) => draft.rowId !== rowId) : [createBlank()])
+  }
+
+  function resetDrafts() {
+    setDrafts([createBlank()])
+  }
+
+  function draftToMedicine(draft: MedicineDraft): Medicine {
+    return {
+      id: draft.id || id('med'),
+      sku: draft.sku.trim(),
+      brandName: draft.brandName.trim(),
+      genericName: draft.genericName.trim(),
+      form: draft.form.trim() || 'Tablet',
+      strength: draft.strength.trim(),
+      unit: draft.unit.trim() || 'Unit',
+      category: draft.category.trim(),
+      manufacturer: draft.manufacturer.trim(),
+      nafdacNumber: draft.nafdacNumber.trim(),
+      barcodes: draft.barcodes.split(',').map((item) => item.trim()).filter(Boolean),
+      reorderLevel: Number(draft.reorderLevel) || 0,
+      active: draft.active,
+    }
+  }
+
+  function getImportValue(row: Record<string, unknown>, names: string[]) {
+    const normalized = new Map(Object.entries(row).map(([key, value]) => [key.toLowerCase().replace(/[^a-z0-9]/g, ''), value]))
+    for (const name of names) {
+      const value = normalized.get(name.toLowerCase().replace(/[^a-z0-9]/g, ''))
+      if (value !== undefined && value !== null) return String(value).trim()
+    }
+    return ''
+  }
+
+  async function importFile(file: File) {
+    const rows = file.name.toLowerCase().endsWith('.csv') ? await readCsvFile(file) : await readWorkbookFile(file)
+    const imported = rows
+      .map((row) => ({
+        ...createBlank(),
+        sku: getImportValue(row, ['sku', 'medicine code', 'code']),
+        brandName: getImportValue(row, ['brand name', 'brand', 'medicine', 'medicine name', 'product name']),
+        genericName: getImportValue(row, ['generic name', 'generic']),
+        form: getImportValue(row, ['form', 'dosage form', 'formulation']) || 'Tablet',
+        strength: getImportValue(row, ['strength']),
+        unit: getImportValue(row, ['unit', 'unit of measure', 'uom']) || 'Unit',
+        category: getImportValue(row, ['category', 'class', 'therapeutic class']),
+        manufacturer: getImportValue(row, ['manufacturer', 'maker']),
+        nafdacNumber: getImportValue(row, ['nafdac number', 'nafdac no', 'nafdac registration number']),
+        barcodes: getImportValue(row, ['barcodes', 'barcode', 'ean', 'code128']),
+        reorderLevel: Number(getImportValue(row, ['reorder level', 'reorder', 'minimum stock', 'min stock'])) || 0,
+        active: getImportValue(row, ['active', 'status']).toLowerCase() !== 'inactive',
+      }))
+      .filter((draft) => draft.sku || draft.brandName || draft.genericName)
+    if (!imported.length) {
+      flash('No medicine rows found in the uploaded file')
+      return
+    }
+    setDrafts(imported)
+    flash(`${imported.length} medicine row${imported.length > 1 ? 's' : ''} imported for review`)
   }
 
   function submit(event: FormEvent) {
     event.preventDefault()
     if (!canWrite) return
-    const barcodes = form.barcodes
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean)
-    const duplicateBarcode = db.medicines.find((medicine) => medicine.id !== form.id && medicine.barcodes.some((code) => barcodes.includes(code)))
+    const records = drafts.map(draftToMedicine)
+    if (records.some((record) => !record.sku || !record.brandName || !record.genericName)) {
+      flash('SKU, brand name, and generic name are required for every row')
+      return
+    }
+    const rowBarcodes = new Map<string, string>()
+    for (const record of records) {
+      for (const barcode of record.barcodes) {
+        const previous = rowBarcodes.get(barcode)
+        if (previous && previous !== record.id) {
+          flash(`Barcode ${barcode} appears more than once`)
+          return
+        }
+        rowBarcodes.set(barcode, record.id)
+      }
+    }
+    const duplicateBarcode = db.medicines.find((medicine) => records.some((record) => medicine.id !== record.id && medicine.barcodes.some((code) => record.barcodes.includes(code))))
     if (duplicateBarcode) {
       flash(`Barcode already belongs to ${duplicateBarcode.brandName}`)
       return
     }
-    const record: Medicine = { ...form, id: form.id || id('med'), barcodes, reorderLevel: Number(form.reorderLevel) || 0 }
-    void executeAction('upsertMedicine', { record }, 'Medicine saved')
-    setForm(empty)
+    void executeAction(records.length === 1 ? 'upsertMedicine' : 'upsertMedicines', records.length === 1 ? { record: records[0] } : { records }, `${records.length} medicine record${records.length > 1 ? 's' : ''} saved`)
+    resetDrafts()
   }
 
   return (
@@ -901,28 +1155,53 @@ function Medicines({
       <section className="content-section">
         <div className="section-heading">
           <div>
-            <h2>{form.id ? 'Edit Medicine' : 'Add Medicine'}</h2>
-            <p>Use comma-separated barcodes if a product has multiple pack codes.</p>
+            <h2>{isEditing ? 'Edit Medicine' : 'Add Medicines'}</h2>
+            <p>Add medicines one by one, use the plus button for multiple rows, or import a spreadsheet.</p>
+          </div>
+          <div className="button-row">
+            <label className="file-button">
+              <Upload size={16} />
+              Import
+              <input type="file" accept=".xlsx,.csv" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importFile(file); event.currentTarget.value = '' }} disabled={!canWrite} />
+            </label>
+            <button className="ghost-button" type="button" onClick={addDraft} disabled={!canWrite || isEditing}>
+              <Plus size={16} />
+              Add row
+            </button>
           </div>
         </div>
         <form className="form-grid" onSubmit={submit}>
-          <label>Brand name<input required value={form.brandName} onChange={(event) => setForm({ ...form, brandName: event.target.value })} disabled={!canWrite} /></label>
-          <label>Generic name<input required value={form.genericName} onChange={(event) => setForm({ ...form, genericName: event.target.value })} disabled={!canWrite} /></label>
-          <label>SKU<input required value={form.sku} onChange={(event) => setForm({ ...form, sku: event.target.value })} disabled={!canWrite} /></label>
-          <label>NAFDAC number<input value={form.nafdacNumber} onChange={(event) => setForm({ ...form, nafdacNumber: event.target.value })} disabled={!canWrite} /></label>
-          <label>Form<input value={form.form} onChange={(event) => setForm({ ...form, form: event.target.value })} disabled={!canWrite} /></label>
-          <label>Strength<input value={form.strength} onChange={(event) => setForm({ ...form, strength: event.target.value })} disabled={!canWrite} /></label>
-          <label>Unit<input value={form.unit} onChange={(event) => setForm({ ...form, unit: event.target.value })} disabled={!canWrite} /></label>
-          <label>Category<input value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} disabled={!canWrite} /></label>
-          <label>Manufacturer<input value={form.manufacturer} onChange={(event) => setForm({ ...form, manufacturer: event.target.value })} disabled={!canWrite} /></label>
-          <label>Reorder level<input type="number" min="0" value={form.reorderLevel} onChange={(event) => setForm({ ...form, reorderLevel: Number(event.target.value) })} disabled={!canWrite} /></label>
-          <label className="full">Barcodes<input value={form.barcodes} onChange={(event) => setForm({ ...form, barcodes: event.target.value })} disabled={!canWrite} /></label>
-          <label className="checkbox-row full"><input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} disabled={!canWrite} /> Active medicine</label>
+          <div className="line-editor full">
+            {drafts.map((draft, index) => (
+              <div className="line-card" key={draft.rowId}>
+                <div className="line-card-heading">
+                  <strong>{draft.id ? 'Editing existing medicine' : `Medicine ${index + 1}`}</strong>
+                  <button className="icon-button" type="button" onClick={() => removeDraft(draft.rowId)} disabled={!canWrite} title="Remove medicine row">
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+                <div className="form-grid">
+                  <label>Brand name<input required value={draft.brandName} onChange={(event) => updateDraft(draft.rowId, { brandName: event.target.value })} disabled={!canWrite} /></label>
+                  <label>Generic name<input required value={draft.genericName} onChange={(event) => updateDraft(draft.rowId, { genericName: event.target.value })} disabled={!canWrite} /></label>
+                  <label>SKU<input required value={draft.sku} onChange={(event) => updateDraft(draft.rowId, { sku: event.target.value })} disabled={!canWrite} /></label>
+                  <label>NAFDAC number<input value={draft.nafdacNumber} onChange={(event) => updateDraft(draft.rowId, { nafdacNumber: event.target.value })} disabled={!canWrite} /></label>
+                  <label>Form<input value={draft.form} onChange={(event) => updateDraft(draft.rowId, { form: event.target.value })} disabled={!canWrite} /></label>
+                  <label>Strength<input value={draft.strength} onChange={(event) => updateDraft(draft.rowId, { strength: event.target.value })} disabled={!canWrite} /></label>
+                  <label>Unit<input value={draft.unit} onChange={(event) => updateDraft(draft.rowId, { unit: event.target.value })} disabled={!canWrite} /></label>
+                  <label>Category<input value={draft.category} onChange={(event) => updateDraft(draft.rowId, { category: event.target.value })} disabled={!canWrite} /></label>
+                  <label>Manufacturer<input value={draft.manufacturer} onChange={(event) => updateDraft(draft.rowId, { manufacturer: event.target.value })} disabled={!canWrite} /></label>
+                  <label>Reorder level<input type="number" min="0" value={draft.reorderLevel} onChange={(event) => updateDraft(draft.rowId, { reorderLevel: Number(event.target.value) })} disabled={!canWrite} /></label>
+                  <label className="full">Barcodes<input value={draft.barcodes} onChange={(event) => updateDraft(draft.rowId, { barcodes: event.target.value })} disabled={!canWrite} /></label>
+                  <label className="checkbox-row full"><input type="checkbox" checked={draft.active} onChange={(event) => updateDraft(draft.rowId, { active: event.target.checked })} disabled={!canWrite} /> Active medicine</label>
+                </div>
+              </div>
+            ))}
+          </div>
           <div className="form-actions full">
-            <button className="ghost-button" type="button" onClick={() => setForm(empty)}>Clear</button>
+            <button className="ghost-button" type="button" onClick={resetDrafts}>Clear</button>
             <button className="primary-button" type="submit" disabled={!canWrite}>
               <PackageCheck size={17} />
-              Save medicine
+              Save {drafts.length > 1 ? `${drafts.length} medicines` : 'medicine'}
             </button>
           </div>
         </form>
@@ -998,11 +1277,19 @@ function Suppliers({ db, canWrite, executeAction }: { db: Database; canWrite: bo
 }
 
 function ReceiveStock({ db, canWrite, executeAction, flash }: { db: Database; canWrite: boolean; executeAction: ExecuteAction; flash: (message: string) => void }) {
-  const [scan, setScan] = useState('')
-  const [form, setForm] = useState({
+  type ReceiveLine = {
+    rowId: string
+    medicineId: string
+    batchNumber: string
+    expiryDate: string
+    quantity: number
+    unitCost: number
+    sellingPrice: number
+    location: string
+  }
+  const createLine = (): ReceiveLine => ({
+    rowId: id('line'),
     medicineId: '',
-    supplierId: '',
-    invoiceRef: '',
     batchNumber: '',
     expiryDate: '',
     quantity: 1,
@@ -1010,8 +1297,25 @@ function ReceiveStock({ db, canWrite, executeAction, flash }: { db: Database; ca
     sellingPrice: 0,
     location: 'Main Store',
   })
-  const selectedMedicineId = form.medicineId || db.medicines[0]?.id || ''
-  const selectedSupplierId = form.supplierId || db.suppliers[0]?.id || ''
+  const [scan, setScan] = useState('')
+  const [header, setHeader] = useState({
+    supplierId: '',
+    invoiceRef: '',
+  })
+  const [lines, setLines] = useState<ReceiveLine[]>([createLine()])
+  const selectedSupplierId = header.supplierId || db.suppliers[0]?.id || ''
+
+  function updateLine(rowId: string, updates: Partial<ReceiveLine>) {
+    setLines((current) => current.map((line) => (line.rowId === rowId ? { ...line, ...updates } : line)))
+  }
+
+  function addLine() {
+    setLines((current) => [...current, createLine()])
+  }
+
+  function removeLine(rowId: string) {
+    setLines((current) => current.length > 1 ? current.filter((line) => line.rowId !== rowId) : [createLine()])
+  }
 
   function applyScan() {
     const medicine = findMedicineByScan(db, scan)
@@ -1019,59 +1323,81 @@ function ReceiveStock({ db, canWrite, executeAction, flash }: { db: Database; ca
       flash('No medicine found for scanned code')
       return
     }
-    setForm((current) => ({ ...current, medicineId: medicine.id }))
+    setLines((current) => current.map((line, index) => index === current.length - 1 ? { ...line, medicineId: medicine.id } : line))
     flash(`${medicine.brandName} selected`)
   }
 
   function submit(event: FormEvent) {
     event.preventDefault()
     if (!canWrite) return
-    if (!selectedMedicineId || !selectedSupplierId) {
+    if (!selectedSupplierId || !db.medicines.length) {
       flash('Add at least one medicine and supplier before receiving stock')
       return
     }
-    if (!form.batchNumber || !form.expiryDate || form.quantity <= 0) {
-      flash('Batch number, expiry, and quantity are required')
+    const items = lines.map((line) => ({ ...line, medicineId: line.medicineId || db.medicines[0]?.id || '' }))
+    if (items.some((line) => !line.medicineId || !line.batchNumber || !line.expiryDate || Number(line.quantity) <= 0)) {
+      flash('Medicine, batch number, expiry, and quantity are required for every line')
       return
     }
     void executeAction('receiveStock', {
-      medicineId: selectedMedicineId,
       supplierId: selectedSupplierId,
-      invoiceRef: form.invoiceRef,
-      batchNumber: form.batchNumber,
-      expiryDate: form.expiryDate,
-      quantity: form.quantity,
-      unitCost: form.unitCost,
-      sellingPrice: form.sellingPrice,
-      location: form.location,
-    }, 'Stock received and ledger updated')
-    setForm({ ...form, invoiceRef: '', batchNumber: '', expiryDate: '', quantity: 1 })
+      invoiceRef: header.invoiceRef,
+      items,
+    }, `${items.length} stock line${items.length > 1 ? 's' : ''} received and posted`)
+    setHeader({ ...header, invoiceRef: '' })
+    setLines([createLine()])
     setScan('')
   }
 
   return (
-    <section className="content-section narrow">
+    <section className="content-section">
       <div className="section-heading">
         <div>
           <h2>Goods Receiving Note</h2>
-          <p>Batch and expiry are mandatory for every stock-in transaction.</p>
+          <p>Enter every item on the supplier invoice, then post all stock lines in one transaction.</p>
         </div>
+        <button className="ghost-button" type="button" onClick={addLine} disabled={!canWrite}>
+          <Plus size={16} />
+          Add item
+        </button>
       </div>
       <form className="form-grid" onSubmit={submit}>
-        <label className="scan-field full">Scan barcode or SKU<div><Barcode size={17} /><input value={scan} onChange={(event) => setScan(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); applyScan() } }} placeholder="Scan, then press Enter" disabled={!canWrite || !db.medicines.length} /><button className="ghost-button" type="button" onClick={applyScan} disabled={!canWrite || !db.medicines.length}><Search size={16} />Lookup</button></div></label>
-        <label className="full">Medicine<select required value={selectedMedicineId} onChange={(event) => setForm({ ...form, medicineId: event.target.value })} disabled={!canWrite || !db.medicines.length}><option value="">Select medicine</option>{db.medicines.map((medicine) => <option key={medicine.id} value={medicine.id}>{medicine.brandName} / {medicine.genericName}</option>)}</select></label>
-        <label>Supplier<select required value={selectedSupplierId} onChange={(event) => setForm({ ...form, supplierId: event.target.value })} disabled={!canWrite || !db.suppliers.length}><option value="">Select supplier</option>{db.suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label>
-        <label>Invoice/reference<input value={form.invoiceRef} onChange={(event) => setForm({ ...form, invoiceRef: event.target.value })} disabled={!canWrite} /></label>
-        <label>Batch/Lot number<input required value={form.batchNumber} onChange={(event) => setForm({ ...form, batchNumber: event.target.value })} disabled={!canWrite} /></label>
-        <label>Expiry date<input required type="date" value={form.expiryDate} onChange={(event) => setForm({ ...form, expiryDate: event.target.value })} disabled={!canWrite} /></label>
-        <label>Quantity<input required type="number" min="1" value={form.quantity} onChange={(event) => setForm({ ...form, quantity: Number(event.target.value) })} disabled={!canWrite} /></label>
-        <label>Unit cost<input type="number" min="0" value={form.unitCost} onChange={(event) => setForm({ ...form, unitCost: Number(event.target.value) })} disabled={!canWrite} /></label>
-        <label>Selling price<input type="number" min="0" value={form.sellingPrice} onChange={(event) => setForm({ ...form, sellingPrice: Number(event.target.value) })} disabled={!canWrite} /></label>
-        <label>Stock location<input value={form.location} onChange={(event) => setForm({ ...form, location: event.target.value })} disabled={!canWrite} /></label>
+        <label>Supplier<select required value={selectedSupplierId} onChange={(event) => setHeader({ ...header, supplierId: event.target.value })} disabled={!canWrite || !db.suppliers.length}><option value="">Select supplier</option>{db.suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label>
+        <label>Invoice/reference<input value={header.invoiceRef} onChange={(event) => setHeader({ ...header, invoiceRef: event.target.value })} disabled={!canWrite} /></label>
+        <label className="scan-field full">Scan barcode or SKU<div><Barcode size={17} /><input value={scan} onChange={(event) => setScan(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); applyScan() } }} placeholder="Scan, then press Enter to set the last item line" disabled={!canWrite || !db.medicines.length} /><button className="ghost-button" type="button" onClick={applyScan} disabled={!canWrite || !db.medicines.length}><Search size={16} />Lookup</button></div></label>
+
+        <div className="line-editor full">
+          {lines.map((line, index) => {
+            const selectedMedicineId = line.medicineId || db.medicines[0]?.id || ''
+            return (
+              <div className="line-card" key={line.rowId}>
+                <div className="line-card-heading">
+                  <strong>Invoice item {index + 1}</strong>
+                  <button className="icon-button" type="button" onClick={() => removeLine(line.rowId)} disabled={!canWrite} title="Remove item">
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+                <div className="form-grid">
+                  <label className="full">Medicine<select required value={selectedMedicineId} onChange={(event) => updateLine(line.rowId, { medicineId: event.target.value })} disabled={!canWrite || !db.medicines.length}><option value="">Select medicine</option>{db.medicines.map((medicine) => <option key={medicine.id} value={medicine.id}>{medicine.brandName} / {medicine.genericName}</option>)}</select></label>
+                  <label>Batch/Lot number<input required value={line.batchNumber} onChange={(event) => updateLine(line.rowId, { batchNumber: event.target.value })} disabled={!canWrite} /></label>
+                  <label>Expiry date<input required type="date" value={line.expiryDate} onChange={(event) => updateLine(line.rowId, { expiryDate: event.target.value })} disabled={!canWrite} /></label>
+                  <label>Quantity<input required type="number" min="1" value={line.quantity} onChange={(event) => updateLine(line.rowId, { quantity: Number(event.target.value) })} disabled={!canWrite} /></label>
+                  <label>Unit cost<input type="number" min="0" value={line.unitCost} onChange={(event) => updateLine(line.rowId, { unitCost: Number(event.target.value) })} disabled={!canWrite} /></label>
+                  <label>Selling price<input type="number" min="0" value={line.sellingPrice} onChange={(event) => updateLine(line.rowId, { sellingPrice: Number(event.target.value) })} disabled={!canWrite} /></label>
+                  <label>Stock location<input value={line.location} onChange={(event) => updateLine(line.rowId, { location: event.target.value })} disabled={!canWrite} /></label>
+                </div>
+              </div>
+            )
+          })}
+        </div>
         <div className="form-actions full">
+          <button className="ghost-button" type="button" onClick={addLine} disabled={!canWrite}>
+            <Plus size={16} />
+            Add another item
+          </button>
           <button className="primary-button" type="submit" disabled={!canWrite || !db.medicines.length || !db.suppliers.length}>
             <PackagePlus size={17} />
-            Post stock-in
+            Post {lines.length} item{lines.length > 1 ? 's' : ''}
           </button>
         </div>
       </form>
@@ -1333,6 +1659,97 @@ function Reports({ db, stockRows, stockTotals }: { db: Database; stockRows: Stoc
       <ReportTable rows={rows} />
     </section>
   )
+}
+
+function ChatView({ db, currentUser, executeAction }: { db: Database; currentUser: User; executeAction: ExecuteAction }) {
+  const [body, setBody] = useState('')
+  const readMarked = useRef(false)
+
+  useEffect(() => {
+    if (!readMarked.current) {
+      readMarked.current = true
+      void executeAction('markChatRead', {})
+    }
+  }, [executeAction])
+
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    if (!body.trim()) return
+    void executeAction('sendChatMessage', { body }, 'Message sent')
+    setBody('')
+  }
+
+  const messages = [...db.chatMessages].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+
+  return (
+    <section className="content-section chat-section">
+      <div className="section-heading">
+        <div>
+          <h2>Team Chat</h2>
+          <p>Operational notes for pharmacists, inventory staff, and admins using this workspace.</p>
+        </div>
+      </div>
+      <div className="chat-list">
+        {messages.length ? (
+          messages.map((message) => {
+            const user = db.users.find((item) => item.id === message.userId)
+            const mine = message.userId === currentUser.id
+            return (
+              <article className={mine ? 'chat-message mine' : 'chat-message'} key={message.id}>
+                <div>
+                  <strong>{mine ? 'You' : user?.name ?? 'Team member'}</strong>
+                  <span>{new Date(message.createdAt).toLocaleString()}</span>
+                </div>
+                <p>{message.body}</p>
+              </article>
+            )
+          })
+        ) : (
+          <div className="empty-state">No messages yet.</div>
+        )}
+      </div>
+      <form className="chat-composer" onSubmit={submit}>
+        <textarea value={body} onChange={(event) => setBody(event.target.value)} placeholder="Type a message for the team" maxLength={2000} />
+        <button className="primary-button" type="submit" disabled={!body.trim()}>
+          <Send size={17} />
+          Send
+        </button>
+      </form>
+    </section>
+  )
+}
+
+function NotificationsView({ notifications, setActiveView }: { notifications: AppNotification[]; setActiveView: (view: View) => void }) {
+  return (
+    <section className="content-section">
+      <div className="section-heading">
+        <div>
+          <h2>Notification Center</h2>
+          <p>Chat, access, stock-out, low-stock, expired, and near-expiry prompts in one place.</p>
+        </div>
+      </div>
+      <div className="alert-list">
+        {notifications.length ? (
+          notifications.map((notification) => (
+            <button className={`notification-item alert-item ${notification.tone}`} key={notification.id} type="button" onClick={() => setActiveView(notification.view)}>
+              <NotificationIcon tone={notification.tone} />
+              <div>
+                <strong>{notification.title}</strong>
+                <span>{notification.detail}</span>
+              </div>
+            </button>
+          ))
+        ) : (
+          <AlertItem tone="good" title="No active notifications" detail="Team messages, stock levels, expiry windows, and access approvals are currently clear." />
+        )}
+      </div>
+    </section>
+  )
+}
+
+function NotificationIcon({ tone }: { tone: NotificationTone }) {
+  const Icon = tone === 'danger' ? XCircle : tone === 'warning' ? AlertTriangle : tone === 'good' ? CheckCircle2 : ClipboardList
+  return <Icon size={19} />
 }
 
 function Audit({ db }: { db: Database }) {

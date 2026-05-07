@@ -39,6 +39,9 @@ export default async function handler(req: HandlerRequest, res: HandlerResponse)
       case 'upsertMedicine':
         upsertMedicine(db, actor.id, actor.role, body.payload)
         break
+      case 'upsertMedicines':
+        upsertMedicines(db, actor.id, actor.role, body.payload)
+        break
       case 'upsertSupplier':
         upsertSupplier(db, actor.id, actor.role, body.payload)
         break
@@ -53,6 +56,12 @@ export default async function handler(req: HandlerRequest, res: HandlerResponse)
         break
       case 'updateSettings':
         updateSettings(db, actor.id, actor.role, body.payload)
+        break
+      case 'sendChatMessage':
+        sendChatMessage(db, actor.id, body.payload)
+        break
+      case 'markChatRead':
+        markChatRead(db, actor.id)
         break
       default:
         fail(res, 400, 'Unknown action')
@@ -105,9 +114,31 @@ function updateUser(db: Database, actorId: string, payload: Record<string, unkno
 function upsertMedicine(db: Database, actorId: string, actorRole: Role, payload: Record<string, unknown> | undefined) {
   const actor = db.users.find((user) => user.id === actorId)
   if (!actor || !canWrite({ ...actor, role: actorRole })) throw new Error('You do not have permission to save medicines')
-  const recordInput = (payload?.record ?? {}) as Partial<Medicine>
+  const record = normalizeMedicine((payload?.record ?? {}) as Partial<Medicine>)
+  saveMedicineRecord(db, actorId, record)
+}
+
+function upsertMedicines(db: Database, actorId: string, actorRole: Role, payload: Record<string, unknown> | undefined) {
+  const actor = db.users.find((user) => user.id === actorId)
+  if (!actor || !canWrite({ ...actor, role: actorRole })) throw new Error('You do not have permission to save medicines')
+  const inputs = Array.isArray(payload?.records) ? (payload.records as Partial<Medicine>[]) : []
+  if (!inputs.length) throw new Error('Add at least one medicine record')
+  const records = inputs.map((record) => normalizeMedicine(record))
+  const seenBarcodes = new Map<string, string>()
+  for (const record of records) {
+    for (const barcode of record.barcodes) {
+      const previous = seenBarcodes.get(barcode)
+      if (previous && previous !== record.id) throw new Error(`Barcode ${barcode} appears more than once in this import`)
+      seenBarcodes.set(barcode, record.id)
+    }
+  }
+  records.forEach((record) => saveMedicineRecord(db, actorId, record))
+  addAudit(db, actorId, `Bulk saved ${records.length} medicine records`, 'medicine', 'bulk', undefined, records.map((record) => record.id))
+}
+
+function normalizeMedicine(recordInput: Partial<Medicine>): Medicine {
   const barcodes = Array.isArray(recordInput.barcodes) ? recordInput.barcodes.map(String).map((item) => item.trim()).filter(Boolean) : []
-  const record: Medicine = {
+  return {
     id: recordInput.id || id('med'),
     sku: requireString(recordInput.sku, 'SKU'),
     brandName: requireString(recordInput.brandName, 'Brand name'),
@@ -122,8 +153,13 @@ function upsertMedicine(db: Database, actorId: string, actorRole: Role, payload:
     reorderLevel: Number(recordInput.reorderLevel) || 0,
     active: recordInput.active !== false,
   }
+}
+
+function saveMedicineRecord(db: Database, actorId: string, record: Medicine) {
   const duplicateBarcode = db.medicines.find((medicine) => medicine.id !== record.id && medicine.barcodes.some((code) => record.barcodes.includes(code)))
   if (duplicateBarcode) throw new Error(`Barcode already belongs to ${duplicateBarcode.brandName}`)
+  const duplicateSku = db.medicines.find((medicine) => medicine.id !== record.id && medicine.sku.toLowerCase() === record.sku.toLowerCase())
+  if (duplicateSku) throw new Error(`SKU already belongs to ${duplicateSku.brandName}`)
   const before = db.medicines.find((medicine) => medicine.id === record.id)
   db.medicines = before ? db.medicines.map((medicine) => (medicine.id === record.id ? record : medicine)) : [record, ...db.medicines]
   addAudit(db, actorId, before ? 'Updated medicine record' : 'Created medicine record', 'medicine', record.id, before, record)
@@ -149,47 +185,67 @@ function upsertSupplier(db: Database, actorId: string, actorRole: Role, payload:
 function receiveStock(db: Database, actorId: string, actorRole: Role, payload: Record<string, unknown> | undefined) {
   const actor = db.users.find((user) => user.id === actorId)
   if (!actor || !canWrite({ ...actor, role: actorRole })) throw new Error('You do not have permission to receive stock')
-  const medicineId = requireString(payload?.medicineId, 'Medicine')
   const supplierId = requireString(payload?.supplierId, 'Supplier')
-  if (!db.medicines.some((medicine) => medicine.id === medicineId)) throw new Error('Medicine not found')
   if (!db.suppliers.some((supplier) => supplier.id === supplierId)) throw new Error('Supplier not found')
-  const quantity = requireNumber(payload?.quantity, 'Quantity')
-  if (quantity <= 0) throw new Error('Quantity must be greater than zero')
-  const batch = {
-    id: id('bat'),
-    medicineId,
-    supplierId,
-    batchNumber: requireString(payload?.batchNumber, 'Batch number'),
-    expiryDate: requireString(payload?.expiryDate, 'Expiry date'),
-    unitCost: Number(payload?.unitCost) || 0,
-    sellingPrice: Number(payload?.sellingPrice) || 0,
-    receivedDate: today(),
-    location: optionalString(payload?.location) || 'Main Store',
-    branchId: 'main',
-  }
-  const ledger = {
-    id: id('led'),
-    medicineId,
-    batchId: batch.id,
-    type: 'stock-in' as LedgerType,
-    quantity,
-    reason: 'Goods received',
-    reference: optionalString(payload?.invoiceRef) || 'GRN',
-    userId: actorId,
-    createdAt: nowIso(),
-  }
+  const inputs = Array.isArray(payload?.items)
+    ? (payload.items as Record<string, unknown>[])
+    : [{
+        medicineId: payload?.medicineId,
+        batchNumber: payload?.batchNumber,
+        expiryDate: payload?.expiryDate,
+        quantity: payload?.quantity,
+        unitCost: payload?.unitCost,
+        sellingPrice: payload?.sellingPrice,
+        location: payload?.location,
+      }]
+  if (!inputs.length) throw new Error('Add at least one stock line')
+  const reference = optionalString(payload?.invoiceRef) || 'Manual receive'
   const receipt = {
     id: id('grn'),
     supplierId,
-    invoiceRef: optionalString(payload?.invoiceRef) || 'Manual receive',
+    invoiceRef: reference,
     receivedAt: nowIso(),
     userId: actorId,
-    items: [{ medicineId, batchId: batch.id, quantity, unitCost: batch.unitCost }],
+    items: [] as Array<{ medicineId: string; batchId: string; quantity: number; unitCost: number }>,
   }
-  db.batches.unshift(batch)
-  db.ledger.unshift(ledger)
+  const batches = []
+  const ledgerEntries = []
+  for (const input of inputs) {
+    const medicineId = requireString(input.medicineId, 'Medicine')
+    if (!db.medicines.some((medicine) => medicine.id === medicineId)) throw new Error('Medicine not found')
+    const quantity = requireNumber(input.quantity, 'Quantity')
+    if (quantity <= 0) throw new Error('Quantity must be greater than zero')
+    const batch = {
+      id: id('bat'),
+      medicineId,
+      supplierId,
+      batchNumber: requireString(input.batchNumber, 'Batch number'),
+      expiryDate: requireString(input.expiryDate, 'Expiry date'),
+      unitCost: Number(input.unitCost) || 0,
+      sellingPrice: Number(input.sellingPrice) || 0,
+      receivedDate: today(),
+      location: optionalString(input.location) || 'Main Store',
+      branchId: 'main',
+    }
+    const ledger = {
+      id: id('led'),
+      medicineId,
+      batchId: batch.id,
+      type: 'stock-in' as LedgerType,
+      quantity,
+      reason: 'Goods received',
+      reference,
+      userId: actorId,
+      createdAt: nowIso(),
+    }
+    batches.push(batch)
+    ledgerEntries.push(ledger)
+    receipt.items.push({ medicineId, batchId: batch.id, quantity, unitCost: batch.unitCost })
+  }
+  db.batches.unshift(...batches)
+  db.ledger.unshift(...ledgerEntries)
   db.receipts.unshift(receipt)
-  addAudit(db, actorId, 'Received stock', 'batch', batch.id, undefined, { batch, quantity })
+  addAudit(db, actorId, `Received ${receipt.items.length} stock line${receipt.items.length > 1 ? 's' : ''}`, 'receipt', receipt.id, undefined, receipt)
 }
 
 function issueStock(db: Database, actorId: string, actorRole: Role, payload: Record<string, unknown> | undefined) {
@@ -268,4 +324,22 @@ function updateSettings(db: Database, actorId: string, actorRole: Role, payload:
     approvalThreshold: Number(payload?.approvalThreshold) || db.settings.approvalThreshold,
   }
   addAudit(db, actorId, 'Updated system settings', 'settings', 'main', before, db.settings)
+}
+
+function sendChatMessage(db: Database, actorId: string, payload: Record<string, unknown> | undefined) {
+  const body = requireString(payload?.body, 'Message')
+  if (body.length > 2000) throw new Error('Message is too long')
+  const message = {
+    id: id('msg'),
+    userId: actorId,
+    body,
+    createdAt: nowIso(),
+  }
+  db.chatMessages.unshift(message)
+  markChatRead(db, actorId)
+}
+
+function markChatRead(db: Database, actorId: string) {
+  const actor = db.users.find((user) => user.id === actorId)
+  if (actor) actor.lastChatSeenAt = nowIso()
 }

@@ -9,6 +9,7 @@ export type User = {
   phone: string
   role: Role
   status: UserStatus
+  lastChatSeenAt?: string
   createdAt: string
   approvedAt?: string
   approvedBy?: string
@@ -89,6 +90,13 @@ export type AuditLog = {
   createdAt: string
 }
 
+export type ChatMessage = {
+  id: string
+  userId: string
+  body: string
+  createdAt: string
+}
+
 export type AppSettings = {
   pharmacyName: string
   branchName: string
@@ -103,6 +111,7 @@ export type Database = {
   batches: Batch[]
   ledger: LedgerEntry[]
   receipts: Receipt[]
+  chatMessages: ChatMessage[]
   auditLogs: AuditLog[]
   settings: AppSettings
 }
