@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { readSheet } from 'read-excel-file/browser'
 import {
@@ -15,6 +15,7 @@ import {
   LayoutDashboard,
   Lock,
   LogOut,
+  Menu,
   MessageSquare,
   PackageCheck,
   PackageMinus,
@@ -33,6 +34,7 @@ import {
   UserCheck,
   UserPlus,
   Users,
+  X,
   XCircle,
 } from 'lucide-react'
 import {
@@ -248,6 +250,7 @@ const movementLabels: Record<LedgerType, string> = {
 const today = () => new Date().toISOString().slice(0, 10)
 const money = new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' })
 const number = new Intl.NumberFormat('en-NG')
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000
 
 function id(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
@@ -426,6 +429,7 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [connectionError, setConnectionError] = useState('')
   const [hasUsers, setHasUsers] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const currentUser = db.users.find((user) => user.id === sessionUserId && user.status === 'active') ?? null
   const stockRows = useMemo(() => getStockRows(db), [db])
@@ -463,14 +467,32 @@ function App() {
     window.setTimeout(() => setNotice(''), 2800)
   }
 
+  const forceSignOut = useCallback(async (message?: string) => {
+    try {
+      await apiLogout()
+    } catch {
+      clearStoredToken()
+    }
+    setSessionUserId(null)
+    setActiveView('dashboard')
+    setSidebarOpen(false)
+    if (message) setConnectionError(message)
+  }, [])
+
   async function executeAction(action: string, payload: Record<string, unknown>, successMessage?: string) {
     try {
       const result = await runAction(action, payload)
       setDb(result.db)
       setSessionUserId(result.currentUser.id)
+      setConnectionError('')
       if (successMessage) flash(successMessage)
     } catch (error) {
-      flash(error instanceof Error ? error.message : 'Unable to complete action')
+      const message = error instanceof Error ? error.message : 'Unable to complete action'
+      if (message.toLowerCase().includes('authentication')) {
+        await forceSignOut('Session expired. Please sign in again.')
+        return
+      }
+      flash(message)
     }
   }
 
@@ -490,13 +512,40 @@ function App() {
     const result = await apiLogin(email, password)
     setDb(result.db)
     setSessionUserId(result.currentUser.id)
+    setConnectionError('')
     setActiveView('dashboard')
   }
 
   async function signOut() {
-    await apiLogout()
-    setSessionUserId(null)
+    await forceSignOut()
   }
+
+  function navigate(view: View) {
+    setActiveView(view)
+    setSidebarOpen(false)
+  }
+
+  useEffect(() => {
+    if (!currentUser) return undefined
+    let timeoutId = window.setTimeout(() => {
+      void forceSignOut('Session timed out after 30 minutes of inactivity. Please sign in again.')
+    }, IDLE_TIMEOUT_MS)
+
+    function resetTimer() {
+      window.clearTimeout(timeoutId)
+      timeoutId = window.setTimeout(() => {
+        void forceSignOut('Session timed out after 30 minutes of inactivity. Please sign in again.')
+      }, IDLE_TIMEOUT_MS)
+    }
+
+    const activityEvents = ['click', 'keydown', 'mousemove', 'mousedown', 'scroll', 'touchstart']
+    activityEvents.forEach((eventName) => window.addEventListener(eventName, resetTimer, { passive: true }))
+
+    return () => {
+      window.clearTimeout(timeoutId)
+      activityEvents.forEach((eventName) => window.removeEventListener(eventName, resetTimer))
+    }
+  }, [currentUser, forceSignOut])
 
   if (loading) return <LoadingScreen />
 
@@ -517,7 +566,8 @@ function App() {
   const unreadChat = notifications.some((notification) => notification.id === 'chat-unread') ? db.chatMessages.filter((message) => message.userId !== currentUser.id && new Date(message.createdAt).getTime() > (currentUser.lastChatSeenAt ? new Date(currentUser.lastChatSeenAt).getTime() : 0)).length : 0
 
   return (
-    <div className="app-shell">
+    <div className={sidebarOpen ? 'app-shell sidebar-open' : 'app-shell'}>
+      <button className="sidebar-backdrop" type="button" aria-label="Close menu" onClick={() => setSidebarOpen(false)} />
       <aside className="sidebar">
         <div className="brand-block">
           <div className="brand-mark">
@@ -537,7 +587,7 @@ function App() {
                 key={viewId}
                 className={activeView === viewId ? 'nav-item active' : 'nav-item'}
                 type="button"
-                onClick={() => !disabled && setActiveView(viewId)}
+                onClick={() => !disabled && navigate(viewId)}
                 disabled={disabled}
                 title={label}
               >
@@ -564,20 +614,25 @@ function App() {
 
       <main className="workspace">
         <header className="topbar">
-          <div>
-            <span className="eyebrow">Operational inventory control</span>
-            <h1>{views.find((view) => view.id === activeView)?.label}</h1>
+          <div className="topbar-title">
+            <button className="mobile-menu-button" type="button" onClick={() => setSidebarOpen((open) => !open)} aria-label={sidebarOpen ? 'Close menu' : 'Open menu'} aria-expanded={sidebarOpen}>
+              {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
+            <div>
+              <span className="eyebrow">Operational inventory control</span>
+              <h1>{views.find((view) => view.id === activeView)?.label}</h1>
+            </div>
           </div>
           <div className="topbar-actions">
             {notice && <span className="notice">{notice}</span>}
             {canAdmin && pendingUsers > 0 && (
-              <button className="ghost-button" type="button" onClick={() => setActiveView('users')}>
+              <button className="ghost-button" type="button" onClick={() => navigate('users')}>
                 <UserCheck size={16} />
                 {pendingUsers} pending
               </button>
             )}
             {notifications.length > 0 && (
-              <button className="ghost-button" type="button" onClick={() => setActiveView('notifications')}>
+              <button className="ghost-button" type="button" onClick={() => navigate('notifications')}>
                 <Bell size={16} />
                 {notifications.length} notification{notifications.length > 1 ? 's' : ''}
               </button>

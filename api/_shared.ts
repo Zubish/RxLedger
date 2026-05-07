@@ -124,6 +124,7 @@ type HandlerRequest = {
 }
 
 const SESSION_DAYS = 14
+const SESSION_IDLE_MINUTES = 30
 
 export function createEmptyDatabase(): Database {
   return {
@@ -197,9 +198,11 @@ export async function ensureSchema() {
       token_hash TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
       expires_at TIMESTAMPTZ NOT NULL,
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `
+  await sql`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now()`
   await sql`
     INSERT INTO app_state (id, data)
     VALUES (1, ${JSON.stringify(createEmptyDatabase())}::jsonb)
@@ -278,7 +281,7 @@ export async function createSession(userId: string) {
   const tokenHash = hashToken(token)
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 86400000).toISOString()
   const sql = getSql()
-  await sql`INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (${tokenHash}, ${userId}, ${expiresAt})`
+  await sql`INSERT INTO sessions (token_hash, user_id, expires_at, last_seen_at) VALUES (${tokenHash}, ${userId}, ${expiresAt}, now())`
   return { token, expiresAt }
 }
 
@@ -298,15 +301,22 @@ export async function getAuthenticatedUser(req: HandlerRequest, db: Database) {
   const token = getBearerToken(req)
   if (!token) return null
   const sql = getSql()
+  const tokenHash = hashToken(token)
+  const idleCutoff = new Date(Date.now() - SESSION_IDLE_MINUTES * 60_000).toISOString()
   const rows = await sql`
     SELECT user_id
     FROM sessions
-    WHERE token_hash = ${hashToken(token)}
+    WHERE token_hash = ${tokenHash}
       AND expires_at > now()
+      AND last_seen_at > ${idleCutoff}
     LIMIT 1
   `
   const userId = rows[0]?.user_id as string | undefined
-  if (!userId) return null
+  if (!userId) {
+    await sql`DELETE FROM sessions WHERE token_hash = ${tokenHash}`
+    return null
+  }
+  await sql`UPDATE sessions SET last_seen_at = now() WHERE token_hash = ${tokenHash}`
   return db.users.find((user) => user.id === userId && user.status === 'active') ?? null
 }
 
