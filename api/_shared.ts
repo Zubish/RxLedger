@@ -1,3 +1,5 @@
+/// <reference types="node" />
+
 import { neon } from '@neondatabase/serverless'
 import { createHash, pbkdf2Sync, randomBytes, timingSafeEqual } from 'node:crypto'
 
