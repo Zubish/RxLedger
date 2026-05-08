@@ -256,7 +256,7 @@ export async function saveDatabase(db: Database) {
 
 export function normalizeDatabase(raw: Partial<Database>): Database {
   const empty = createEmptyDatabase()
-  const rawSettings = raw.settings ?? {}
+  const rawSettings = (raw.settings ?? {}) as Partial<Database['settings']>
   const accountName = rawSettings.accountName || rawSettings.pharmacyName || empty.settings.accountName
   const branchName = rawSettings.branchName || empty.settings.branchName
   const primaryAdminId = rawSettings.primaryAdminId || raw.users?.find((user) => user.role === 'admin' && user.status === 'active')?.id
