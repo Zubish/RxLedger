@@ -6,6 +6,10 @@
   color: #182126;
 }
 
+.app-shell.sidebar-collapsed {
+  grid-template-columns: 1fr;
+}
+
 .sidebar-backdrop {
   display: none;
 }
@@ -20,6 +24,10 @@
   min-height: 100vh;
   position: sticky;
   top: 0;
+}
+
+.app-shell.sidebar-collapsed .sidebar {
+  display: none;
 }
 
 .brand-block,
@@ -177,20 +185,55 @@ td span,
 }
 
 .branch-switcher {
+  position: relative;
+}
+
+.branch-switcher-trigger {
   min-height: 38px;
   border: 1px solid #cbd7d8;
   border-radius: 8px;
   background: white;
   color: #24343a;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
   gap: 8px;
-  padding: 0 8px;
+  padding: 0 10px;
+  font: inherit;
 }
 
-.branch-switcher select {
-  min-height: 32px;
+.branch-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 25;
+  width: min(280px, 80vw);
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #cbd7d8;
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 14px 30px rgba(18, 32, 37, 0.16);
+  padding: 6px;
+}
+
+.branch-menu button {
+  width: 100%;
+  min-height: 36px;
   border: 0;
-  padding: 0 6px;
-  width: auto;
+  border-radius: 7px;
+  background: transparent;
+  color: #24343a;
+  cursor: pointer;
+  font: inherit;
+  padding: 0 10px;
+  text-align: left;
+}
+
+.branch-menu button:hover,
+.branch-menu button.active {
+  background: #e9f6ef;
+  color: #176247;
 }
 
 .eyebrow {
@@ -230,6 +273,7 @@ td span,
   display: grid;
   gap: 8px;
   align-content: start;
+  min-width: 0;
 }
 
 .metric svg {
@@ -242,8 +286,9 @@ td span,
 }
 
 .metric strong {
-  font-size: 22px;
+  font-size: clamp(18px, 1.5vw, 22px);
   line-height: 1.1;
+  overflow-wrap: anywhere;
 }
 
 .metric.warning svg,
@@ -271,6 +316,17 @@ td span,
 
 .content-section.narrow {
   max-width: 880px;
+}
+
+.dashboard-scroll-list {
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.dashboard-scroll-table {
+  max-height: 320px;
+  overflow-y: auto;
 }
 
 .section-heading {
@@ -558,8 +614,33 @@ button:disabled {
   padding: 0;
 }
 
+.desktop-menu-button,
+.sidebar-close-button {
+  display: inline-flex;
+  width: 42px;
+  background: #ffffff;
+  border: 1px solid #cbd7d8;
+  color: #24343a;
+  flex: 0 0 auto;
+  padding: 0;
+}
+
+.sidebar-close-button {
+  margin-left: auto;
+  width: 36px;
+  background: #1f3439;
+  border-color: #284147;
+  color: #f4f8f7;
+}
+
 .mobile-menu-button:hover {
   background: #eef4f3;
+}
+
+.desktop-menu-button:hover,
+.sidebar-close-button:hover {
+  background: #eef4f3;
+  color: #24343a;
 }
 
 .file-button {
@@ -679,6 +760,19 @@ button:disabled {
 .access-row span strong {
   display: block;
   color: #182126;
+}
+
+.value-summary {
+  min-height: 38px;
+  border: 1px solid #dbe7e4;
+  border-radius: 8px;
+  background: #f3faf7;
+  color: #176247;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  font-weight: 700;
 }
 
 .tabs {
@@ -867,6 +961,10 @@ button:disabled {
     z-index: 40;
   }
 
+  .app-shell.sidebar-collapsed .sidebar {
+    display: flex;
+  }
+
   .app-shell.sidebar-open .sidebar {
     transform: translateX(0);
   }
@@ -894,6 +992,10 @@ button:disabled {
 
   .mobile-menu-button {
     display: inline-flex;
+  }
+
+  .desktop-menu-button {
+    display: none;
   }
 
   .nav-list {
@@ -953,7 +1055,8 @@ button:disabled {
   .tabs,
   .ghost-button,
   .primary-button,
-  .icon-button {
+  .icon-button,
+  .desktop-menu-button {
     display: none !important;
   }
 

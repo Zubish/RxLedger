@@ -284,6 +284,18 @@ function daysUntil(date: string) {
   return Math.ceil((target.getTime() - todayDate.getTime()) / 86_400_000)
 }
 
+function compactNumber(value: number) {
+  const absolute = Math.abs(value)
+  if (absolute >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(absolute >= 10_000_000_000 ? 1 : 2)}B`
+  if (absolute >= 1_000_000) return `${(value / 1_000_000).toFixed(absolute >= 10_000_000 ? 1 : 2)}M`
+  if (absolute >= 100_000) return `${(value / 1_000).toFixed(1)}K`
+  return number.format(value)
+}
+
+function compactMoney(value: number) {
+  return `₦${compactNumber(value)}`
+}
+
 function createEmptyDatabase(): Database {
   return {
     users: [],
@@ -368,6 +380,10 @@ function canWriteBranch(user: User, branchId: string) {
   return user.role === 'admin' || (user.role !== 'viewer' && (user.branchIds.includes(branchId) || user.managedBranchIds.includes(branchId)))
 }
 
+function canViewBranch(user: User, branchId: string) {
+  return user.role === 'admin' || user.branchIds.includes(branchId) || user.managedBranchIds.includes(branchId)
+}
+
 function getUserBranchStatus(user: User, branchId: string) {
   if (user.role === 'admin') return 'Admin access'
   if (user.managedBranchIds.includes(branchId)) return 'Manager'
@@ -408,10 +424,11 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
   const lastChatSeen = currentUser.lastChatSeenAt ? new Date(currentUser.lastChatSeenAt).getTime() : 0
   const unreadChat = db.chatMessages.filter((message) => message.userId !== currentUser.id && new Date(message.createdAt).getTime() > lastChatSeen)
   const pendingUsers = db.users.filter((user) => user.status === 'pending')
+  const scopedMedicineIds = new Set(stockRows.map((row) => row.medicine.id))
   const expired = stockRows.filter((row) => row.quantity > 0 && row.status === 'expired')
   const nearExpiry = stockRows.filter((row) => row.quantity > 0 && row.status === 'near-expiry')
-  const lowStock = db.medicines.filter((medicine) => (stockTotals.get(medicine.id) ?? 0) <= medicine.reorderLevel)
-  const outOfStock = db.medicines.filter((medicine) => (stockTotals.get(medicine.id) ?? 0) <= 0)
+  const lowStock = db.medicines.filter((medicine) => scopedMedicineIds.has(medicine.id) && (stockTotals.get(medicine.id) ?? 0) > 0 && (stockTotals.get(medicine.id) ?? 0) <= medicine.reorderLevel)
+  const outOfStock = db.medicines.filter((medicine) => scopedMedicineIds.has(medicine.id) && (stockTotals.get(medicine.id) ?? 0) <= 0)
 
   if (unreadChat.length) {
     notifications.push({
@@ -493,19 +510,23 @@ function App() {
   const [connectionError, setConnectionError] = useState('')
   const [hasUsers, setHasUsers] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [activeBranchId, setActiveBranchId] = useState('main')
+  const [branchMenuOpen, setBranchMenuOpen] = useState(false)
 
   const currentUser = db.users.find((user) => user.id === sessionUserId && user.status === 'active') ?? null
   const activeBranches = useMemo(() => getActiveBranches(db), [db])
   const activeBranch = activeBranches.find((branch) => branch.id === activeBranchId) ?? activeBranches[0] ?? db.branches[0]
   const stockRows = useMemo(() => getStockRows(db), [db])
   const activeBranchStockRows = useMemo(() => activeBranch ? stockRows.filter((row) => row.batch.branchId === activeBranch.id) : stockRows, [activeBranch, stockRows])
+  const permittedStockRows = useMemo(() => currentUser ? stockRows.filter((row) => canViewBranch(currentUser, row.batch.branchId)) : [], [currentUser, stockRows])
   const stockTotals = useMemo(() => aggregateMedicineStock(stockRows), [stockRows])
+  const permittedStockTotals = useMemo(() => aggregateMedicineStock(permittedStockRows), [permittedStockRows])
   const canWrite = currentUser ? currentUser.role !== 'viewer' : false
   const canAdjust = currentUser ? currentUser.role === 'admin' || currentUser.role === 'pharmacist' : false
   const canAdmin = currentUser?.role === 'admin'
   const canWriteActiveBranch = currentUser && activeBranch ? canWriteBranch(currentUser, activeBranch.id) : false
-  const notifications = useMemo(() => currentUser ? buildNotifications(db, stockRows, stockTotals, currentUser) : [], [currentUser, db, stockRows, stockTotals])
+  const notifications = useMemo(() => currentUser ? buildNotifications(db, permittedStockRows, permittedStockTotals, currentUser) : [], [currentUser, db, permittedStockRows, permittedStockTotals])
 
   useEffect(() => {
     async function load() {
@@ -596,6 +617,16 @@ function App() {
     setSidebarOpen(false)
   }
 
+  function collapseSidebar() {
+    setSidebarCollapsed(true)
+    setSidebarOpen(false)
+  }
+
+  function toggleSidebar() {
+    setSidebarCollapsed((collapsed) => !collapsed)
+    setSidebarOpen(false)
+  }
+
   useEffect(() => {
     if (!currentUser) return undefined
     let timeoutId = window.setTimeout(() => {
@@ -633,12 +664,12 @@ function App() {
     )
   }
 
-  const pendingUsers = db.users.filter((user) => user.status === 'pending').length
+  const pendingUsers = canAdmin ? db.users.filter((user) => user.status === 'pending').length : 0
   const unreadChat = notifications.some((notification) => notification.id === 'chat-unread') ? db.chatMessages.filter((message) => message.userId !== currentUser.id && new Date(message.createdAt).getTime() > (currentUser.lastChatSeenAt ? new Date(currentUser.lastChatSeenAt).getTime() : 0)).length : 0
 
   return (
-    <div className={sidebarOpen ? 'app-shell sidebar-open' : 'app-shell'}>
-      <button className="sidebar-backdrop" type="button" aria-label="Close menu" onClick={() => setSidebarOpen(false)} />
+    <div className={`${sidebarOpen ? 'app-shell sidebar-open' : 'app-shell'}${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
+      <button className="sidebar-backdrop" type="button" aria-label="Close menu" onClick={collapseSidebar} />
       <aside className="sidebar">
         <div className="brand-block">
           <div className="brand-mark">
@@ -648,6 +679,9 @@ function App() {
             <strong>{db.settings.softwareName}</strong>
             <span>{db.settings.accountName}</span>
           </div>
+          <button className="icon-button sidebar-close-button" type="button" onClick={collapseSidebar} title="Collapse menu">
+            <X size={18} />
+          </button>
         </div>
 
         <nav className="nav-list" aria-label="Primary navigation">
@@ -689,6 +723,9 @@ function App() {
             <button className="mobile-menu-button" type="button" onClick={() => setSidebarOpen((open) => !open)} aria-label={sidebarOpen ? 'Close menu' : 'Open menu'} aria-expanded={sidebarOpen}>
               {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
+            <button className="desktop-menu-button" type="button" onClick={toggleSidebar} aria-label={sidebarCollapsed ? 'Open menu' : 'Collapse menu'} aria-expanded={!sidebarCollapsed}>
+              {sidebarCollapsed ? <Menu size={20} /> : <X size={20} />}
+            </button>
             <div>
               <span className="eyebrow">{db.settings.accountName}</span>
               <h1>{views.find((view) => view.id === activeView)?.label}</h1>
@@ -697,14 +734,29 @@ function App() {
           <div className="topbar-actions">
             {notice && <span className="notice">{notice}</span>}
             {activeBranch && (
-              <label className="branch-switcher">
-                <Building2 size={16} />
-                <select value={activeBranch.id} onChange={(event) => setActiveBranchId(event.target.value)}>
-                  {activeBranches.map((branch) => (
-                    <option key={branch.id} value={branch.id}>{branch.name} / {currentUser ? getUserBranchStatus(currentUser, branch.id) : 'View only'}</option>
-                  ))}
-                </select>
-              </label>
+              <div className="branch-switcher">
+                <button className="branch-switcher-trigger" type="button" onClick={() => setBranchMenuOpen((open) => !open)} aria-expanded={branchMenuOpen}>
+                  <Building2 size={16} />
+                  <span>{activeBranch.name}</span>
+                </button>
+                {branchMenuOpen && (
+                  <div className="branch-menu">
+                    {activeBranches.map((branch) => (
+                      <button
+                        className={branch.id === activeBranch.id ? 'active' : ''}
+                        key={branch.id}
+                        type="button"
+                        onClick={() => {
+                          setActiveBranchId(branch.id)
+                          setBranchMenuOpen(false)
+                        }}
+                      >
+                        {branch.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
             {canAdmin && pendingUsers > 0 && (
               <button className="ghost-button" type="button" onClick={() => navigate('users')}>
@@ -721,8 +773,8 @@ function App() {
           </div>
         </header>
 
-        {activeView === 'dashboard' && <Dashboard db={db} stockRows={stockRows} stockTotals={stockTotals} setActiveView={setActiveView} />}
-        {activeView === 'medicines' && <Medicines db={db} stockTotals={stockTotals} canWrite={canWrite} executeAction={executeAction} flash={flash} />}
+        {activeView === 'dashboard' && <Dashboard db={db} currentUser={currentUser} stockRows={permittedStockRows} stockTotals={permittedStockTotals} canAdmin={canAdmin} setActiveView={setActiveView} />}
+        {activeView === 'medicines' && <Medicines db={db} stockRows={stockRows} stockTotals={stockTotals} canWrite={canWrite} executeAction={executeAction} flash={flash} />}
         {activeView === 'suppliers' && <Suppliers db={db} canWrite={canWrite} executeAction={executeAction} />}
         {activeView === 'receive' && activeBranch && <ReceiveStock db={db} activeBranch={activeBranch} canWrite={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
         {activeView === 'issue' && activeBranch && <IssueStock db={db} activeBranch={activeBranch} stockRows={activeBranchStockRows} canWrite={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
@@ -942,22 +994,28 @@ function RegisterForm({
 
 function Dashboard({
   db,
+  currentUser,
   stockRows,
   stockTotals,
+  canAdmin,
   setActiveView,
 }: {
   db: Database
+  currentUser: User
   stockRows: StockRow[]
   stockTotals: Map<string, number>
+  canAdmin: boolean
   setActiveView: (view: View) => void
 }) {
-  const lowStock = db.medicines.filter((medicine) => (stockTotals.get(medicine.id) ?? 0) <= medicine.reorderLevel)
+  const scopedMedicineIds = new Set(stockRows.map((row) => row.medicine.id))
+  const lowStock = db.medicines.filter((medicine) => scopedMedicineIds.has(medicine.id) && (stockTotals.get(medicine.id) ?? 0) > 0 && (stockTotals.get(medicine.id) ?? 0) <= medicine.reorderLevel)
   const nearExpiry = stockRows.filter((row) => row.quantity > 0 && row.status === 'near-expiry')
   const expired = stockRows.filter((row) => row.quantity > 0 && row.status === 'expired')
   const costValue = stockRows.reduce((sum, row) => sum + Math.max(0, row.costValue), 0)
-  const todayMovements = db.ledger.filter((entry) => entry.createdAt.slice(0, 10) === today()).length
-  const pendingUsers = db.users.filter((user) => user.status === 'pending').length
-  const activeBranches = getActiveBranches(db)
+  const permittedBatchIds = new Set(stockRows.map((row) => row.batch.id))
+  const todayMovements = db.ledger.filter((entry) => entry.createdAt.slice(0, 10) === today() && permittedBatchIds.has(entry.batchId)).length
+  const pendingUsers = canAdmin ? db.users.filter((user) => user.status === 'pending').length : 0
+  const activeBranches = getActiveBranches(db).filter((branch) => canViewBranch(currentUser, branch.id))
   const branchSummaries = activeBranches.map((branch) => {
     const rows = stockRows.filter((row) => row.batch.branchId === branch.id && row.quantity > 0)
     const branchStockValue = rows.reduce((sum, row) => sum + Math.max(0, row.costValue), 0)
@@ -970,12 +1028,12 @@ function Dashboard({
   return (
     <div className="page-grid">
       <section className="metric-grid">
-        <Metric icon={Boxes} label="Active SKUs" value={db.medicines.filter((medicine) => medicine.active).length} />
-        <Metric icon={Building2} label="Active branches" value={activeBranches.length} />
-        <Metric icon={Archive} label="Stock value at cost" value={money.format(costValue)} />
-        <Metric icon={AlertTriangle} label="Low stock items" value={lowStock.length} tone={lowStock.length ? 'warning' : 'good'} />
-        <Metric icon={XCircle} label="Expired batches" value={expired.length} tone={expired.length ? 'danger' : 'good'} />
-        <Metric icon={Activity} label="Movements today" value={todayMovements} />
+        <Metric icon={Boxes} label="Active SKUs" value={compactNumber(db.medicines.filter((medicine) => medicine.active).length)} />
+        <Metric icon={Building2} label="Active branches" value={compactNumber(activeBranches.length)} />
+        <Metric icon={Archive} label="Stock value at cost" value={compactMoney(costValue)} />
+        <Metric icon={AlertTriangle} label="Low stock items" value={compactNumber(lowStock.length)} tone={lowStock.length ? 'warning' : 'good'} />
+        <Metric icon={XCircle} label="Expired batches" value={compactNumber(expired.length)} tone={expired.length ? 'danger' : 'good'} />
+        <Metric icon={Activity} label="Movements today" value={compactNumber(todayMovements)} />
       </section>
 
       <section className="content-section">
@@ -986,14 +1044,14 @@ function Dashboard({
           </div>
           <span className="pill active">{db.settings.accountName}</span>
         </div>
-        <div className="branch-grid">
+        <div className="branch-grid dashboard-scroll-list">
           {branchSummaries.map(({ branch, branchStockValue, branchExpired, branchNearExpiry, branchSkuCount }) => (
             <article className="branch-card" key={branch.id}>
               <Building2 size={19} />
               <div>
                 <strong>{branch.name}</strong>
                 <span>{branch.code}</span>
-                <span>{branchSkuCount} stocked SKU{branchSkuCount === 1 ? '' : 's'} / {money.format(branchStockValue)}</span>
+                <span>{branchSkuCount} stocked SKU{branchSkuCount === 1 ? '' : 's'} / {compactMoney(branchStockValue)}</span>
                 <span>{branchNearExpiry} near expiry / {branchExpired} expired</span>
               </div>
             </article>
@@ -1012,7 +1070,7 @@ function Dashboard({
             Reports
           </button>
         </div>
-        <div className="alert-list">
+        <div className="alert-list dashboard-scroll-list">
           {pendingUsers > 0 && (
             <AlertItem tone="warning" title={`${pendingUsers} staff access request${pendingUsers > 1 ? 's' : ''} pending`} detail="An admin should approve users and assign the correct role before they can sign in." />
           )}
@@ -1038,7 +1096,9 @@ function Dashboard({
             <p>FEFO sorting keeps nearest-expiry batches visible first.</p>
           </div>
         </div>
-        <StockTable rows={stockRows.filter((row) => row.quantity > 0).slice(0, 8)} />
+        <div className="dashboard-scroll-table">
+          <StockTable rows={stockRows.filter((row) => row.quantity > 0)} />
+        </div>
       </section>
     </div>
   )
@@ -1124,12 +1184,14 @@ function parseCsv(text: string) {
 
 function Medicines({
   db,
+  stockRows,
   stockTotals,
   canWrite,
   executeAction,
   flash,
 }: {
   db: Database
+  stockRows: StockRow[]
   stockTotals: Map<string, number>
   canWrite: boolean
   executeAction: ExecuteAction
@@ -1159,6 +1221,14 @@ function Medicines({
   const [drafts, setDrafts] = useState<MedicineDraft[]>([createBlank()])
   const [query, setQuery] = useState('')
   const isEditing = drafts.length === 1 && Boolean(drafts[0].id)
+  const stockCostTotals = useMemo(() => {
+    const totals = new Map<string, number>()
+    stockRows.forEach((row) => {
+      totals.set(row.medicine.id, (totals.get(row.medicine.id) ?? 0) + Math.max(0, row.costValue))
+    })
+    return totals
+  }, [stockRows])
+  const totalCatalogCost = stockRows.reduce((sum, row) => sum + Math.max(0, row.costValue), 0)
 
   const visible = db.medicines.filter((medicine) => {
     const text = `${medicine.sku} ${medicine.brandName} ${medicine.genericName} ${medicine.nafdacNumber} ${medicine.barcodes.join(' ')}`.toLowerCase()
@@ -1275,6 +1345,10 @@ function Medicines({
             <h2>Medicine Catalog</h2>
             <p>Capture NAFDAC number, barcode, dosage form, reorder level, and manufacturer.</p>
           </div>
+          <div className="value-summary">
+            <Archive size={17} />
+            <span>{money.format(totalCatalogCost)}</span>
+          </div>
           <div className="search-box">
             <Search size={16} />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search catalog" />
@@ -1289,6 +1363,7 @@ function Medicines({
                 <th>NAFDAC</th>
                 <th>Barcode</th>
                 <th>Stock</th>
+                <th>Cost value</th>
                 <th>Status</th>
                 <th></th>
               </tr>
@@ -1305,6 +1380,7 @@ function Medicines({
                     <td>{medicine.nafdacNumber || '-'}</td>
                     <td>{medicine.barcodes[0] ?? '-'}</td>
                     <td>{number.format(stockTotals.get(medicine.id) ?? 0)}</td>
+                    <td>{money.format(stockCostTotals.get(medicine.id) ?? 0)}</td>
                     <td><span className={medicine.active ? 'pill good' : 'pill muted'}>{medicine.active ? 'Active' : 'Inactive'}</span></td>
                     <td>
                       <button className="icon-button" type="button" onClick={() => edit(medicine)} title="Edit medicine" disabled={!canWrite}>
@@ -1314,7 +1390,7 @@ function Medicines({
                   </tr>
                 ))
               ) : (
-                <tr><td colSpan={7}>No medicine records yet. Add the pharmacy catalog before receiving stock.</td></tr>
+                <tr><td colSpan={8}>No medicine records yet. Add the pharmacy catalog before receiving stock.</td></tr>
               )}
             </tbody>
           </table>
