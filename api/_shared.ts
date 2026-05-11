@@ -14,6 +14,8 @@ type User = {
   phone: string
   role: Role
   status: UserStatus
+  branchIds: string[]
+  managedBranchIds: string[]
   lastChatSeenAt?: string
   passwordHash?: string
   passwordSalt?: string
@@ -53,6 +55,7 @@ type Branch = {
   code: string
   address: string
   managerName: string
+  managerUserId?: string
   phone: string
   active: boolean
   createdAt: string
@@ -154,6 +157,7 @@ export function createEmptyDatabase(): Database {
       code: 'MAIN',
       address: '',
       managerName: '',
+      managerUserId: '',
       phone: '',
       active: true,
       createdAt: nowIso(),
@@ -272,12 +276,23 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
     id: branch.id || id('br'),
     name: branch.name || branchName,
     code: branch.code || branch.name?.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 12) || 'MAIN',
+    managerUserId: branch.managerUserId || '',
     active: branch.active !== false,
   }))
+  const users = (raw.users ?? empty.users).map((user) => {
+    const isPrimaryAdmin = user.id === primaryAdminId || user.role === 'admin'
+    const branchIds = user.branchIds?.length ? user.branchIds : isPrimaryAdmin ? branches.map((branch) => branch.id) : []
+    const managedBranchIds = user.managedBranchIds?.length ? user.managedBranchIds : isPrimaryAdmin ? branches.map((branch) => branch.id) : []
+    return {
+      ...user,
+      branchIds: Array.from(new Set(branchIds)),
+      managedBranchIds: Array.from(new Set(managedBranchIds)),
+    }
+  })
   return {
     ...empty,
     ...raw,
-    users: raw.users ?? empty.users,
+    users,
     medicines: raw.medicines ?? empty.medicines,
     suppliers: raw.suppliers ?? empty.suppliers,
     branches,
@@ -394,6 +409,14 @@ export function canAdjust(user: User) {
 
 export function canAdmin(user: User) {
   return user.role === 'admin'
+}
+
+export function canManageBranch(user: User, branchId: string) {
+  return canAdmin(user) || user.managedBranchIds.includes(branchId)
+}
+
+export function canWriteBranch(user: User, branchId: string) {
+  return canAdmin(user) || (canWrite(user) && (user.branchIds.includes(branchId) || user.managedBranchIds.includes(branchId)))
 }
 
 export function fail(res: HandlerResponse, status: number, message: string) {

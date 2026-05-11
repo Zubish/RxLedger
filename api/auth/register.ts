@@ -27,6 +27,8 @@ export default async function handler(req: HandlerRequest, res: HandlerResponse)
       phone: body.phone.trim(),
       role: 'viewer',
       status: 'pending',
+      branchIds: [],
+      managedBranchIds: [],
       passwordHash: hash,
       passwordSalt: salt,
       createdAt: nowIso(),

@@ -2,7 +2,9 @@ import {
   addAudit,
   canAdjust,
   canAdmin,
+  canManageBranch,
   canWrite,
+  canWriteBranch,
   daysUntil,
   fail,
   getAuthenticatedUser,
@@ -48,6 +50,9 @@ export default async function handler(req: HandlerRequest, res: HandlerResponse)
         break
       case 'upsertBranch':
         upsertBranch(db, actor.id, actor.role, body.payload)
+        break
+      case 'updateBranchAccess':
+        updateBranchAccess(db, actor.id, body.payload)
         break
       case 'receiveStock':
         receiveStock(db, actor.id, actor.role, body.payload)
@@ -114,9 +119,30 @@ function updateUser(db: Database, actorId: string, payload: Record<string, unkno
     if (updates.status === 'active') {
       target.approvedAt = nowIso()
       target.approvedBy = actorId
+      if (!target.branchIds.length && db.branches[0]) target.branchIds = [db.branches[0].id]
     }
   }
   addAudit(db, actorId, 'Updated user access', 'user', userId, before, { ...target })
+}
+
+function updateBranchAccess(db: Database, actorId: string, payload: Record<string, unknown> | undefined) {
+  const actor = db.users.find((user) => user.id === actorId)
+  const branchId = requireString(payload?.branchId, 'Branch')
+  if (!actor || !canManageBranch(actor, branchId)) throw new Error('Only this branch manager or an admin can update branch access')
+  const branch = db.branches.find((item) => item.id === branchId)
+  if (!branch) throw new Error('Branch not found')
+  const userId = requireString(payload?.userId, 'User')
+  const target = db.users.find((user) => user.id === userId)
+  if (!target) throw new Error('User not found')
+  if (target.status !== 'active') throw new Error('Only active users can be assigned to branches')
+  if (target.role === 'admin') throw new Error('Admins already have access to every branch')
+  if (target.managedBranchIds.includes(branchId)) throw new Error('Branch managers cannot be removed from their managed branch here')
+  const canAccess = Boolean(payload?.canAccess)
+  const before = { ...target, branchIds: [...target.branchIds], managedBranchIds: [...target.managedBranchIds] }
+  target.branchIds = canAccess
+    ? Array.from(new Set([...target.branchIds, branchId]))
+    : target.branchIds.filter((id) => id !== branchId)
+  addAudit(db, actorId, canAccess ? 'Granted branch access' : 'Removed branch access', 'user', userId, before, { ...target })
 }
 
 function upsertMedicine(db: Database, actorId: string, actorRole: Role, payload: Record<string, unknown> | undefined) {
@@ -192,15 +218,25 @@ function upsertSupplier(db: Database, actorId: string, actorRole: Role, payload:
 
 function upsertBranch(db: Database, actorId: string, actorRole: Role, payload: Record<string, unknown> | undefined) {
   const actor = db.users.find((user) => user.id === actorId)
-  if (!actor || !canAdmin({ ...actor, role: actorRole })) throw new Error('Only admins can save branches')
   const input = (payload?.record ?? {}) as Partial<Branch>
+  if (!actor) throw new Error('Authentication required')
+  if (!input.id && !canAdmin({ ...actor, role: actorRole })) throw new Error('Only admins can create branches')
+  if (input.id && !canManageBranch(actor, input.id)) throw new Error('Only this branch manager or an admin can save this branch')
   const name = requireString(input.name, 'Branch name')
+  const managerUserId = optionalString(input.managerUserId)
+  if (managerUserId && !canAdmin({ ...actor, role: actorRole })) throw new Error('Only admins can assign branch managers')
+  if (managerUserId) {
+    const manager = db.users.find((user) => user.id === managerUserId && user.status === 'active')
+    if (!manager) throw new Error('Manager user not found')
+    if (manager.role === 'viewer') throw new Error('Viewers cannot be branch managers')
+  }
   const record: Branch = {
     id: input.id || id('br'),
     name,
     code: optionalString(input.code) || name.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 12) || 'BRANCH',
     address: optionalString(input.address),
     managerName: optionalString(input.managerName),
+    managerUserId,
     phone: optionalString(input.phone),
     active: input.id === 'main' ? true : input.active !== false,
     createdAt: input.createdAt || nowIso(),
@@ -210,6 +246,19 @@ function upsertBranch(db: Database, actorId: string, actorRole: Role, payload: R
   const before = db.branches.find((branch) => branch.id === record.id)
   db.branches = before ? db.branches.map((branch) => (branch.id === record.id ? record : branch)) : [record, ...db.branches]
   if (record.id === 'main') db.settings.branchName = record.name
+  if (before?.managerUserId && before.managerUserId !== record.managerUserId) {
+    const previousManager = db.users.find((user) => user.id === before.managerUserId)
+    if (previousManager && previousManager.role !== 'admin') {
+      previousManager.managedBranchIds = previousManager.managedBranchIds.filter((id) => id !== record.id)
+    }
+  }
+  if (record.managerUserId) {
+    const manager = db.users.find((user) => user.id === record.managerUserId)
+    if (manager) {
+      manager.branchIds = Array.from(new Set([...manager.branchIds, record.id]))
+      manager.managedBranchIds = Array.from(new Set([...manager.managedBranchIds, record.id]))
+    }
+  }
   addAudit(db, actorId, before ? 'Updated branch' : 'Created branch', 'branch', record.id, before, record)
 }
 
@@ -220,6 +269,7 @@ function receiveStock(db: Database, actorId: string, actorRole: Role, payload: R
   if (!db.suppliers.some((supplier) => supplier.id === supplierId)) throw new Error('Supplier not found')
   const branchId = optionalString(payload?.branchId) || db.branches.find((branch) => branch.active)?.id || 'main'
   if (!db.branches.some((branch) => branch.id === branchId && branch.active)) throw new Error('Active branch not found')
+  if (!canWriteBranch(actor, branchId)) throw new Error('You only have view access in this branch')
   const inputs = Array.isArray(payload?.items)
     ? (payload.items as Record<string, unknown>[])
     : [{
@@ -292,6 +342,7 @@ function issueStock(db: Database, actorId: string, actorRole: Role, payload: Rec
   const medicineId = requireString(payload?.medicineId, 'Medicine')
   const branchId = optionalString(payload?.branchId) || db.branches.find((branch) => branch.active)?.id || 'main'
   if (!db.branches.some((branch) => branch.id === branchId && branch.active)) throw new Error('Active branch not found')
+  if (!canWriteBranch(actor, branchId)) throw new Error('You only have view access in this branch')
   const quantity = requireNumber(payload?.quantity, 'Quantity')
   if (quantity <= 0) throw new Error('Quantity must be greater than zero')
   const rows = db.batches
@@ -333,6 +384,7 @@ function adjustStock(db: Database, actorId: string, actorRole: Role, payload: Re
   const batchId = requireString(payload?.batchId, 'Batch')
   const batch = db.batches.find((item) => item.id === batchId)
   if (!batch) throw new Error('Batch not found')
+  if (!canWriteBranch(actor, batch.branchId)) throw new Error('You only have view access in this branch')
   const mode = requireString(payload?.mode, 'Transaction type') as LedgerType
   const quantity = requireNumber(payload?.quantity, 'Quantity')
   const current = db.ledger.filter((entry) => entry.batchId === batchId).reduce((sum, entry) => sum + entry.quantity, 0)

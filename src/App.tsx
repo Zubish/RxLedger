@@ -75,6 +75,8 @@ type User = {
   phone: string
   role: Role
   status: UserStatus
+  branchIds: string[]
+  managedBranchIds: string[]
   lastChatSeenAt?: string
   createdAt: string
   approvedAt?: string
@@ -112,6 +114,7 @@ type Branch = {
   code: string
   address: string
   managerName: string
+  managerUserId?: string
   phone: string
   active: boolean
   createdAt: string
@@ -240,7 +243,7 @@ const views: Array<{ id: View; label: string; icon: typeof LayoutDashboard; admi
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'audit', label: 'Audit', icon: ShieldCheck },
   { id: 'users', label: 'Users', icon: Users, adminOnly: true },
-  { id: 'branches', label: 'Branches', icon: Building2, adminOnly: true },
+  { id: 'branches', label: 'Branches', icon: Building2 },
   { id: 'settings', label: 'Settings', icon: Settings, adminOnly: true },
 ]
 
@@ -292,6 +295,7 @@ function createEmptyDatabase(): Database {
       code: 'MAIN',
       address: '',
       managerName: '',
+      managerUserId: '',
       phone: '',
       active: true,
       createdAt: new Date().toISOString(),
@@ -354,6 +358,21 @@ function getBranchName(db: Database, branchId: string) {
 
 function getPrimaryAdminId(db: Database) {
   return db.settings.primaryAdminId || db.users.find((user) => user.role === 'admin' && user.status === 'active')?.id || ''
+}
+
+function canManageBranch(user: User, branchId: string) {
+  return user.role === 'admin' || user.managedBranchIds.includes(branchId)
+}
+
+function canWriteBranch(user: User, branchId: string) {
+  return user.role === 'admin' || (user.role !== 'viewer' && (user.branchIds.includes(branchId) || user.managedBranchIds.includes(branchId)))
+}
+
+function getUserBranchStatus(user: User, branchId: string) {
+  if (user.role === 'admin') return 'Admin access'
+  if (user.managedBranchIds.includes(branchId)) return 'Manager'
+  if (user.branchIds.includes(branchId)) return 'Assigned'
+  return 'View only'
 }
 
 function findMedicineByScan(db: Database, scan: string) {
@@ -474,13 +493,18 @@ function App() {
   const [connectionError, setConnectionError] = useState('')
   const [hasUsers, setHasUsers] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [activeBranchId, setActiveBranchId] = useState('main')
 
   const currentUser = db.users.find((user) => user.id === sessionUserId && user.status === 'active') ?? null
+  const activeBranches = useMemo(() => getActiveBranches(db), [db])
+  const activeBranch = activeBranches.find((branch) => branch.id === activeBranchId) ?? activeBranches[0] ?? db.branches[0]
   const stockRows = useMemo(() => getStockRows(db), [db])
+  const activeBranchStockRows = useMemo(() => activeBranch ? stockRows.filter((row) => row.batch.branchId === activeBranch.id) : stockRows, [activeBranch, stockRows])
   const stockTotals = useMemo(() => aggregateMedicineStock(stockRows), [stockRows])
   const canWrite = currentUser ? currentUser.role !== 'viewer' : false
   const canAdjust = currentUser ? currentUser.role === 'admin' || currentUser.role === 'pharmacist' : false
   const canAdmin = currentUser?.role === 'admin'
+  const canWriteActiveBranch = currentUser && activeBranch ? canWriteBranch(currentUser, activeBranch.id) : false
   const notifications = useMemo(() => currentUser ? buildNotifications(db, stockRows, stockTotals, currentUser) : [], [currentUser, db, stockRows, stockTotals])
 
   useEffect(() => {
@@ -672,6 +696,16 @@ function App() {
           </div>
           <div className="topbar-actions">
             {notice && <span className="notice">{notice}</span>}
+            {activeBranch && (
+              <label className="branch-switcher">
+                <Building2 size={16} />
+                <select value={activeBranch.id} onChange={(event) => setActiveBranchId(event.target.value)}>
+                  {activeBranches.map((branch) => (
+                    <option key={branch.id} value={branch.id}>{branch.name} / {currentUser ? getUserBranchStatus(currentUser, branch.id) : 'View only'}</option>
+                  ))}
+                </select>
+              </label>
+            )}
             {canAdmin && pendingUsers > 0 && (
               <button className="ghost-button" type="button" onClick={() => navigate('users')}>
                 <UserCheck size={16} />
@@ -690,15 +724,15 @@ function App() {
         {activeView === 'dashboard' && <Dashboard db={db} stockRows={stockRows} stockTotals={stockTotals} setActiveView={setActiveView} />}
         {activeView === 'medicines' && <Medicines db={db} stockTotals={stockTotals} canWrite={canWrite} executeAction={executeAction} flash={flash} />}
         {activeView === 'suppliers' && <Suppliers db={db} canWrite={canWrite} executeAction={executeAction} />}
-        {activeView === 'receive' && <ReceiveStock db={db} canWrite={canWrite} executeAction={executeAction} flash={flash} />}
-        {activeView === 'issue' && <IssueStock db={db} stockRows={stockRows} canWrite={canWrite} executeAction={executeAction} flash={flash} />}
-        {activeView === 'adjust' && <Adjustments stockRows={stockRows} canAdjust={canAdjust} executeAction={executeAction} flash={flash} />}
+        {activeView === 'receive' && activeBranch && <ReceiveStock db={db} activeBranch={activeBranch} canWrite={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
+        {activeView === 'issue' && activeBranch && <IssueStock db={db} activeBranch={activeBranch} stockRows={activeBranchStockRows} canWrite={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
+        {activeView === 'adjust' && activeBranch && <Adjustments activeBranch={activeBranch} stockRows={activeBranchStockRows} canAdjust={canAdjust && Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
         {activeView === 'reports' && <Reports db={db} stockRows={stockRows} stockTotals={stockTotals} />}
         {activeView === 'chat' && <ChatView db={db} currentUser={currentUser} executeAction={executeAction} />}
         {activeView === 'notifications' && <NotificationsView notifications={notifications} setActiveView={setActiveView} />}
         {activeView === 'audit' && <Audit db={db} />}
         {activeView === 'users' && <UserManagement db={db} currentUser={currentUser} executeAction={executeAction} flash={flash} />}
-        {activeView === 'branches' && <BranchesView db={db} canAdmin={canAdmin} executeAction={executeAction} />}
+        {activeView === 'branches' && activeBranch && <BranchesView db={db} currentUser={currentUser} activeBranchId={activeBranch.id} setActiveBranchId={setActiveBranchId} executeAction={executeAction} />}
         {activeView === 'settings' && <SettingsView db={db} canAdmin={canAdmin} executeAction={executeAction} />}
       </main>
     </div>
@@ -1411,7 +1445,7 @@ function Suppliers({ db, canWrite, executeAction }: { db: Database; canWrite: bo
   )
 }
 
-function ReceiveStock({ db, canWrite, executeAction, flash }: { db: Database; canWrite: boolean; executeAction: ExecuteAction; flash: (message: string) => void }) {
+function ReceiveStock({ db, activeBranch, canWrite, executeAction, flash }: { db: Database; activeBranch: Branch; canWrite: boolean; executeAction: ExecuteAction; flash: (message: string) => void }) {
   type ReceiveLine = {
     rowId: string
     medicineId: string
@@ -1436,12 +1470,9 @@ function ReceiveStock({ db, canWrite, executeAction, flash }: { db: Database; ca
   const [header, setHeader] = useState({
     supplierId: '',
     invoiceRef: '',
-    branchId: '',
   })
   const [lines, setLines] = useState<ReceiveLine[]>([createLine()])
   const selectedSupplierId = header.supplierId || db.suppliers[0]?.id || ''
-  const activeBranches = getActiveBranches(db)
-  const selectedBranchId = header.branchId || activeBranches[0]?.id || 'main'
 
   function updateLine(rowId: string, updates: Partial<ReceiveLine>) {
     setLines((current) => current.map((line) => (line.rowId === rowId ? { ...line, ...updates } : line)))
@@ -1468,7 +1499,7 @@ function ReceiveStock({ db, canWrite, executeAction, flash }: { db: Database; ca
   function submit(event: FormEvent) {
     event.preventDefault()
     if (!canWrite) return
-    if (!selectedSupplierId || !db.medicines.length || !selectedBranchId) {
+    if (!selectedSupplierId || !db.medicines.length || !activeBranch.id) {
       flash('Add at least one medicine, supplier, and branch before receiving stock')
       return
     }
@@ -1488,7 +1519,7 @@ function ReceiveStock({ db, canWrite, executeAction, flash }: { db: Database; ca
     void executeAction('receiveStock', {
       supplierId: selectedSupplierId,
       invoiceRef: header.invoiceRef,
-      branchId: selectedBranchId,
+      branchId: activeBranch.id,
       items,
     }, `${items.length} stock line${items.length > 1 ? 's' : ''} received and posted`)
     setHeader({ ...header, invoiceRef: '' })
@@ -1501,15 +1532,15 @@ function ReceiveStock({ db, canWrite, executeAction, flash }: { db: Database; ca
       <div className="section-heading">
         <div>
           <h2>Goods Receiving Note</h2>
-          <p>Enter every item on the supplier invoice, then post all stock lines in one transaction.</p>
+          <p>Posting into {activeBranch.name}. Switch branch from the top bar before receiving elsewhere.</p>
         </div>
         <button className="ghost-button" type="button" onClick={addLine} disabled={!canWrite}>
           <Plus size={16} />
           Add item
         </button>
       </div>
+      {!canWrite && <div className="form-error">You only have view access in {activeBranch.name}. Ask the branch manager or an admin for posting access.</div>}
       <form className="form-grid" onSubmit={submit}>
-        <label>Receiving branch<select required value={selectedBranchId} onChange={(event) => setHeader({ ...header, branchId: event.target.value })} disabled={!canWrite || !activeBranches.length}><option value="">Select branch</option>{activeBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>
         <label>Supplier<select required value={selectedSupplierId} onChange={(event) => setHeader({ ...header, supplierId: event.target.value })} disabled={!canWrite || !db.suppliers.length}><option value="">Select supplier</option>{db.suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label>
         <label>Invoice/reference<input value={header.invoiceRef} onChange={(event) => setHeader({ ...header, invoiceRef: event.target.value })} disabled={!canWrite} /></label>
         <label className="scan-field full">Scan barcode or SKU<div><Barcode size={17} /><input value={scan} onChange={(event) => setScan(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); applyScan() } }} placeholder="Scan, then press Enter to set the last item line" disabled={!canWrite || !db.medicines.length} /><button className="ghost-button" type="button" onClick={applyScan} disabled={!canWrite || !db.medicines.length}><Search size={16} />Lookup</button></div></label>
@@ -1543,7 +1574,7 @@ function ReceiveStock({ db, canWrite, executeAction, flash }: { db: Database; ca
             <Plus size={16} />
             Add another item
           </button>
-          <button className="primary-button" type="submit" disabled={!canWrite || !db.medicines.length || !db.suppliers.length || !activeBranches.length}>
+          <button className="primary-button" type="submit" disabled={!canWrite || !db.medicines.length || !db.suppliers.length}>
             <PackagePlus size={17} />
             Post {lines.length} item{lines.length > 1 ? 's' : ''}
           </button>
@@ -1555,12 +1586,14 @@ function ReceiveStock({ db, canWrite, executeAction, flash }: { db: Database; ca
 
 function IssueStock({
   db,
+  activeBranch,
   stockRows,
   canWrite,
   executeAction,
   flash,
 }: {
   db: Database
+  activeBranch: Branch
   stockRows: StockRow[]
   canWrite: boolean
   executeAction: ExecuteAction
@@ -1568,14 +1601,12 @@ function IssueStock({
 }) {
   const [scan, setScan] = useState('')
   const [form, setForm] = useState({
-    branchId: '',
     medicineId: '',
     quantity: 1,
     reason: 'Dispense',
     reference: '',
   })
-  const activeBranches = getActiveBranches(db)
-  const selectedBranchId = form.branchId || activeBranches[0]?.id || 'main'
+  const selectedBranchId = activeBranch.id
   const selectedMedicineId = form.medicineId || db.medicines[0]?.id || ''
 
   const availableBatches = stockRows
@@ -1619,12 +1650,12 @@ function IssueStock({
         <div className="section-heading">
           <div>
             <h2>Stock Issue</h2>
-            <p>Expired batches are excluded; allocation is suggested by first-expire-first-out.</p>
+            <p>Issuing from {activeBranch.name}. Expired batches are excluded and FEFO is applied.</p>
           </div>
         </div>
+        {!canWrite && <div className="form-error">You only have view access in {activeBranch.name}. Ask the branch manager or an admin for stock-out access.</div>}
         <form className="form-grid" onSubmit={submit}>
           <label className="scan-field full">Scan barcode or SKU<div><Barcode size={17} /><input value={scan} onChange={(event) => setScan(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); applyScan() } }} placeholder="Scan, then press Enter" disabled={!canWrite || !db.medicines.length} /><button className="ghost-button" type="button" onClick={applyScan} disabled={!canWrite || !db.medicines.length}><Search size={16} />Lookup</button></div></label>
-          <label className="full">Branch/site<select required value={selectedBranchId} onChange={(event) => setForm({ ...form, branchId: event.target.value })} disabled={!canWrite || !activeBranches.length}><option value="">Select branch</option>{activeBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>
           <label className="full">Medicine<select required value={selectedMedicineId} onChange={(event) => setForm({ ...form, medicineId: event.target.value })} disabled={!canWrite || !db.medicines.length}><option value="">Select medicine</option>{db.medicines.map((medicine) => <option key={medicine.id} value={medicine.id}>{medicine.brandName} / {medicine.genericName}</option>)}</select></label>
           <label>Quantity<input type="number" min="1" value={form.quantity} onChange={(event) => setForm({ ...form, quantity: Number(event.target.value) })} disabled={!canWrite} /></label>
           <label>Reason<select value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} disabled={!canWrite}><option>Dispense</option><option>Internal use</option><option>Donation</option><option>Damage</option><option>Other</option></select></label>
@@ -1667,7 +1698,7 @@ function allocateFefo(rows: StockRow[], quantity: number) {
   return allocation
 }
 
-function Adjustments({ stockRows, canAdjust, executeAction, flash }: { stockRows: StockRow[]; canAdjust: boolean; executeAction: ExecuteAction; flash: (message: string) => void }) {
+function Adjustments({ activeBranch, stockRows, canAdjust, executeAction, flash }: { activeBranch: Branch; stockRows: StockRow[]; canAdjust: boolean; executeAction: ExecuteAction; flash: (message: string) => void }) {
   const positiveRows = stockRows.filter((row) => row.quantity > 0)
   const [form, setForm] = useState({
     batchId: '',
@@ -1702,9 +1733,10 @@ function Adjustments({ stockRows, canAdjust, executeAction, flash }: { stockRows
       <div className="section-heading">
         <div>
           <h2>Adjustments and Returns</h2>
-          <p>All corrections require a reason and are posted as immutable ledger entries.</p>
+          <p>Posting adjustments for {activeBranch.name}. All corrections require a reason.</p>
         </div>
       </div>
+      {!canAdjust && <div className="form-error">You only have view access in {activeBranch.name}, or your role cannot post adjustments.</div>}
       <form className="form-grid" onSubmit={submit}>
         <label className="full">Batch<select required value={selectedBatchId} onChange={(event) => setForm({ ...form, batchId: event.target.value })} disabled={!canAdjust || !positiveRows.length}><option value="">Select batch</option>{positiveRows.map((row) => <option key={row.batch.id} value={row.batch.id}>{row.medicine.brandName} / {row.batch.batchNumber} / Qty {row.quantity}</option>)}</select></label>
         <label>Transaction type<select value={form.mode} onChange={(event) => setForm({ ...form, mode: event.target.value as LedgerType })} disabled={!canAdjust}><option value="write-off">Write-off</option><option value="supplier-return">Supplier return</option><option value="customer-return">Customer return</option><option value="adjustment">Positive adjustment</option></select></label>
@@ -1972,6 +2004,7 @@ function UserManagement({ db, currentUser, executeAction, flash }: { db: Databas
               <th>User</th>
               <th>Phone</th>
               <th>Role</th>
+              <th>Branch access</th>
               <th>Status</th>
               <th>Requested</th>
               <th>Action</th>
@@ -1986,6 +2019,9 @@ function UserManagement({ db, currentUser, executeAction, flash }: { db: Databas
                   <select value={user.role} onChange={(event) => updateUser(user.id, { role: event.target.value as Role })} disabled={user.id === currentUser.id || user.id === primaryAdminId}>
                     {Object.entries(roleLabels).map(([role, label]) => <option key={role} value={role}>{label}</option>)}
                   </select>
+                </td>
+                <td>
+                  <span>{user.role === 'admin' ? 'All branches' : db.branches.filter((branch) => user.branchIds.includes(branch.id) || user.managedBranchIds.includes(branch.id)).map((branch) => branch.name).join(', ') || 'View only everywhere'}</span>
                 </td>
                 <td><span className={`pill ${user.status}`}>{statusLabels[user.status]}</span></td>
                 <td>{new Date(user.createdAt).toLocaleDateString()}</td>
@@ -2010,25 +2046,50 @@ function UserManagement({ db, currentUser, executeAction, flash }: { db: Databas
   )
 }
 
-function BranchesView({ db, canAdmin, executeAction }: { db: Database; canAdmin: boolean; executeAction: ExecuteAction }) {
+function BranchesView({
+  db,
+  currentUser,
+  activeBranchId,
+  setActiveBranchId,
+  executeAction,
+}: {
+  db: Database
+  currentUser: User
+  activeBranchId: string
+  setActiveBranchId: (branchId: string) => void
+  executeAction: ExecuteAction
+}) {
   const createBlank = (): Branch => ({
     id: '',
     name: '',
     code: '',
     address: '',
     managerName: '',
+    managerUserId: '',
     phone: '',
     active: true,
     createdAt: new Date().toISOString(),
   })
   const [form, setForm] = useState<Branch>(createBlank)
+  const selectedBranch = db.branches.find((branch) => branch.id === activeBranchId) ?? db.branches[0]
+  const canManageSelected = selectedBranch ? canManageBranch(currentUser, selectedBranch.id) : false
+  const assignableUsers = db.users.filter((user) => user.status === 'active' && user.role !== 'admin')
+  const managerOptions = db.users.filter((user) => user.status === 'active' && user.role !== 'viewer')
 
   function edit(branch: Branch) {
+    setForm(branch)
+    setActiveBranchId(branch.id)
+  }
+
+  function switchBranch(branch: Branch) {
+    setActiveBranchId(branch.id)
     setForm(branch)
   }
 
   function submit(event: FormEvent) {
     event.preventDefault()
+    if (!canManageSelected && form.id) return
+    if (form.id && form.id !== selectedBranch?.id && currentUser.role !== 'admin') return
     const record: Branch = {
       ...form,
       id: form.id || id('br'),
@@ -2037,6 +2098,15 @@ function BranchesView({ db, canAdmin, executeAction }: { db: Database; canAdmin:
     }
     void executeAction('upsertBranch', { record }, 'Branch saved')
     setForm(createBlank())
+  }
+
+  function updateBranchAccess(user: User, canAccess: boolean) {
+    if (!selectedBranch) return
+    void executeAction('updateBranchAccess', {
+      userId: user.id,
+      branchId: selectedBranch.id,
+      canAccess,
+    }, 'Branch access updated')
   }
 
   return (
@@ -2050,15 +2120,18 @@ function BranchesView({ db, canAdmin, executeAction }: { db: Database; canAdmin:
         </div>
         <div className="branch-grid">
           {db.branches.map((branch) => (
-            <article className="branch-card" key={branch.id}>
+            <article className={branch.id === activeBranchId ? 'branch-card selected' : 'branch-card'} key={branch.id}>
               <Building2 size={19} />
               <div>
                 <strong>{branch.name}</strong>
-                <span>{branch.code || 'No code'} / {branch.active ? 'Active' : 'Inactive'}</span>
-                <span>{branch.managerName || 'No manager'} / {branch.phone || 'No phone'}</span>
+                <span>{branch.code || 'No code'} / {branch.active ? 'Active' : 'Inactive'} / {getUserBranchStatus(currentUser, branch.id)}</span>
+                <span>{db.users.find((user) => user.id === branch.managerUserId)?.name || branch.managerName || 'No manager'} / {branch.phone || 'No phone'}</span>
                 <span>{branch.address || 'No address recorded'}</span>
               </div>
-              <button className="icon-button" type="button" onClick={() => edit(branch)} disabled={!canAdmin} title="Edit branch">
+              <button className="ghost-button" type="button" onClick={() => switchBranch(branch)}>
+                Use
+              </button>
+              <button className="icon-button" type="button" onClick={() => edit(branch)} disabled={!canManageBranch(currentUser, branch.id)} title="Edit branch">
                 <ClipboardList size={16} />
               </button>
             </article>
@@ -2070,24 +2143,51 @@ function BranchesView({ db, canAdmin, executeAction }: { db: Database; canAdmin:
         <div className="section-heading">
           <div>
             <h2>{form.id ? 'Edit Branch' : 'Add Branch'}</h2>
-            <p>Add pharmacy outlets, medical sites, or dispensary branches under this account.</p>
+            <p>Managers can maintain their branch. Only admins can create branches or assign branch managers.</p>
           </div>
         </div>
+        {!canManageSelected && form.id && <div className="form-error">You can view {form.name}, but only its manager or an admin can edit it.</div>}
         <form className="form-grid" onSubmit={submit}>
-          <label className="full">Branch/site name<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} disabled={!canAdmin} /></label>
-          <label>Code<input value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} placeholder="LOS-01" disabled={!canAdmin} /></label>
-          <label>Phone<input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} disabled={!canAdmin} /></label>
-          <label className="full">Manager/contact person<input value={form.managerName} onChange={(event) => setForm({ ...form, managerName: event.target.value })} disabled={!canAdmin} /></label>
-          <label className="full">Address<textarea value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} disabled={!canAdmin} /></label>
-          <label className="checkbox-row full"><input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} disabled={!canAdmin || form.id === 'main'} /> Active branch</label>
+          <label className="full">Branch/site name<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} disabled={form.id ? !canManageSelected : currentUser.role !== 'admin'} /></label>
+          <label>Code<input value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} placeholder="LOS-01" disabled={form.id ? !canManageSelected : currentUser.role !== 'admin'} /></label>
+          <label>Phone<input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} disabled={form.id ? !canManageSelected : currentUser.role !== 'admin'} /></label>
+          <label className="full">Manager<select value={form.managerUserId || ''} onChange={(event) => setForm({ ...form, managerUserId: event.target.value, managerName: db.users.find((user) => user.id === event.target.value)?.name ?? form.managerName })} disabled={currentUser.role !== 'admin'}><option value="">No assigned manager</option>{managerOptions.map((user) => <option key={user.id} value={user.id}>{user.name} / {roleLabels[user.role]}</option>)}</select></label>
+          <label className="full">Manager/contact person<input value={form.managerName} onChange={(event) => setForm({ ...form, managerName: event.target.value })} disabled={form.id ? !canManageSelected : currentUser.role !== 'admin'} /></label>
+          <label className="full">Address<textarea value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} disabled={form.id ? !canManageSelected : currentUser.role !== 'admin'} /></label>
+          <label className="checkbox-row full"><input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} disabled={currentUser.role !== 'admin' || form.id === 'main'} /> Active branch</label>
           <div className="form-actions full">
             <button className="ghost-button" type="button" onClick={() => setForm(createBlank())}>Clear</button>
-            <button className="primary-button" type="submit" disabled={!canAdmin}>
+            <button className="primary-button" type="submit" disabled={form.id ? !canManageSelected : currentUser.role !== 'admin'}>
               <Building2 size={17} />
               Save branch
             </button>
           </div>
         </form>
+
+        {selectedBranch && (
+          <div className="branch-access-panel">
+            <div className="section-heading">
+              <div>
+                <h2>{selectedBranch.name} Staff Access</h2>
+                <p>Users without access can view this branch only. Assigned users can work here according to their role.</p>
+              </div>
+              <span className={canManageSelected ? 'pill active' : 'pill muted'}>{canManageSelected ? 'Can authorize' : 'View only'}</span>
+            </div>
+            <div className="access-list">
+              {assignableUsers.map((user) => {
+                const hasAccess = user.branchIds.includes(selectedBranch.id) || user.managedBranchIds.includes(selectedBranch.id)
+                const isManager = user.managedBranchIds.includes(selectedBranch.id)
+                return (
+                  <label className="access-row" key={user.id}>
+                    <input type="checkbox" checked={hasAccess} onChange={(event) => updateBranchAccess(user, event.target.checked)} disabled={!canManageSelected || isManager} />
+                    <span><strong>{user.name}</strong>{user.email}</span>
+                    <b className={isManager ? 'pill active' : hasAccess ? 'pill good' : 'pill muted'}>{isManager ? 'Manager' : hasAccess ? roleLabels[user.role] : 'View only'}</b>
+                  </label>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </section>
     </div>
   )

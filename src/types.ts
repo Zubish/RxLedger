@@ -9,6 +9,8 @@ export type User = {
   phone: string
   role: Role
   status: UserStatus
+  branchIds: string[]
+  managedBranchIds: string[]
   lastChatSeenAt?: string
   createdAt: string
   approvedAt?: string
@@ -46,6 +48,7 @@ export type Branch = {
   code: string
   address: string
   managerName: string
+  managerUserId?: string
   phone: string
   active: boolean
   createdAt: string
