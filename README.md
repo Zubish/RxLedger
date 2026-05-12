@@ -43,6 +43,10 @@ RxLedger currently treats the main account as the company dashboard. Stock belon
 
 Scrollable panels should scroll independently, like an analytics dashboard with many components. The sidebar/control panel, dropdown lists, dashboard cards, tables, and chat timelines should contain their own scrolling when the pointer is over them; the main workspace should only scroll when the pointer is on the main page.
 
+Only Admin users can see global medication cost/value across all branches. Non-admin users must see medication cost/value only for the active branch workspace they are viewing. Branch switching should show a loading transition so each branch feels like a separate operating entity.
+
+Whenever a medicine is displayed, show the brand/medicine name, generic name, dosage form, and strength together. The brand/medicine name should be the bold primary line, while generic, form, and strength remain secondary supporting text.
+
 ## Run Locally
 
 ```bash

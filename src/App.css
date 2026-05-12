@@ -162,6 +162,56 @@ td span,
   padding: 24px;
 }
 
+.branch-workspace {
+  min-height: 240px;
+  position: relative;
+}
+
+.branch-workspace.is-loading > .page-grid,
+.branch-workspace.is-loading > .two-column,
+.branch-workspace.is-loading > .content-section {
+  opacity: 0.38;
+  pointer-events: none;
+  transition: opacity 160ms ease;
+}
+
+.branch-loading-panel {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #dfe7e8;
+  border-radius: 8px;
+  box-shadow: 0 18px 36px rgba(18, 32, 37, 0.14);
+  color: #24343a;
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  left: 50%;
+  min-width: min(320px, calc(100vw - 48px));
+  padding: 20px;
+  position: absolute;
+  top: 28px;
+  transform: translateX(-50%);
+  z-index: 20;
+}
+
+.branch-loading-panel strong {
+  font-size: 15px;
+}
+
+.branch-loading-panel span:last-child {
+  color: #68777e;
+  font-size: 13px;
+}
+
+.loading-spinner {
+  width: 26px;
+  height: 26px;
+  border: 3px solid #dce9e5;
+  border-top-color: #1f7f63;
+  border-radius: 999px;
+  animation: spin 750ms linear infinite;
+}
+
 .topbar {
   justify-content: space-between;
   gap: 16px;
@@ -188,6 +238,26 @@ td span,
   gap: 10px;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.medicine-identity {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.medicine-identity strong {
+  color: #182126;
+  display: block;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.medicine-identity span {
+  color: #68777e;
+  display: block;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .branch-switcher {
@@ -259,6 +329,15 @@ td span,
   border-radius: 8px;
   padding: 8px 10px;
   font-size: 13px;
+}
+
+.alert-title {
+  color: #182126;
+  font-weight: 700;
+}
+
+.alert-title .medicine-identity strong {
+  font-size: 14px;
 }
 
 .page-grid {
@@ -775,6 +854,20 @@ button:disabled {
   font-size: 13px;
 }
 
+.availability .medicine-identity {
+  flex: 1;
+}
+
+.availability .medicine-identity strong {
+  color: #182126;
+  font-size: 14px;
+}
+
+.availability .medicine-identity span {
+  color: #68777e;
+  font-size: 12px;
+}
+
 .supplier-card,
 .branch-card {
   justify-content: space-between;
@@ -836,6 +929,18 @@ button:disabled {
   gap: 8px;
   padding: 0 10px;
   font-weight: 700;
+}
+
+.value-summary strong {
+  color: #176247;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .tabs {

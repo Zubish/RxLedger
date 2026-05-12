@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { FormEvent, KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
+import type { FormEvent, KeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { readSheet } from 'read-excel-file/browser'
 import {
   Activity,
@@ -301,6 +301,27 @@ function compactMoney(value: number) {
   return `₦${compactNumber(value)}`
 }
 
+function medicineMeta(medicine: Medicine) {
+  return [medicine.genericName, medicine.form, medicine.strength].filter(Boolean).join(' / ') || 'No generic, form, or strength recorded'
+}
+
+function medicineOptionLabel(medicine: Medicine) {
+  return [medicine.brandName, medicine.genericName, medicine.form, medicine.strength].filter(Boolean).join(' / ')
+}
+
+function medicineReportName(medicine?: Medicine) {
+  return medicine ? medicine.brandName : 'Unknown'
+}
+
+function MedicineIdentity({ medicine }: { medicine: Medicine }) {
+  return (
+    <span className="medicine-identity">
+      <strong>{medicine.brandName}</strong>
+      <span>{medicineMeta(medicine)}</span>
+    </span>
+  )
+}
+
 function createEmptyDatabase(): Database {
   return {
     users: [],
@@ -463,7 +484,7 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
     notifications.push({
       id: `expired-${row.batch.id}`,
       tone: 'danger',
-      title: `${row.medicine.brandName} has expired stock`,
+      title: `${medicineOptionLabel(row.medicine)} has expired stock`,
       detail: `${row.batch.batchNumber} has ${number.format(row.quantity)} ${row.medicine.unit} in ${row.batch.location}.`,
       view: 'reports',
     })
@@ -473,7 +494,7 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
     notifications.push({
       id: `near-${row.batch.id}`,
       tone: 'warning',
-      title: `${row.medicine.brandName} expires in ${row.daysToExpiry} days`,
+      title: `${medicineOptionLabel(row.medicine)} expires in ${row.daysToExpiry} days`,
       detail: `${row.batch.batchNumber}, ${number.format(row.quantity)} ${row.medicine.unit} available.`,
       view: 'reports',
     })
@@ -483,7 +504,7 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
     notifications.push({
       id: `out-${medicine.id}`,
       tone: 'danger',
-      title: `${medicine.brandName} is out of stock`,
+      title: `${medicineOptionLabel(medicine)} is out of stock`,
       detail: `Reorder level is ${number.format(medicine.reorderLevel)} ${medicine.unit}.`,
       view: 'medicines',
     })
@@ -495,7 +516,7 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
       notifications.push({
         id: `low-${medicine.id}`,
         tone: 'info',
-        title: `${medicine.brandName} is low on stock`,
+        title: `${medicineOptionLabel(medicine)} is low on stock`,
         detail: `Available: ${number.format(stockTotals.get(medicine.id) ?? 0)}. Reorder level: ${number.format(medicine.reorderLevel)}.`,
         view: 'medicines',
       })
@@ -520,7 +541,10 @@ function App() {
   const [drawerHandleDragging, setDrawerHandleDragging] = useState(false)
   const [activeBranchId, setActiveBranchId] = useState('main')
   const [branchMenuOpen, setBranchMenuOpen] = useState(false)
+  const [branchSwitching, setBranchSwitching] = useState(false)
+  const [branchSwitchLabel, setBranchSwitchLabel] = useState('')
   const drawerDragRef = useRef({ active: false, moved: false, startY: 0, startTop: drawerHandleTop })
+  const branchSwitchTimerRef = useRef<number | undefined>(undefined)
 
   const currentUser = db.users.find((user) => user.id === sessionUserId && user.status === 'active') ?? null
   const activeBranches = useMemo(() => getActiveBranches(db), [db])
@@ -528,11 +552,12 @@ function App() {
   const stockRows = useMemo(() => getStockRows(db), [db])
   const activeBranchStockRows = useMemo(() => activeBranch ? stockRows.filter((row) => row.batch.branchId === activeBranch.id) : stockRows, [activeBranch, stockRows])
   const permittedStockRows = useMemo(() => currentUser ? stockRows.filter((row) => canViewBranch(currentUser, row.batch.branchId)) : [], [currentUser, stockRows])
-  const stockTotals = useMemo(() => aggregateMedicineStock(stockRows), [stockRows])
   const permittedStockTotals = useMemo(() => aggregateMedicineStock(permittedStockRows), [permittedStockRows])
   const canWrite = currentUser ? currentUser.role !== 'viewer' : false
   const canAdjust = currentUser ? currentUser.role === 'admin' || currentUser.role === 'pharmacist' : false
   const canAdmin = currentUser?.role === 'admin'
+  const valueStockRows = useMemo(() => canAdmin ? stockRows : activeBranchStockRows, [activeBranchStockRows, canAdmin, stockRows])
+  const valueStockTotals = useMemo(() => aggregateMedicineStock(valueStockRows), [valueStockRows])
   const canWriteActiveBranch = currentUser && activeBranch ? canWriteBranch(currentUser, activeBranch.id) : false
   const notifications = useMemo(() => currentUser ? buildNotifications(db, permittedStockRows, permittedStockTotals, currentUser) : [], [currentUser, db, permittedStockRows, permittedStockTotals])
 
@@ -625,6 +650,21 @@ function App() {
     setSidebarOpen(false)
   }
 
+  function switchActiveBranch(branchId: string) {
+    const nextBranch = activeBranches.find((branch) => branch.id === branchId) ?? db.branches.find((branch) => branch.id === branchId)
+    setBranchMenuOpen(false)
+    if (!nextBranch || branchId === activeBranchId) return
+    window.clearTimeout(branchSwitchTimerRef.current)
+    setBranchSwitchLabel(nextBranch.name)
+    setBranchSwitching(true)
+    branchSwitchTimerRef.current = window.setTimeout(() => {
+      setActiveBranchId(branchId)
+      branchSwitchTimerRef.current = window.setTimeout(() => {
+        setBranchSwitching(false)
+      }, 260)
+    }, 260)
+  }
+
   function collapseSidebar() {
     setSidebarCollapsed(true)
     setSidebarOpen(false)
@@ -702,6 +742,10 @@ function App() {
       activityEvents.forEach((eventName) => window.removeEventListener(eventName, resetTimer))
     }
   }, [currentUser, forceSignOut])
+
+  useEffect(() => {
+    return () => window.clearTimeout(branchSwitchTimerRef.current)
+  }, [])
 
   if (loading) return <LoadingScreen />
 
@@ -812,10 +856,7 @@ function App() {
                         className={branch.id === activeBranch.id ? 'active' : ''}
                         key={branch.id}
                         type="button"
-                        onClick={() => {
-                          setActiveBranchId(branch.id)
-                          setBranchMenuOpen(false)
-                        }}
+                        onClick={() => switchActiveBranch(branch.id)}
                       >
                         {branch.name}
                       </button>
@@ -839,19 +880,28 @@ function App() {
           </div>
         </header>
 
-        {activeView === 'dashboard' && <Dashboard db={db} currentUser={currentUser} stockRows={permittedStockRows} stockTotals={permittedStockTotals} canAdmin={canAdmin} setActiveView={setActiveView} />}
-        {activeView === 'medicines' && <Medicines db={db} stockRows={stockRows} stockTotals={stockTotals} canWrite={canWrite} executeAction={executeAction} flash={flash} />}
-        {activeView === 'suppliers' && <Suppliers db={db} canWrite={canWrite} executeAction={executeAction} />}
-        {activeView === 'receive' && activeBranch && <ReceiveStock db={db} activeBranch={activeBranch} canWrite={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
-        {activeView === 'issue' && activeBranch && <IssueStock db={db} activeBranch={activeBranch} stockRows={activeBranchStockRows} canWrite={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
-        {activeView === 'adjust' && activeBranch && <Adjustments activeBranch={activeBranch} stockRows={activeBranchStockRows} canAdjust={canAdjust && Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
-        {activeView === 'reports' && <Reports db={db} stockRows={stockRows} stockTotals={stockTotals} />}
-        {activeView === 'chat' && <ChatView db={db} currentUser={currentUser} executeAction={executeAction} />}
-        {activeView === 'notifications' && <NotificationsView notifications={notifications} setActiveView={setActiveView} />}
-        {activeView === 'audit' && <Audit db={db} />}
-        {activeView === 'users' && <UserManagement db={db} currentUser={currentUser} executeAction={executeAction} flash={flash} />}
-        {activeView === 'branches' && activeBranch && <BranchesView db={db} currentUser={currentUser} activeBranchId={activeBranch.id} setActiveBranchId={setActiveBranchId} executeAction={executeAction} />}
-        {activeView === 'settings' && <SettingsView db={db} canAdmin={canAdmin} executeAction={executeAction} />}
+        <div className={branchSwitching ? 'branch-workspace is-loading' : 'branch-workspace'}>
+          {branchSwitching && (
+            <div className="branch-loading-panel" role="status" aria-live="polite">
+              <span className="loading-spinner" />
+              <strong>Switching branch</strong>
+              <span>Loading {branchSwitchLabel} workspace...</span>
+            </div>
+          )}
+          {activeView === 'dashboard' && <Dashboard db={db} currentUser={currentUser} stockRows={valueStockRows} stockTotals={valueStockTotals} canAdmin={canAdmin} activeBranch={activeBranch} setActiveView={setActiveView} />}
+          {activeView === 'medicines' && <Medicines db={db} stockRows={valueStockRows} stockTotals={valueStockTotals} canAdmin={canAdmin} activeBranch={activeBranch} canWrite={canWrite} executeAction={executeAction} flash={flash} />}
+          {activeView === 'suppliers' && <Suppliers db={db} canWrite={canWrite} executeAction={executeAction} />}
+          {activeView === 'receive' && activeBranch && <ReceiveStock db={db} activeBranch={activeBranch} canWrite={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
+          {activeView === 'issue' && activeBranch && <IssueStock db={db} activeBranch={activeBranch} stockRows={activeBranchStockRows} canWrite={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
+          {activeView === 'adjust' && activeBranch && <Adjustments activeBranch={activeBranch} stockRows={activeBranchStockRows} canAdjust={canAdjust && Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
+          {activeView === 'reports' && <Reports db={db} stockRows={valueStockRows} stockTotals={valueStockTotals} />}
+          {activeView === 'chat' && <ChatView db={db} currentUser={currentUser} executeAction={executeAction} />}
+          {activeView === 'notifications' && <NotificationsView notifications={notifications} setActiveView={setActiveView} />}
+          {activeView === 'audit' && <Audit db={db} />}
+          {activeView === 'users' && <UserManagement db={db} currentUser={currentUser} executeAction={executeAction} flash={flash} />}
+          {activeView === 'branches' && activeBranch && <BranchesView db={db} currentUser={currentUser} activeBranchId={activeBranch.id} setActiveBranchId={switchActiveBranch} executeAction={executeAction} />}
+          {activeView === 'settings' && <SettingsView db={db} canAdmin={canAdmin} executeAction={executeAction} />}
+        </div>
       </main>
     </div>
   )
@@ -1064,6 +1114,7 @@ function Dashboard({
   stockRows,
   stockTotals,
   canAdmin,
+  activeBranch,
   setActiveView,
 }: {
   db: Database
@@ -1071,6 +1122,7 @@ function Dashboard({
   stockRows: StockRow[]
   stockTotals: Map<string, number>
   canAdmin: boolean
+  activeBranch?: Branch
   setActiveView: (view: View) => void
 }) {
   const scopedMedicineIds = new Set(stockRows.map((row) => row.medicine.id))
@@ -1078,10 +1130,11 @@ function Dashboard({
   const nearExpiry = stockRows.filter((row) => row.quantity > 0 && row.status === 'near-expiry')
   const expired = stockRows.filter((row) => row.quantity > 0 && row.status === 'expired')
   const costValue = stockRows.reduce((sum, row) => sum + Math.max(0, row.costValue), 0)
+  const activeSkuCount = canAdmin ? db.medicines.filter((medicine) => medicine.active).length : scopedMedicineIds.size
   const permittedBatchIds = new Set(stockRows.map((row) => row.batch.id))
   const todayMovements = db.ledger.filter((entry) => entry.createdAt.slice(0, 10) === today() && permittedBatchIds.has(entry.batchId)).length
   const pendingUsers = canAdmin ? db.users.filter((user) => user.status === 'pending').length : 0
-  const activeBranches = getActiveBranches(db).filter((branch) => canViewBranch(currentUser, branch.id))
+  const activeBranches = canAdmin ? getActiveBranches(db).filter((branch) => canViewBranch(currentUser, branch.id)) : getActiveBranches(db).filter((branch) => branch.id === activeBranch?.id)
   const branchSummaries = activeBranches.map((branch) => {
     const rows = stockRows.filter((row) => row.batch.branchId === branch.id && row.quantity > 0)
     const branchStockValue = rows.reduce((sum, row) => sum + Math.max(0, row.costValue), 0)
@@ -1094,9 +1147,9 @@ function Dashboard({
   return (
     <div className="page-grid">
       <section className="metric-grid">
-        <Metric icon={Boxes} label="Active SKUs" value={compactNumber(db.medicines.filter((medicine) => medicine.active).length)} />
+        <Metric icon={Boxes} label="Active SKUs" value={compactNumber(activeSkuCount)} />
         <Metric icon={Building2} label="Active branches" value={compactNumber(activeBranches.length)} />
-        <Metric icon={Archive} label="Stock value at cost" value={compactMoney(costValue)} />
+        <Metric icon={Archive} label={canAdmin ? 'Global stock value at cost' : `${activeBranch?.code || 'Branch'} stock value at cost`} value={compactMoney(costValue)} />
         <Metric icon={AlertTriangle} label="Low stock items" value={compactNumber(lowStock.length)} tone={lowStock.length ? 'warning' : 'good'} />
         <Metric icon={XCircle} label="Expired batches" value={compactNumber(expired.length)} tone={expired.length ? 'danger' : 'good'} />
         <Metric icon={Activity} label="Movements today" value={compactNumber(todayMovements)} />
@@ -1141,13 +1194,13 @@ function Dashboard({
             <AlertItem tone="warning" title={`${pendingUsers} staff access request${pendingUsers > 1 ? 's' : ''} pending`} detail="An admin should approve users and assign the correct role before they can sign in." />
           )}
           {expired.map((row) => (
-            <AlertItem key={row.batch.id} tone="danger" title={`${row.medicine.brandName} expired`} detail={`${row.batch.batchNumber} has ${number.format(row.quantity)} ${row.medicine.unit} in ${row.batch.location}`} />
+            <AlertItem key={row.batch.id} tone="danger" title={<MedicineIdentity medicine={row.medicine} />} detail={`Expired batch ${row.batch.batchNumber} has ${number.format(row.quantity)} ${row.medicine.unit} in ${row.batch.location}`} />
           ))}
           {nearExpiry.slice(0, 5).map((row) => (
-            <AlertItem key={row.batch.id} tone="warning" title={`${row.medicine.brandName} expires in ${row.daysToExpiry} days`} detail={`${row.batch.batchNumber}, ${number.format(row.quantity)} ${row.medicine.unit} available`} />
+            <AlertItem key={row.batch.id} tone="warning" title={<MedicineIdentity medicine={row.medicine} />} detail={`Batch ${row.batch.batchNumber} expires in ${row.daysToExpiry} days. ${number.format(row.quantity)} ${row.medicine.unit} available`} />
           ))}
           {lowStock.map((medicine) => (
-            <AlertItem key={medicine.id} tone="info" title={`${medicine.brandName} is at or below reorder level`} detail={`Available: ${number.format(stockTotals.get(medicine.id) ?? 0)}. Reorder level: ${number.format(medicine.reorderLevel)}`} />
+            <AlertItem key={medicine.id} tone="info" title={<MedicineIdentity medicine={medicine} />} detail={`At or below reorder level. Available: ${number.format(stockTotals.get(medicine.id) ?? 0)}. Reorder level: ${number.format(medicine.reorderLevel)}`} />
           ))}
           {!pendingUsers && !expired.length && !nearExpiry.length && !lowStock.length && (
             <AlertItem tone="good" title="No active inventory alerts" detail="Stock levels, expiry windows, and access approvals are currently clear." />
@@ -1190,13 +1243,13 @@ function Metric({
   )
 }
 
-function AlertItem({ title, detail, tone }: { title: string; detail: string; tone: 'danger' | 'warning' | 'info' | 'good' }) {
+function AlertItem({ title, detail, tone }: { title: ReactNode; detail: string; tone: 'danger' | 'warning' | 'info' | 'good' }) {
   const Icon = tone === 'danger' ? XCircle : tone === 'warning' ? AlertTriangle : tone === 'good' ? CheckCircle2 : ClipboardList
   return (
     <div className={`alert-item ${tone}`}>
       <Icon size={19} />
       <div>
-        <strong>{title}</strong>
+        <div className="alert-title">{title}</div>
         <span>{detail}</span>
       </div>
     </div>
@@ -1252,6 +1305,8 @@ function Medicines({
   db,
   stockRows,
   stockTotals,
+  canAdmin,
+  activeBranch,
   canWrite,
   executeAction,
   flash,
@@ -1259,6 +1314,8 @@ function Medicines({
   db: Database
   stockRows: StockRow[]
   stockTotals: Map<string, number>
+  canAdmin: boolean
+  activeBranch?: Branch
   canWrite: boolean
   executeAction: ExecuteAction
   flash: (message: string) => void
@@ -1297,7 +1354,7 @@ function Medicines({
   const totalCatalogCost = stockRows.reduce((sum, row) => sum + Math.max(0, row.costValue), 0)
 
   const visible = db.medicines.filter((medicine) => {
-    const text = `${medicine.sku} ${medicine.brandName} ${medicine.genericName} ${medicine.nafdacNumber} ${medicine.barcodes.join(' ')}`.toLowerCase()
+    const text = `${medicine.sku} ${medicine.brandName} ${medicine.genericName} ${medicine.form} ${medicine.strength} ${medicine.nafdacNumber} ${medicine.barcodes.join(' ')}`.toLowerCase()
     return text.includes(query.toLowerCase())
   })
 
@@ -1413,6 +1470,7 @@ function Medicines({
           </div>
           <div className="value-summary">
             <Archive size={17} />
+            <strong>{canAdmin ? 'Global value' : activeBranch ? `${activeBranch.code} value` : 'Branch value'}</strong>
             <span>{money.format(totalCatalogCost)}</span>
           </div>
           <div className="search-box">
@@ -1439,8 +1497,7 @@ function Medicines({
                 visible.map((medicine) => (
                   <tr key={medicine.id}>
                     <td>
-                      <strong>{medicine.brandName}</strong>
-                      <span>{medicine.genericName} / {medicine.strength} / {medicine.form}</span>
+                      <MedicineIdentity medicine={medicine} />
                     </td>
                     <td>{medicine.sku}</td>
                     <td>{medicine.nafdacNumber || '-'}</td>
@@ -1635,7 +1692,7 @@ function ReceiveStock({ db, activeBranch, canWrite, executeAction, flash }: { db
       return
     }
     setLines((current) => current.map((line, index) => index === current.length - 1 ? { ...line, medicineId: medicine.id } : line))
-    flash(`${medicine.brandName} selected`)
+    flash(`${medicineOptionLabel(medicine)} selected`)
   }
 
   function submit(event: FormEvent) {
@@ -1699,7 +1756,7 @@ function ReceiveStock({ db, activeBranch, canWrite, executeAction, flash }: { db
                   </button>
                 </div>
                 <div className="form-grid">
-                  <label className="full">Medicine<select required value={selectedMedicineId} onChange={(event) => updateLine(line.rowId, { medicineId: event.target.value })} disabled={!canWrite || !db.medicines.length}><option value="">Select medicine</option>{db.medicines.map((medicine) => <option key={medicine.id} value={medicine.id}>{medicine.brandName} / {medicine.genericName}</option>)}</select></label>
+                  <label className="full">Medicine<select required value={selectedMedicineId} onChange={(event) => updateLine(line.rowId, { medicineId: event.target.value })} disabled={!canWrite || !db.medicines.length}><option value="">Select medicine</option>{db.medicines.map((medicine) => <option key={medicine.id} value={medicine.id}>{medicineOptionLabel(medicine)}</option>)}</select></label>
                   <label>Batch/Lot number<input required value={line.batchNumber} onChange={(event) => updateLine(line.rowId, { batchNumber: event.target.value })} disabled={!canWrite} /></label>
                   <label>Expiry date<input required type="date" value={line.expiryDate} onChange={(event) => updateLine(line.rowId, { expiryDate: event.target.value })} disabled={!canWrite} /></label>
                   <label>Quantity<input required type="number" min="1" value={line.quantity} onChange={(event) => updateLine(line.rowId, { quantity: Number(event.target.value) })} disabled={!canWrite} /></label>
@@ -1764,7 +1821,7 @@ function IssueStock({
       return
     }
     setForm((current) => ({ ...current, medicineId: medicine.id }))
-    flash(`${medicine.brandName} selected`)
+    flash(`${medicineOptionLabel(medicine)} selected`)
   }
 
   function submit(event: FormEvent) {
@@ -1798,7 +1855,7 @@ function IssueStock({
         {!canWrite && <div className="form-error">You only have view access in {activeBranch.name}. Ask the branch manager or an admin for stock-out access.</div>}
         <form className="form-grid" onSubmit={submit}>
           <label className="scan-field full">Scan barcode or SKU<div><Barcode size={17} /><input value={scan} onChange={(event) => setScan(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); applyScan() } }} placeholder="Scan, then press Enter" disabled={!canWrite || !db.medicines.length} /><button className="ghost-button" type="button" onClick={applyScan} disabled={!canWrite || !db.medicines.length}><Search size={16} />Lookup</button></div></label>
-          <label className="full">Medicine<select required value={selectedMedicineId} onChange={(event) => setForm({ ...form, medicineId: event.target.value })} disabled={!canWrite || !db.medicines.length}><option value="">Select medicine</option>{db.medicines.map((medicine) => <option key={medicine.id} value={medicine.id}>{medicine.brandName} / {medicine.genericName}</option>)}</select></label>
+          <label className="full">Medicine<select required value={selectedMedicineId} onChange={(event) => setForm({ ...form, medicineId: event.target.value })} disabled={!canWrite || !db.medicines.length}><option value="">Select medicine</option>{db.medicines.map((medicine) => <option key={medicine.id} value={medicine.id}>{medicineOptionLabel(medicine)}</option>)}</select></label>
           <label>Quantity<input type="number" min="1" value={form.quantity} onChange={(event) => setForm({ ...form, quantity: Number(event.target.value) })} disabled={!canWrite} /></label>
           <label>Reason<select value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} disabled={!canWrite}><option>Dispense</option><option>Internal use</option><option>Donation</option><option>Damage</option><option>Other</option></select></label>
           <label className="full">Reference note<input value={form.reference} onChange={(event) => setForm({ ...form, reference: event.target.value })} placeholder="Receipt, request, or memo reference" disabled={!canWrite} /></label>
@@ -1880,12 +1937,12 @@ function Adjustments({ activeBranch, stockRows, canAdjust, executeAction, flash 
       </div>
       {!canAdjust && <div className="form-error">You only have view access in {activeBranch.name}, or your role cannot post adjustments.</div>}
       <form className="form-grid" onSubmit={submit}>
-        <label className="full">Batch<select required value={selectedBatchId} onChange={(event) => setForm({ ...form, batchId: event.target.value })} disabled={!canAdjust || !positiveRows.length}><option value="">Select batch</option>{positiveRows.map((row) => <option key={row.batch.id} value={row.batch.id}>{row.medicine.brandName} / {row.batch.batchNumber} / Qty {row.quantity}</option>)}</select></label>
+        <label className="full">Batch<select required value={selectedBatchId} onChange={(event) => setForm({ ...form, batchId: event.target.value })} disabled={!canAdjust || !positiveRows.length}><option value="">Select batch</option>{positiveRows.map((row) => <option key={row.batch.id} value={row.batch.id}>{medicineOptionLabel(row.medicine)} / {row.batch.batchNumber} / Qty {row.quantity}</option>)}</select></label>
         <label>Transaction type<select value={form.mode} onChange={(event) => setForm({ ...form, mode: event.target.value as LedgerType })} disabled={!canAdjust}><option value="write-off">Write-off</option><option value="supplier-return">Supplier return</option><option value="customer-return">Customer return</option><option value="adjustment">Positive adjustment</option></select></label>
         <label>Quantity<input type="number" min="1" value={form.quantity} onChange={(event) => setForm({ ...form, quantity: Number(event.target.value) })} disabled={!canAdjust} /></label>
         <label className="full">Reason<textarea required value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} disabled={!canAdjust} /></label>
         <label className="full">Reference<input value={form.reference} onChange={(event) => setForm({ ...form, reference: event.target.value })} disabled={!canAdjust} /></label>
-        {selected && <div className="availability full"><strong>{selected.medicine.brandName}</strong><span>{selected.batch.batchNumber} / available {number.format(selected.quantity)} / expires {selected.batch.expiryDate}</span></div>}
+        {selected && <div className="availability full"><MedicineIdentity medicine={selected.medicine} /><span>{selected.batch.batchNumber} / available {number.format(selected.quantity)} / expires {selected.batch.expiryDate}</span></div>}
         <div className="form-actions full">
           <button className="primary-button" type="submit" disabled={!canAdjust || !selected}>
             <RotateCcw size={17} />
@@ -1901,15 +1958,19 @@ function Reports({ db, stockRows, stockTotals }: { db: Database; stockRows: Stoc
   const [report, setReport] = useState<'stock' | 'movement' | 'expiry' | 'reorder'>('stock')
 
   const rows: ReportRow[] = useMemo(() => {
+    const scopedBatchIds = new Set(stockRows.map((row) => row.batch.id))
     if (report === 'movement') {
-      return db.ledger.map((entry) => {
+      return db.ledger.filter((entry) => scopedBatchIds.has(entry.batchId)).map((entry) => {
         const medicine = db.medicines.find((item) => item.id === entry.medicineId)
         const batch = db.batches.find((item) => item.id === entry.batchId)
         const user = db.users.find((item) => item.id === entry.userId)
         return {
           Date: new Date(entry.createdAt).toLocaleString(),
           Type: movementLabels[entry.type],
-          Medicine: medicine?.brandName ?? 'Unknown',
+          Medicine: medicineReportName(medicine),
+          Generic: medicine?.genericName ?? '-',
+          Form: medicine?.form ?? '-',
+          Strength: medicine?.strength ?? '-',
           Batch: batch?.batchNumber ?? '-',
           Branch: getBranchName(db, batch?.branchId ?? 'main'),
           Quantity: entry.quantity,
@@ -1926,6 +1987,8 @@ function Reports({ db, stockRows, stockTotals }: { db: Database; stockRows: Stoc
         .map((row) => ({
           Medicine: row.medicine.brandName,
           Generic: row.medicine.genericName,
+          Form: row.medicine.form,
+          Strength: row.medicine.strength,
           Batch: row.batch.batchNumber,
           Expiry: row.batch.expiryDate,
           Days: row.daysToExpiry,
@@ -1942,6 +2005,8 @@ function Reports({ db, stockRows, stockTotals }: { db: Database; stockRows: Stoc
           SKU: medicine.sku,
           Medicine: medicine.brandName,
           Generic: medicine.genericName,
+          Form: medicine.form,
+          Strength: medicine.strength,
           Available: stockTotals.get(medicine.id) ?? 0,
           'Reorder Level': medicine.reorderLevel,
           Manufacturer: medicine.manufacturer,
@@ -1951,6 +2016,8 @@ function Reports({ db, stockRows, stockTotals }: { db: Database; stockRows: Stoc
       SKU: row.medicine.sku,
       Medicine: row.medicine.brandName,
       Generic: row.medicine.genericName,
+      Form: row.medicine.form,
+      Strength: row.medicine.strength,
       Batch: row.batch.batchNumber,
       Expiry: row.batch.expiryDate,
       Quantity: row.quantity,
@@ -2388,8 +2455,7 @@ function StockTable({ rows, compact = false }: { rows: StockRow[]; compact?: boo
             rows.map((row) => (
               <tr key={`${row.batch.id}-${row.quantity}`}>
                 <td>
-                  <strong>{row.medicine.brandName}</strong>
-                  <span>{row.medicine.genericName}</span>
+                  <MedicineIdentity medicine={row.medicine} />
                 </td>
                 <td>{row.batch.batchNumber}</td>
                 <td>{row.batch.expiryDate}</td>
