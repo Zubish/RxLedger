@@ -672,6 +672,13 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.table-actions {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
 .primary-button,
 .ghost-button,
 .file-button,
@@ -743,6 +750,57 @@ button:disabled {
   background: #eef4f3;
   color: #24343a;
   padding: 0;
+}
+
+.cart-button {
+  min-width: 74px;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(18, 32, 37, 0.42);
+}
+
+.modal-panel {
+  width: min(560px, 100%);
+  max-height: min(86vh, 760px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: #ffffff;
+  border: 1px solid #dfe7e8;
+  border-radius: 8px;
+  box-shadow: 0 24px 60px rgba(18, 32, 37, 0.22);
+  padding: 18px;
+}
+
+.modal-panel.wide {
+  width: min(980px, 100%);
+}
+
+.cart-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.cart-layout h3,
+.history-panel h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.history-panel {
+  border-top: 1px solid #dfe7e8;
+  margin-top: 18px;
+  padding-top: 14px;
+  display: grid;
+  gap: 12px;
 }
 
 .drawer-handle {
@@ -974,6 +1032,13 @@ button:disabled {
   border-bottom-color: #2fa37d;
 }
 
+.report-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
 .audit-item {
   align-items: center;
 }
@@ -1188,7 +1253,9 @@ button:disabled {
 
   .metric-grid,
   .two-column,
+  .cart-layout,
   .form-grid,
+  .report-filters,
   .nav-list {
     grid-template-columns: 1fr;
   }

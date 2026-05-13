@@ -30,6 +30,7 @@ import {
   Search,
   Send,
   Settings,
+  ShoppingCart,
   ShieldCheck,
   Trash2,
   Truck,
@@ -156,6 +157,8 @@ type LedgerEntry = {
   reference: string
   userId: string
   createdAt: string
+  fromBranchId?: string
+  toBranchId?: string
 }
 
 type Receipt = {
@@ -200,6 +203,30 @@ type PasswordResetRequest = {
   resolvedBy?: string
 }
 
+type RequisitionStatus = 'pending' | 'fulfilled' | 'rejected' | 'cancelled'
+
+type RequisitionItem = {
+  id: string
+  medicineId: string
+  batchId: string
+  quantity: number
+  fulfilledQuantity?: number
+}
+
+type Requisition = {
+  id: string
+  requesterUserId: string
+  requestingBranchId: string
+  sourceBranchId: string
+  status: RequisitionStatus
+  items: RequisitionItem[]
+  createdAt: string
+  updatedAt: string
+  handledBy?: string
+  handledAt?: string
+  note?: string
+}
+
 type AppSettings = {
   softwareName: string
   accountName: string
@@ -221,6 +248,7 @@ type Database = {
   chatMessages: ChatMessage[]
   auditLogs: AuditLog[]
   passwordResetRequests: PasswordResetRequest[]
+  requisitions: Requisition[]
   settings: AppSettings
 }
 
@@ -356,6 +384,7 @@ function createEmptyDatabase(): Database {
     chatMessages: [],
     auditLogs: [],
     passwordResetRequests: [],
+    requisitions: [],
     settings: {
       softwareName: 'RxLedger',
       accountName: 'Pharmacy Account',
@@ -464,6 +493,14 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
   const unreadChat = db.chatMessages.filter((message) => message.userId !== currentUser.id && new Date(message.createdAt).getTime() > lastChatSeen)
   const pendingUsers = db.users.filter((user) => user.status === 'pending')
   const pendingPasswordResets = db.passwordResetRequests.filter((request) => request.status === 'pending')
+  const relevantRequisitions = db.requisitions.filter((request) => (
+    currentUser.role === 'admin' ||
+    request.requesterUserId === currentUser.id ||
+    canViewBranch(currentUser, request.sourceBranchId) ||
+    canViewBranch(currentUser, request.requestingBranchId)
+  ))
+  const incomingRequisitions = relevantRequisitions.filter((request) => request.status === 'pending' && (currentUser.role === 'admin' || canViewBranch(currentUser, request.sourceBranchId)))
+  const handledRequisitions = relevantRequisitions.filter((request) => request.requesterUserId === currentUser.id && request.status !== 'pending')
   const scopedMedicineIds = new Set(stockRows.map((row) => row.medicine.id))
   const expired = stockRows.filter((row) => row.quantity > 0 && row.status === 'expired')
   const nearExpiry = stockRows.filter((row) => row.quantity > 0 && row.status === 'near-expiry')
@@ -504,6 +541,28 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
       })
     })
   }
+
+  incomingRequisitions.forEach((request) => {
+    notifications.push({
+      id: `incoming-requisition-${request.id}`,
+      tone: 'info',
+      title: `Medicine request from ${getBranchName(db, request.requestingBranchId)}`,
+      detail: `${request.items.length} item${request.items.length === 1 ? '' : 's'} requested from ${getBranchName(db, request.sourceBranchId)}.`,
+      view: 'medicines',
+      createdAt: request.createdAt,
+    })
+  })
+
+  handledRequisitions.forEach((request) => {
+    notifications.push({
+      id: `handled-requisition-${request.id}`,
+      tone: request.status === 'fulfilled' ? 'good' : 'warning',
+      title: `Your requisition was ${request.status}`,
+      detail: `${getBranchName(db, request.sourceBranchId)} responded to your request.`,
+      view: 'medicines',
+      createdAt: request.updatedAt,
+    })
+  })
 
   expired.forEach((row) => {
     notifications.push({
@@ -923,7 +982,7 @@ function App() {
             </div>
           )}
           {activeView === 'dashboard' && <Dashboard db={db} currentUser={currentUser} stockRows={dashboardStockRows} stockTotals={dashboardStockTotals} canAdmin={canAdmin} activeBranch={activeBranch} setActiveView={setActiveView} />}
-          {activeView === 'medicines' && <Medicines db={db} stockRows={medicinePageStockRows} stockTotals={medicinePageStockTotals} activeBranch={activeBranch} canWrite={canWrite} executeAction={executeAction} flash={flash} />}
+          {activeView === 'medicines' && <Medicines db={db} currentUser={currentUser} stockRows={medicinePageStockRows} stockTotals={medicinePageStockTotals} activeBranch={activeBranch} canWrite={canWrite} canFulfillActiveBranch={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
           {activeView === 'suppliers' && <Suppliers db={db} canWrite={canWrite} executeAction={executeAction} />}
           {activeView === 'receive' && activeBranch && <ReceiveStock db={db} activeBranch={activeBranch} canWrite={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
           {activeView === 'issue' && activeBranch && <IssueStock db={db} activeBranch={activeBranch} stockRows={activeBranchStockRows} canWrite={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
@@ -1390,21 +1449,31 @@ function parseCsv(text: string) {
 
 function Medicines({
   db,
+  currentUser,
   stockRows,
   stockTotals,
   activeBranch,
   canWrite,
+  canFulfillActiveBranch,
   executeAction,
   flash,
 }: {
   db: Database
+  currentUser: User
   stockRows: StockRow[]
   stockTotals: Map<string, number>
   activeBranch?: Branch
   canWrite: boolean
+  canFulfillActiveBranch: boolean
   executeAction: ExecuteAction
   flash: (message: string) => void
 }) {
+  type RequisitionCartItem = {
+    rowId: string
+    medicineId: string
+    batchId: string
+    quantity: number
+  }
   type MedicineDraft = Omit<Medicine, 'barcodes' | 'reorderLevel'> & {
     rowId: string
     barcodes: string
@@ -1428,6 +1497,12 @@ function Medicines({
   })
   const [drafts, setDrafts] = useState<MedicineDraft[]>([createBlank()])
   const [query, setQuery] = useState('')
+  const [requestMedicineId, setRequestMedicineId] = useState('')
+  const [requestQuantity, setRequestQuantity] = useState(1)
+  const [cartOpen, setCartOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [historyDate, setHistoryDate] = useState('')
+  const [cartItems, setCartItems] = useState<RequisitionCartItem[]>([])
   const isEditing = drafts.length === 1 && Boolean(drafts[0].id)
   const stockCostTotals = useMemo(() => {
     const totals = new Map<string, number>()
@@ -1442,6 +1517,77 @@ function Medicines({
     const text = `${medicine.sku} ${medicine.brandName} ${medicine.genericName} ${medicine.form} ${medicine.strength} ${medicine.nafdacNumber} ${medicine.barcodes.join(' ')}`.toLowerCase()
     return text.includes(query.toLowerCase())
   })
+  const requestableBranches = getActiveBranches(db).filter((branch) => branch.id !== activeBranch?.id && (currentUser.role === 'admin' || currentUser.branchIds.includes(branch.id) || currentUser.managedBranchIds.includes(branch.id)))
+  const requestingBranch = requestableBranches[0]
+  const requestMedicine = db.medicines.find((medicine) => medicine.id === requestMedicineId)
+  const requestBatches = stockRows.filter((row) => row.medicine.id === requestMedicineId && row.quantity > 0 && row.daysToExpiry >= 0).sort((a, b) => a.batch.expiryDate.localeCompare(b.batch.expiryDate))
+  const requestBatch = requestBatches[0]
+  const cartRows = cartItems.map((item) => {
+    const medicine = db.medicines.find((entry) => entry.id === item.medicineId)
+    const row = stockRows.find((entry) => entry.batch.id === item.batchId)
+    return { ...item, medicine, row }
+  })
+  const visibleRequisitions = db.requisitions.filter((request) => {
+    const involved = currentUser.role === 'admin' || request.requesterUserId === currentUser.id || canViewBranch(currentUser, request.sourceBranchId) || canViewBranch(currentUser, request.requestingBranchId)
+    const dateMatches = !historyDate || request.createdAt.slice(0, 10) === historyDate
+    return involved && dateMatches
+  })
+  const incomingRequisitions = db.requisitions.filter((request) => request.status === 'pending' && activeBranch && request.sourceBranchId === activeBranch.id && (currentUser.role === 'admin' || canViewBranch(currentUser, request.sourceBranchId)))
+
+  function openRequestModal(medicineId: string) {
+    setRequestMedicineId(medicineId)
+    setRequestQuantity(1)
+  }
+
+  function closeRequestModal() {
+    setRequestMedicineId('')
+    setRequestQuantity(1)
+  }
+
+  function addRequestItem() {
+    if (!requestMedicine || !requestBatch) return
+    if (!activeBranch || !requestingBranch) {
+      flash('No requesting branch is available for your account')
+      return
+    }
+    const quantity = Math.max(1, Math.min(Number(requestQuantity) || 1, requestBatch.quantity))
+    setCartItems((current) => {
+      const existing = current.find((item) => item.batchId === requestBatch.batch.id)
+      if (existing) {
+        return current.map((item) => item.batchId === requestBatch.batch.id ? { ...item, quantity } : item)
+      }
+      return [...current, { rowId: id('cart'), medicineId: requestMedicine.id, batchId: requestBatch.batch.id, quantity }]
+    })
+    flash(`${requestMedicine.brandName} added to requisition cart`)
+    closeRequestModal()
+  }
+
+  function updateCartItem(rowId: string, quantity: number) {
+    setCartItems((current) => current.map((item) => item.rowId === rowId ? { ...item, quantity: Math.max(1, quantity || 1) } : item))
+  }
+
+  function removeCartItem(rowId: string) {
+    setCartItems((current) => current.filter((item) => item.rowId !== rowId))
+  }
+
+  function submitCart() {
+    if (!activeBranch || !requestingBranch || !cartItems.length) return
+    void executeAction('createRequisition', {
+      sourceBranchId: activeBranch.id,
+      requestingBranchId: requestingBranch.id,
+      items: cartItems.map((item) => ({ medicineId: item.medicineId, batchId: item.batchId, quantity: item.quantity })),
+    }, 'Requisition sent to supplying branch')
+    setCartItems([])
+    setCartOpen(false)
+  }
+
+  function fulfillRequisition(requestId: string) {
+    void executeAction('fulfillRequisition', { requestId }, 'Requisition fulfilled and stock transferred')
+  }
+
+  function rejectRequisition(requestId: string) {
+    void executeAction('rejectRequisition', { requestId }, 'Requisition rejected')
+  }
 
   function edit(medicine: Medicine) {
     setDrafts([{ ...medicine, rowId: id('row'), barcodes: medicine.barcodes.join(', ') }])
@@ -1562,6 +1708,10 @@ function Medicines({
             <Search size={16} />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search catalog" />
           </div>
+          <button className="ghost-button cart-button" type="button" onClick={() => setCartOpen(true)}>
+            <ShoppingCart size={17} />
+            {cartItems.length ? cartItems.length : 'Cart'}
+          </button>
         </div>
         <div className="table-wrap">
           <table>
@@ -1591,9 +1741,14 @@ function Medicines({
                     <td>{money.format(stockCostTotals.get(medicine.id) ?? 0)}</td>
                     <td><span className={medicine.active ? 'pill good' : 'pill muted'}>{medicine.active ? 'Active' : 'Inactive'}</span></td>
                     <td>
-                      <button className="icon-button" type="button" onClick={() => edit(medicine)} title="Edit medicine" disabled={!canWrite}>
-                        <ClipboardList size={16} />
-                      </button>
+                      <div className="table-actions">
+                        <button className="icon-button" type="button" onClick={() => edit(medicine)} title="Edit medicine" disabled={!canWrite}>
+                          <ClipboardList size={16} />
+                        </button>
+                        <button className="icon-button" type="button" onClick={() => openRequestModal(medicine.id)} title="Request from this branch" disabled={!activeBranch || !requestableBranches.length || (stockTotals.get(medicine.id) ?? 0) <= 0}>
+                          <ShoppingCart size={16} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -1659,6 +1814,117 @@ function Medicines({
           </div>
         </form>
       </section>
+      {requestMedicine && requestBatch && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <section className="modal-panel">
+            <div className="section-heading">
+              <div>
+                <h2>Add to requisition cart</h2>
+                <p>Requesting from {activeBranch?.name} into {requestingBranch?.name ?? 'your branch'}.</p>
+              </div>
+              <button className="icon-button" type="button" onClick={closeRequestModal} title="Close">
+                <X size={17} />
+              </button>
+            </div>
+            <div className="stack">
+              <div className="availability">
+                <MedicineIdentity medicine={requestMedicine} />
+                <span>{requestBatch.batch.batchNumber} / expires {requestBatch.batch.expiryDate} / {number.format(requestBatch.quantity)} available</span>
+              </div>
+              <label>Quantity requested<input type="number" min="1" max={requestBatch.quantity} value={requestQuantity} onChange={(event) => setRequestQuantity(Number(event.target.value))} /></label>
+              <div className="form-actions">
+                <button className="ghost-button" type="button" onClick={closeRequestModal}>Cancel</button>
+                <button className="primary-button" type="button" onClick={addRequestItem}>
+                  <ShoppingCart size={17} />
+                  Add to cart
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+      {cartOpen && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <section className="modal-panel wide">
+            <div className="section-heading">
+              <div>
+                <h2>Requisition Cart</h2>
+                <p>{activeBranch ? `Requests from ${activeBranch.name}` : 'Branch request cart'} are sent to the supplying branch team.</p>
+              </div>
+              <button className="icon-button" type="button" onClick={() => setCartOpen(false)} title="Close">
+                <X size={17} />
+              </button>
+            </div>
+
+            <div className="cart-layout">
+              <section className="stack">
+                <h3>Draft items</h3>
+                {cartRows.length ? cartRows.map((item) => (
+                  <article className="line-card" key={item.rowId}>
+                    {item.medicine && <MedicineIdentity medicine={item.medicine} />}
+                    <span>{item.row?.batch.batchNumber ?? item.batchId} / {item.row ? `${number.format(item.row.quantity)} available` : 'availability changed'}</span>
+                    <div className="button-row">
+                      <label>Qty<input type="number" min="1" max={item.row?.quantity ?? undefined} value={item.quantity} onChange={(event) => updateCartItem(item.rowId, Number(event.target.value))} /></label>
+                      <button className="icon-button" type="button" onClick={() => removeCartItem(item.rowId)} title="Remove item">
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </article>
+                )) : <div className="empty-state">No draft request items yet.</div>}
+                <div className="form-actions">
+                  <button className="primary-button" type="button" onClick={submitCart} disabled={!cartItems.length || !requestingBranch}>
+                    <Send size={17} />
+                    Send request
+                  </button>
+                </div>
+              </section>
+
+              <section className="stack">
+                <h3>Incoming requests</h3>
+                {incomingRequisitions.length ? incomingRequisitions.map((request) => (
+                  <article className="line-card" key={request.id}>
+                    <strong>{getBranchName(db, request.requestingBranchId)} request</strong>
+                    <span>{new Date(request.createdAt).toLocaleString()} / {request.items.length} item{request.items.length === 1 ? '' : 's'}</span>
+                    {request.items.map((item) => {
+                      const medicine = db.medicines.find((entry) => entry.id === item.medicineId)
+                      const batch = db.batches.find((entry) => entry.id === item.batchId)
+                      return <span key={item.id}>{medicine?.brandName ?? item.medicineId} / {batch?.batchNumber ?? item.batchId} / Qty {number.format(item.quantity)}</span>
+                    })}
+                    <div className="button-row">
+                      <button className="primary-button" type="button" onClick={() => fulfillRequisition(request.id)} disabled={!canFulfillActiveBranch}>
+                        <PackageCheck size={16} />
+                        Fulfill
+                      </button>
+                      <button className="ghost-button" type="button" onClick={() => rejectRequisition(request.id)} disabled={!canFulfillActiveBranch}>
+                        <XCircle size={16} />
+                        Reject
+                      </button>
+                    </div>
+                  </article>
+                )) : <div className="empty-state">No incoming requests for this branch.</div>}
+              </section>
+            </div>
+
+            <div className="history-panel">
+              <button className="ghost-button" type="button" onClick={() => setHistoryOpen((open) => !open)}>
+                <FileText size={16} />
+                {historyOpen ? 'Hide history' : 'Show history'}
+              </button>
+              {historyOpen && (
+                <div className="stack">
+                  <label>Date filter<input type="date" value={historyDate} onChange={(event) => setHistoryDate(event.target.value)} /></label>
+                  {visibleRequisitions.length ? visibleRequisitions.map((request) => (
+                    <article className="line-card" key={request.id}>
+                      <strong>{getBranchName(db, request.requestingBranchId)} from {getBranchName(db, request.sourceBranchId)}</strong>
+                      <span>{request.status} / {new Date(request.createdAt).toLocaleString()}</span>
+                    </article>
+                  )) : <div className="empty-state">No requisition history for this filter.</div>}
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   )
 }
@@ -2040,30 +2306,74 @@ function Adjustments({ activeBranch, stockRows, canAdjust, executeAction, flash 
 }
 
 function Reports({ db, stockRows, stockTotals }: { db: Database; stockRows: StockRow[]; stockTotals: Map<string, number> }) {
-  const [report, setReport] = useState<'stock' | 'movement' | 'expiry' | 'reorder'>('stock')
+  const [report, setReport] = useState<'stock' | 'movement' | 'supplier' | 'expiry' | 'reorder'>('stock')
+  const [movementDate, setMovementDate] = useState('')
+  const [movementType, setMovementType] = useState('')
+  const [medicineFilter, setMedicineFilter] = useState('')
+  const [genericFilter, setGenericFilter] = useState('')
+  const [supplierFilter, setSupplierFilter] = useState('')
+  const [supplierDate, setSupplierDate] = useState('')
 
   const rows: ReportRow[] = useMemo(() => {
     const scopedBatchIds = new Set(stockRows.map((row) => row.batch.id))
     if (report === 'movement') {
-      return db.ledger.filter((entry) => scopedBatchIds.has(entry.batchId)).map((entry) => {
-        const medicine = db.medicines.find((item) => item.id === entry.medicineId)
-        const batch = db.batches.find((item) => item.id === entry.batchId)
-        const user = db.users.find((item) => item.id === entry.userId)
-        return {
-          Date: new Date(entry.createdAt).toLocaleString(),
-          Type: movementLabels[entry.type],
-          Medicine: medicineReportName(medicine),
-          Generic: medicine?.genericName ?? '-',
-          Form: medicine?.form ?? '-',
-          Strength: medicine?.strength ?? '-',
-          Batch: batch?.batchNumber ?? '-',
-          Branch: getBranchName(db, batch?.branchId ?? 'main'),
-          Quantity: entry.quantity,
-          Reason: entry.reason,
-          Reference: entry.reference,
-          User: user?.name ?? 'Unknown',
-        }
-      })
+      return db.ledger
+        .filter((entry) => scopedBatchIds.has(entry.batchId))
+        .filter((entry) => {
+          const medicine = db.medicines.find((item) => item.id === entry.medicineId)
+          return (!movementDate || entry.createdAt.slice(0, 10) === movementDate) &&
+            (!movementType || entry.type === movementType) &&
+            (!medicineFilter || medicine?.brandName.toLowerCase().includes(medicineFilter.toLowerCase())) &&
+            (!genericFilter || medicine?.genericName.toLowerCase().includes(genericFilter.toLowerCase()))
+        })
+        .map((entry) => {
+          const medicine = db.medicines.find((item) => item.id === entry.medicineId)
+          const batch = db.batches.find((item) => item.id === entry.batchId)
+          const user = db.users.find((item) => item.id === entry.userId)
+          const supplier = batch ? db.suppliers.find((item) => item.id === batch.supplierId) : undefined
+          const branchName = getBranchName(db, batch?.branchId ?? 'main')
+          const from = entry.fromBranchId ? getBranchName(db, entry.fromBranchId) : entry.type === 'stock-in' ? supplier?.name ?? 'Supplier' : entry.type === 'customer-return' ? 'Customer' : branchName
+          const to = entry.toBranchId ? getBranchName(db, entry.toBranchId) : entry.type === 'supplier-return' ? supplier?.name ?? 'Supplier' : entry.type === 'stock-out' ? entry.reason : entry.type === 'write-off' ? 'Write-off' : branchName
+          return {
+            Date: new Date(entry.createdAt).toLocaleString(),
+            Type: movementLabels[entry.type],
+            Medicine: medicineReportName(medicine),
+            Generic: medicine?.genericName ?? '-',
+            Form: medicine?.form ?? '-',
+            Strength: medicine?.strength ?? '-',
+            Batch: batch?.batchNumber ?? '-',
+            Branch: branchName,
+            From: from,
+            To: to,
+            Quantity: entry.quantity,
+            Reason: entry.reason,
+            Reference: entry.reference,
+            User: user?.name ?? 'Unknown',
+          }
+        })
+    }
+    if (report === 'supplier') {
+      return db.receipts
+        .filter((receipt) => (!supplierFilter || db.suppliers.find((supplier) => supplier.id === receipt.supplierId)?.name === supplierFilter) && (!supplierDate || receipt.receivedAt.slice(0, 10) === supplierDate))
+        .flatMap((receipt) => receipt.items.map((item) => {
+          const batch = db.batches.find((entry) => entry.id === item.batchId)
+          const medicine = db.medicines.find((entry) => entry.id === item.medicineId)
+          const supplier = db.suppliers.find((entry) => entry.id === receipt.supplierId)
+          return {
+            Date: new Date(receipt.receivedAt).toLocaleString(),
+            Supplier: supplier?.name ?? receipt.supplierId,
+            Invoice: receipt.invoiceRef,
+            Medicine: medicine?.brandName ?? item.medicineId,
+            Generic: medicine?.genericName ?? '-',
+            Form: medicine?.form ?? '-',
+            Strength: medicine?.strength ?? '-',
+            Batch: batch?.batchNumber ?? item.batchId,
+            Expiry: batch?.expiryDate ?? '-',
+            Quantity: item.quantity,
+            'Unit Cost': item.unitCost,
+            Branch: getBranchName(db, batch?.branchId ?? 'main'),
+          }
+        }))
     }
     if (report === 'expiry') {
       return stockRows
@@ -2112,7 +2422,7 @@ function Reports({ db, stockRows, stockTotals }: { db: Database; stockRows: Stoc
       Branch: row.branch?.name ?? row.batch.branchId,
       Location: row.batch.location,
     }))
-  }, [db, report, stockRows, stockTotals])
+  }, [db, genericFilter, medicineFilter, movementDate, movementType, report, stockRows, stockTotals, supplierDate, supplierFilter])
 
   return (
     <section className="content-section">
@@ -2135,9 +2445,24 @@ function Reports({ db, stockRows, stockTotals }: { db: Database; stockRows: Stoc
       <div className="tabs">
         <button className={report === 'stock' ? 'active' : ''} onClick={() => setReport('stock')} type="button">Stock on hand</button>
         <button className={report === 'movement' ? 'active' : ''} onClick={() => setReport('movement')} type="button">Movement ledger</button>
+        <button className={report === 'supplier' ? 'active' : ''} onClick={() => setReport('supplier')} type="button">Supplier</button>
         <button className={report === 'expiry' ? 'active' : ''} onClick={() => setReport('expiry')} type="button">Expiry</button>
         <button className={report === 'reorder' ? 'active' : ''} onClick={() => setReport('reorder')} type="button">Reorder</button>
       </div>
+      {report === 'movement' && (
+        <div className="report-filters">
+          <label>Date<input type="date" value={movementDate} onChange={(event) => setMovementDate(event.target.value)} /></label>
+          <label>Type<select value={movementType} onChange={(event) => setMovementType(event.target.value)}><option value="">All types</option>{Object.entries(movementLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label>Medicine<input value={medicineFilter} onChange={(event) => setMedicineFilter(event.target.value)} placeholder="Brand name" /></label>
+          <label>Generic<input value={genericFilter} onChange={(event) => setGenericFilter(event.target.value)} placeholder="Generic name" /></label>
+        </div>
+      )}
+      {report === 'supplier' && (
+        <div className="report-filters">
+          <label>Supplier<select value={supplierFilter} onChange={(event) => setSupplierFilter(event.target.value)}><option value="">All suppliers</option>{db.suppliers.map((supplier) => <option key={supplier.id} value={supplier.name}>{supplier.name}</option>)}</select></label>
+          <label>Date supplied<input type="date" value={supplierDate} onChange={(event) => setSupplierDate(event.target.value)} /></label>
+        </div>
+      )}
       <ReportTable rows={rows} />
     </section>
   )

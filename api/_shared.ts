@@ -84,6 +84,8 @@ type LedgerEntry = {
   reference: string
   userId: string
   createdAt: string
+  fromBranchId?: string
+  toBranchId?: string
 }
 
 type ChatMessage = {
@@ -105,6 +107,30 @@ type PasswordResetRequest = {
   pendingPasswordSalt?: string
 }
 
+type RequisitionStatus = 'pending' | 'fulfilled' | 'rejected' | 'cancelled'
+
+type RequisitionItem = {
+  id: string
+  medicineId: string
+  batchId: string
+  quantity: number
+  fulfilledQuantity?: number
+}
+
+type Requisition = {
+  id: string
+  requesterUserId: string
+  requestingBranchId: string
+  sourceBranchId: string
+  status: RequisitionStatus
+  items: RequisitionItem[]
+  createdAt: string
+  updatedAt: string
+  handledBy?: string
+  handledAt?: string
+  note?: string
+}
+
 type Database = {
   users: User[]
   medicines: Medicine[]
@@ -122,6 +148,7 @@ type Database = {
   }>
   chatMessages: ChatMessage[]
   passwordResetRequests: PasswordResetRequest[]
+  requisitions: Requisition[]
   auditLogs: Array<{
     id: string
     userId: string
@@ -180,6 +207,7 @@ export function createEmptyDatabase(): Database {
     receipts: [],
     chatMessages: [],
     passwordResetRequests: [],
+    requisitions: [],
     auditLogs: [],
     settings: {
       softwareName: 'RxLedger',
@@ -192,7 +220,7 @@ export function createEmptyDatabase(): Database {
   }
 }
 
-export type { Branch, ChatMessage, Database, HandlerRequest, HandlerResponse, LedgerType, Medicine, PasswordResetRequest, Role, Supplier, User }
+export type { Branch, ChatMessage, Database, HandlerRequest, HandlerResponse, LedgerType, Medicine, PasswordResetRequest, Requisition, RequisitionItem, Role, Supplier, User }
 
 export function id(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${randomBytes(4).toString('hex')}`
@@ -315,6 +343,7 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
     receipts: raw.receipts ?? empty.receipts,
     chatMessages: raw.chatMessages ?? empty.chatMessages,
     passwordResetRequests: raw.passwordResetRequests ?? empty.passwordResetRequests,
+    requisitions: raw.requisitions ?? empty.requisitions,
     auditLogs: raw.auditLogs ?? empty.auditLogs,
     settings: {
       ...empty.settings,

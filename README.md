@@ -51,6 +51,10 @@ Whenever a medicine is displayed, show the brand/medicine name, generic name, do
 
 Forgot-password recovery must create an admin approval request before the new password becomes active. Do not automatically lock the account from a public reset request; admins can approve, ignore/reject, or suspend the account if the request looks suspicious.
 
+Internal medicine requisitions should stay lightweight and modal-based. Users can request available stock from other branches even when they only have view access there; the request is sent to the supplying branch team, does not deduct stock until fulfilled, and remains visible in history to the concerned branches. Admins can view all requisitions globally.
+
+Reports should support operational filtering. Supplier reports must show what each supplier supplied and support supplier/date filters. Movement ledger reports must support date, movement type, medicine, and generic filters, and every movement should clearly show where stock moved from and where it moved to.
+
 ## Run Locally
 
 ```bash

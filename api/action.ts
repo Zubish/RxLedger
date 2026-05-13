@@ -60,6 +60,15 @@ export default async function handler(req: HandlerRequest, res: HandlerResponse)
       case 'receiveStock':
         receiveStock(db, actor.id, actor.role, body.payload)
         break
+      case 'createRequisition':
+        createRequisition(db, actor.id, body.payload)
+        break
+      case 'fulfillRequisition':
+        fulfillRequisition(db, actor.id, body.payload)
+        break
+      case 'rejectRequisition':
+        rejectRequisition(db, actor.id, body.payload)
+        break
       case 'issueStock':
         issueStock(db, actor.id, actor.role, body.payload)
         break
@@ -364,6 +373,137 @@ function receiveStock(db: Database, actorId: string, actorRole: Role, payload: R
   db.ledger.unshift(...ledgerEntries)
   db.receipts.unshift(receipt)
   addAudit(db, actorId, `Received ${receipt.items.length} stock line${receipt.items.length > 1 ? 's' : ''}`, 'receipt', receipt.id, undefined, receipt)
+}
+
+function getBatchAvailable(db: Database, batchId: string) {
+  return db.ledger.filter((entry) => entry.batchId === batchId).reduce((sum, entry) => sum + entry.quantity, 0)
+}
+
+function getUserRequestingBranches(db: Database, actorId: string) {
+  const actor = db.users.find((user) => user.id === actorId)
+  if (!actor) return []
+  if (canAdmin(actor)) return db.branches.filter((branch) => branch.active)
+  const branchIds = Array.from(new Set([...actor.branchIds, ...actor.managedBranchIds]))
+  return db.branches.filter((branch) => branch.active && branchIds.includes(branch.id))
+}
+
+function createRequisition(db: Database, actorId: string, payload: Record<string, unknown> | undefined) {
+  const actor = db.users.find((user) => user.id === actorId)
+  if (!actor) throw new Error('Authentication required')
+  const sourceBranchId = requireString(payload?.sourceBranchId, 'Supplying branch')
+  const requestingBranchId = requireString(payload?.requestingBranchId, 'Requesting branch')
+  if (sourceBranchId === requestingBranchId) throw new Error('Choose a different requesting branch')
+  if (!db.branches.some((branch) => branch.id === sourceBranchId && branch.active)) throw new Error('Supplying branch not found')
+  if (!db.branches.some((branch) => branch.id === requestingBranchId && branch.active)) throw new Error('Requesting branch not found')
+  if (!getUserRequestingBranches(db, actorId).some((branch) => branch.id === requestingBranchId)) {
+    throw new Error('You can only request into a branch you work in')
+  }
+  const inputs = Array.isArray(payload?.items) ? (payload.items as Record<string, unknown>[]) : []
+  if (!inputs.length) throw new Error('Add at least one requisition item')
+  const items = inputs.map((input) => {
+    const batchId = requireString(input.batchId, 'Batch')
+    const batch = db.batches.find((item) => item.id === batchId)
+    if (!batch || batch.branchId !== sourceBranchId) throw new Error('Batch is not available in the supplying branch')
+    const medicineId = requireString(input.medicineId, 'Medicine')
+    if (batch.medicineId !== medicineId || !db.medicines.some((medicine) => medicine.id === medicineId)) throw new Error('Medicine and batch do not match')
+    const quantity = requireNumber(input.quantity, 'Quantity')
+    if (quantity <= 0) throw new Error('Quantity must be greater than zero')
+    if (quantity > getBatchAvailable(db, batchId)) throw new Error('Requested quantity exceeds current batch availability')
+    return {
+      id: id('reqitem'),
+      medicineId,
+      batchId,
+      quantity,
+    }
+  })
+  const request = {
+    id: id('req'),
+    requesterUserId: actorId,
+    requestingBranchId,
+    sourceBranchId,
+    status: 'pending' as const,
+    items,
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+    note: optionalString(payload?.note),
+  }
+  db.requisitions.unshift(request)
+  addAudit(db, actorId, 'Created internal requisition', 'requisition', request.id, undefined, request)
+}
+
+function fulfillRequisition(db: Database, actorId: string, payload: Record<string, unknown> | undefined) {
+  const actor = db.users.find((user) => user.id === actorId)
+  if (!actor) throw new Error('Authentication required')
+  const requestId = requireString(payload?.requestId, 'Requisition')
+  const request = db.requisitions.find((item) => item.id === requestId)
+  if (!request || request.status !== 'pending') throw new Error('Pending requisition not found')
+  if (!canWriteBranch(actor, request.sourceBranchId)) throw new Error('You need branch posting access to fulfill this request')
+  const before = { ...request, items: request.items.map((item) => ({ ...item })) }
+  const transferEntries = []
+  const transferBatches = []
+  for (const item of request.items) {
+    const sourceBatch = db.batches.find((batch) => batch.id === item.batchId)
+    if (!sourceBatch) throw new Error('Source batch not found')
+    if (item.quantity > getBatchAvailable(db, sourceBatch.id)) throw new Error('A requested batch no longer has enough stock')
+    const destinationBatch = {
+      ...sourceBatch,
+      id: id('bat'),
+      branchId: request.requestingBranchId,
+      location: `Transfer from ${db.branches.find((branch) => branch.id === request.sourceBranchId)?.code || 'branch'}`,
+    }
+    const reference = `Requisition ${request.id}`
+    transferBatches.push(destinationBatch)
+    transferEntries.push({
+      id: id('led'),
+      medicineId: item.medicineId,
+      batchId: sourceBatch.id,
+      type: 'stock-out' as LedgerType,
+      quantity: -item.quantity,
+      reason: 'Internal requisition transfer',
+      reference,
+      userId: actorId,
+      createdAt: nowIso(),
+      fromBranchId: request.sourceBranchId,
+      toBranchId: request.requestingBranchId,
+    })
+    transferEntries.push({
+      id: id('led'),
+      medicineId: item.medicineId,
+      batchId: destinationBatch.id,
+      type: 'stock-in' as LedgerType,
+      quantity: item.quantity,
+      reason: 'Internal requisition received',
+      reference,
+      userId: actorId,
+      createdAt: nowIso(),
+      fromBranchId: request.sourceBranchId,
+      toBranchId: request.requestingBranchId,
+    })
+    item.fulfilledQuantity = item.quantity
+  }
+  db.batches.unshift(...transferBatches)
+  db.ledger.unshift(...transferEntries)
+  request.status = 'fulfilled'
+  request.handledBy = actorId
+  request.handledAt = nowIso()
+  request.updatedAt = nowIso()
+  addAudit(db, actorId, 'Fulfilled internal requisition', 'requisition', request.id, before, request)
+}
+
+function rejectRequisition(db: Database, actorId: string, payload: Record<string, unknown> | undefined) {
+  const actor = db.users.find((user) => user.id === actorId)
+  if (!actor) throw new Error('Authentication required')
+  const requestId = requireString(payload?.requestId, 'Requisition')
+  const request = db.requisitions.find((item) => item.id === requestId)
+  if (!request || request.status !== 'pending') throw new Error('Pending requisition not found')
+  if (!canWriteBranch(actor, request.sourceBranchId)) throw new Error('You need branch posting access to reject this request')
+  const before = { ...request }
+  request.status = 'rejected'
+  request.handledBy = actorId
+  request.handledAt = nowIso()
+  request.updatedAt = nowIso()
+  request.note = optionalString(payload?.note) || request.note
+  addAudit(db, actorId, 'Rejected internal requisition', 'requisition', request.id, before, request)
 }
 
 function issueStock(db: Database, actorId: string, actorRole: Role, payload: Record<string, unknown> | undefined) {

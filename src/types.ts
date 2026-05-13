@@ -77,6 +77,8 @@ export type LedgerEntry = {
   reference: string
   userId: string
   createdAt: string
+  fromBranchId?: string
+  toBranchId?: string
 }
 
 export type Receipt = {
@@ -121,6 +123,30 @@ export type PasswordResetRequest = {
   resolvedBy?: string
 }
 
+export type RequisitionStatus = 'pending' | 'fulfilled' | 'rejected' | 'cancelled'
+
+export type RequisitionItem = {
+  id: string
+  medicineId: string
+  batchId: string
+  quantity: number
+  fulfilledQuantity?: number
+}
+
+export type Requisition = {
+  id: string
+  requesterUserId: string
+  requestingBranchId: string
+  sourceBranchId: string
+  status: RequisitionStatus
+  items: RequisitionItem[]
+  createdAt: string
+  updatedAt: string
+  handledBy?: string
+  handledAt?: string
+  note?: string
+}
+
 export type AppSettings = {
   softwareName: string
   accountName: string
@@ -142,6 +168,7 @@ export type Database = {
   chatMessages: ChatMessage[]
   auditLogs: AuditLog[]
   passwordResetRequests: PasswordResetRequest[]
+  requisitions: Requisition[]
   settings: AppSettings
 }
 
