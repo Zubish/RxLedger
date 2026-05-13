@@ -45,7 +45,11 @@ Scrollable panels should scroll independently, like an analytics dashboard with 
 
 Only Admin users can see global medication cost/value across all branches. Non-admin users must see medication cost/value only for the active branch workspace they are viewing. Branch switching should show a loading transition so each branch feels like a separate operating entity.
 
+Admin users keep the global stock value on the dashboard, but the Medicines page must always show the selected branch value, even for Admins. This keeps catalog/value work tied to the branch being operated.
+
 Whenever a medicine is displayed, show the brand/medicine name, generic name, dosage form, and strength together. The brand/medicine name should be the bold primary line, while generic, form, and strength remain secondary supporting text.
+
+Forgot-password recovery must create an admin approval request before the new password becomes active. Do not automatically lock the account from a public reset request; admins can approve, ignore/reject, or suspend the account if the request looks suspicious.
 
 ## Run Locally
 

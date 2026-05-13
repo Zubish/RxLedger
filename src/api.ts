@@ -70,6 +70,13 @@ export async function registerUser(input: RegisterInput) {
   })
 }
 
+export async function requestPasswordReset(input: { email: string; phone: string; password: string }) {
+  return request<{ ok: boolean }>('/api/auth/request-password-reset', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
 export async function logout() {
   try {
     await request<{ ok: boolean }>('/api/auth/logout', { method: 'POST' })

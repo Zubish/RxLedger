@@ -48,6 +48,7 @@ import {
   login as apiLogin,
   logout as apiLogout,
   registerUser as apiRegisterUser,
+  requestPasswordReset as apiRequestPasswordReset,
   runAction,
   setupWorkspace,
 } from './api'
@@ -189,6 +190,16 @@ type ChatMessage = {
   createdAt: string
 }
 
+type PasswordResetRequest = {
+  id: string
+  userId: string
+  email: string
+  status: 'pending' | 'approved' | 'rejected'
+  requestedAt: string
+  resolvedAt?: string
+  resolvedBy?: string
+}
+
 type AppSettings = {
   softwareName: string
   accountName: string
@@ -209,6 +220,7 @@ type Database = {
   receipts: Receipt[]
   chatMessages: ChatMessage[]
   auditLogs: AuditLog[]
+  passwordResetRequests: PasswordResetRequest[]
   settings: AppSettings
 }
 
@@ -224,7 +236,7 @@ type StockRow = {
 }
 
 type ReportRow = Record<string, string | number>
-type AuthMode = 'login' | 'register' | 'setup'
+type AuthMode = 'login' | 'register' | 'reset' | 'setup'
 type NotificationTone = 'danger' | 'warning' | 'info' | 'good'
 type AppNotification = {
   id: string
@@ -343,6 +355,7 @@ function createEmptyDatabase(): Database {
     receipts: [],
     chatMessages: [],
     auditLogs: [],
+    passwordResetRequests: [],
     settings: {
       softwareName: 'RxLedger',
       accountName: 'Pharmacy Account',
@@ -450,6 +463,7 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
   const lastChatSeen = currentUser.lastChatSeenAt ? new Date(currentUser.lastChatSeenAt).getTime() : 0
   const unreadChat = db.chatMessages.filter((message) => message.userId !== currentUser.id && new Date(message.createdAt).getTime() > lastChatSeen)
   const pendingUsers = db.users.filter((user) => user.status === 'pending')
+  const pendingPasswordResets = db.passwordResetRequests.filter((request) => request.status === 'pending')
   const scopedMedicineIds = new Set(stockRows.map((row) => row.medicine.id))
   const expired = stockRows.filter((row) => row.quantity > 0 && row.status === 'expired')
   const nearExpiry = stockRows.filter((row) => row.quantity > 0 && row.status === 'near-expiry')
@@ -476,6 +490,17 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
         detail: 'Admin should assign the correct role and activate the account.',
         view: 'users',
         createdAt: user.createdAt,
+      })
+    })
+    pendingPasswordResets.forEach((request) => {
+      const user = db.users.find((item) => item.id === request.userId)
+      notifications.push({
+        id: `password-reset-${request.id}`,
+        tone: 'warning',
+        title: `${user?.name ?? request.email} requested password reset`,
+        detail: 'Admin approval is required before the new password can take effect.',
+        view: 'users',
+        createdAt: request.requestedAt,
       })
     })
   }
@@ -556,8 +581,10 @@ function App() {
   const canWrite = currentUser ? currentUser.role !== 'viewer' : false
   const canAdjust = currentUser ? currentUser.role === 'admin' || currentUser.role === 'pharmacist' : false
   const canAdmin = currentUser?.role === 'admin'
-  const valueStockRows = useMemo(() => canAdmin ? stockRows : activeBranchStockRows, [activeBranchStockRows, canAdmin, stockRows])
-  const valueStockTotals = useMemo(() => aggregateMedicineStock(valueStockRows), [valueStockRows])
+  const dashboardStockRows = useMemo(() => canAdmin ? stockRows : activeBranchStockRows, [activeBranchStockRows, canAdmin, stockRows])
+  const dashboardStockTotals = useMemo(() => aggregateMedicineStock(dashboardStockRows), [dashboardStockRows])
+  const medicinePageStockRows = activeBranchStockRows
+  const medicinePageStockTotals = useMemo(() => aggregateMedicineStock(medicinePageStockRows), [medicinePageStockRows])
   const canWriteActiveBranch = currentUser && activeBranch ? canWriteBranch(currentUser, activeBranch.id) : false
   const notifications = useMemo(() => currentUser ? buildNotifications(db, permittedStockRows, permittedStockTotals, currentUser) : [], [currentUser, db, permittedStockRows, permittedStockTotals])
 
@@ -631,6 +658,10 @@ function App() {
 
   async function registerUser(input: RegisterInput) {
     await apiRegisterUser(input)
+  }
+
+  async function requestPasswordReset(input: PasswordResetInput) {
+    await apiRequestPasswordReset(input)
   }
 
   async function signIn(email: string, password: string) {
@@ -758,11 +789,14 @@ function App() {
         createFirstAdmin={createFirstAdmin}
         login={signIn}
         registerUser={registerUser}
+        requestPasswordReset={requestPasswordReset}
       />
     )
   }
 
   const pendingUsers = canAdmin ? db.users.filter((user) => user.status === 'pending').length : 0
+  const pendingPasswordResets = canAdmin ? db.passwordResetRequests.filter((request) => request.status === 'pending').length : 0
+  const pendingAdminTasks = pendingUsers + pendingPasswordResets
   const unreadChat = notifications.some((notification) => notification.id === 'chat-unread') ? db.chatMessages.filter((message) => message.userId !== currentUser.id && new Date(message.createdAt).getTime() > (currentUser.lastChatSeenAt ? new Date(currentUser.lastChatSeenAt).getTime() : 0)).length : 0
 
   return (
@@ -793,7 +827,7 @@ function App() {
               >
                 <Icon size={18} />
                 <span>{label}</span>
-                {viewId === 'users' && pendingUsers > 0 && <b className="nav-badge">{pendingUsers}</b>}
+                {viewId === 'users' && pendingAdminTasks > 0 && <b className="nav-badge">{pendingAdminTasks}</b>}
                 {viewId === 'chat' && unreadChat > 0 && <b className="nav-badge">{unreadChat}</b>}
                 {viewId === 'notifications' && notifications.length > 0 && <b className="nav-badge">{notifications.length}</b>}
               </button>
@@ -865,10 +899,10 @@ function App() {
                 )}
               </div>
             )}
-            {canAdmin && pendingUsers > 0 && (
+            {canAdmin && pendingAdminTasks > 0 && (
               <button className="ghost-button" type="button" onClick={() => navigate('users')}>
                 <UserCheck size={16} />
-                {pendingUsers} pending
+                {pendingAdminTasks} pending
               </button>
             )}
             {notifications.length > 0 && (
@@ -888,13 +922,13 @@ function App() {
               <span>Loading {branchSwitchLabel} workspace...</span>
             </div>
           )}
-          {activeView === 'dashboard' && <Dashboard db={db} currentUser={currentUser} stockRows={valueStockRows} stockTotals={valueStockTotals} canAdmin={canAdmin} activeBranch={activeBranch} setActiveView={setActiveView} />}
-          {activeView === 'medicines' && <Medicines db={db} stockRows={valueStockRows} stockTotals={valueStockTotals} canAdmin={canAdmin} activeBranch={activeBranch} canWrite={canWrite} executeAction={executeAction} flash={flash} />}
+          {activeView === 'dashboard' && <Dashboard db={db} currentUser={currentUser} stockRows={dashboardStockRows} stockTotals={dashboardStockTotals} canAdmin={canAdmin} activeBranch={activeBranch} setActiveView={setActiveView} />}
+          {activeView === 'medicines' && <Medicines db={db} stockRows={medicinePageStockRows} stockTotals={medicinePageStockTotals} activeBranch={activeBranch} canWrite={canWrite} executeAction={executeAction} flash={flash} />}
           {activeView === 'suppliers' && <Suppliers db={db} canWrite={canWrite} executeAction={executeAction} />}
           {activeView === 'receive' && activeBranch && <ReceiveStock db={db} activeBranch={activeBranch} canWrite={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
           {activeView === 'issue' && activeBranch && <IssueStock db={db} activeBranch={activeBranch} stockRows={activeBranchStockRows} canWrite={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
           {activeView === 'adjust' && activeBranch && <Adjustments activeBranch={activeBranch} stockRows={activeBranchStockRows} canAdjust={canAdjust && Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
-          {activeView === 'reports' && <Reports db={db} stockRows={valueStockRows} stockTotals={valueStockTotals} />}
+          {activeView === 'reports' && <Reports db={db} stockRows={dashboardStockRows} stockTotals={dashboardStockTotals} />}
           {activeView === 'chat' && <ChatView db={db} currentUser={currentUser} executeAction={executeAction} />}
           {activeView === 'notifications' && <NotificationsView notifications={notifications} setActiveView={setActiveView} />}
           {activeView === 'audit' && <Audit db={db} />}
@@ -918,6 +952,12 @@ type SetupInput = {
 
 type RegisterInput = {
   name: string
+  email: string
+  phone: string
+  password: string
+}
+
+type PasswordResetInput = {
   email: string
   phone: string
   password: string
@@ -947,6 +987,7 @@ function AuthScreen({
   createFirstAdmin,
   login,
   registerUser,
+  requestPasswordReset,
 }: {
   hasUsers: boolean
   pharmacyName: string
@@ -954,6 +995,7 @@ function AuthScreen({
   createFirstAdmin: (input: SetupInput) => Promise<void>
   login: (email: string, password: string) => Promise<void>
   registerUser: (input: RegisterInput) => Promise<void>
+  requestPasswordReset: (input: PasswordResetInput) => Promise<void>
 }) {
   const [mode, setMode] = useState<AuthMode>(hasUsers ? 'login' : 'setup')
   const [error, setError] = useState('')
@@ -976,12 +1018,14 @@ function AuthScreen({
           <div className="tabs auth-tabs">
             <button className={activeMode === 'login' ? 'active' : ''} type="button" onClick={() => { setMode('login'); setError(''); setSuccess('') }}>Sign in</button>
             <button className={activeMode === 'register' ? 'active' : ''} type="button" onClick={() => { setMode('register'); setError(''); setSuccess('') }}>Request access</button>
+            <button className={activeMode === 'reset' ? 'active' : ''} type="button" onClick={() => { setMode('reset'); setError(''); setSuccess('') }}>Forgot password</button>
           </div>
         )}
 
         {activeMode === 'setup' && <SetupForm createFirstAdmin={createFirstAdmin} setError={setError} />}
         {activeMode === 'login' && <LoginForm login={login} setError={setError} setSuccess={setSuccess} />}
         {activeMode === 'register' && <RegisterForm registerUser={registerUser} setError={setError} setSuccess={setSuccess} />}
+        {activeMode === 'reset' && <PasswordResetForm requestPasswordReset={requestPasswordReset} setError={setError} setSuccess={setSuccess} />}
 
         {connectionError && <div className="form-error">{connectionError}</div>}
         {error && <div className="form-error">{error}</div>}
@@ -1102,6 +1146,49 @@ function RegisterForm({
         <button className="primary-button" type="submit">
           <UserPlus size={17} />
           Request access
+        </button>
+      </div>
+    </form>
+  )
+}
+
+function PasswordResetForm({
+  requestPasswordReset,
+  setError,
+  setSuccess,
+}: {
+  requestPasswordReset: (input: PasswordResetInput) => Promise<void>
+  setError: (message: string) => void
+  setSuccess: (message: string) => void
+}) {
+  const [form, setForm] = useState<PasswordResetInput>({ email: '', phone: '', password: '' })
+
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    setError('')
+    setSuccess('')
+    if (form.password.length < 8) {
+      setError('Password must be at least 8 characters.')
+      return
+    }
+    try {
+      await requestPasswordReset(form)
+      setForm({ email: '', phone: '', password: '' })
+      setSuccess('Password reset request submitted. An admin must approve it before the new password works.')
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Unable to submit password reset request.')
+    }
+  }
+
+  return (
+    <form className="form-grid" onSubmit={submit}>
+      <label className="full">Account email<input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} autoComplete="username" /></label>
+      <label className="full">Phone number on account<input required value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label>
+      <label className="full">New password<input required type="password" minLength={8} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} autoComplete="new-password" /></label>
+      <div className="form-actions full">
+        <button className="primary-button" type="submit">
+          <Lock size={17} />
+          Request password reset
         </button>
       </div>
     </form>
@@ -1305,7 +1392,6 @@ function Medicines({
   db,
   stockRows,
   stockTotals,
-  canAdmin,
   activeBranch,
   canWrite,
   executeAction,
@@ -1314,7 +1400,6 @@ function Medicines({
   db: Database
   stockRows: StockRow[]
   stockTotals: Map<string, number>
-  canAdmin: boolean
   activeBranch?: Branch
   canWrite: boolean
   executeAction: ExecuteAction
@@ -1470,7 +1555,7 @@ function Medicines({
           </div>
           <div className="value-summary">
             <Archive size={17} />
-            <strong>{canAdmin ? 'Global value' : activeBranch ? `${activeBranch.code} value` : 'Branch value'}</strong>
+            <strong>{activeBranch ? `${activeBranch.code} value` : 'Branch value'}</strong>
             <span>{money.format(totalCatalogCost)}</span>
           </div>
           <div className="search-box">
@@ -2183,6 +2268,7 @@ function Audit({ db }: { db: Database }) {
 
 function UserManagement({ db, currentUser, executeAction, flash }: { db: Database; currentUser: User; executeAction: ExecuteAction; flash: (message: string) => void }) {
   const primaryAdminId = getPrimaryAdminId(db)
+  const pendingPasswordResets = db.passwordResetRequests.filter((request) => request.status === 'pending')
 
   function updateUser(userId: string, updates: Partial<Pick<User, 'role' | 'status'>>) {
     const target = db.users.find((user) => user.id === userId)
@@ -2198,60 +2284,103 @@ function UserManagement({ db, currentUser, executeAction, flash }: { db: Databas
     void executeAction('updateUser', { userId, updates }, 'User access updated')
   }
 
+  function resolvePasswordReset(requestId: string, decision: 'approved' | 'rejected') {
+    void executeAction('resolvePasswordReset', { requestId, decision }, decision === 'approved' ? 'Password reset approved' : 'Password reset ignored')
+  }
+
   return (
-    <section className="content-section">
-      <div className="section-heading">
-        <div>
-          <h2>User Access Control</h2>
-          <p>New registrations stay pending until an admin assigns a role and activates the account.</p>
+    <div className="page-grid">
+      <section className="content-section">
+        <div className="section-heading">
+          <div>
+            <h2>User Access Control</h2>
+            <p>New registrations stay pending until an admin assigns a role and activates the account.</p>
+          </div>
         </div>
-      </div>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>User</th>
-              <th>Phone</th>
-              <th>Role</th>
-              <th>Branch access</th>
-              <th>Status</th>
-              <th>Requested</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {db.users.map((user) => (
-              <tr key={user.id}>
-                <td><strong>{user.name}</strong><span>{user.email}{user.id === primaryAdminId ? ' / Permanent admin' : ''}</span></td>
-                <td>{user.phone || '-'}</td>
-                <td>
-                  <select value={user.role} onChange={(event) => updateUser(user.id, { role: event.target.value as Role })} disabled={user.id === currentUser.id || user.id === primaryAdminId}>
-                    {Object.entries(roleLabels).map(([role, label]) => <option key={role} value={role}>{label}</option>)}
-                  </select>
-                </td>
-                <td>
-                  <span>{user.role === 'admin' ? 'All branches' : db.branches.filter((branch) => user.branchIds.includes(branch.id) || user.managedBranchIds.includes(branch.id)).map((branch) => branch.name).join(', ') || 'View only everywhere'}</span>
-                </td>
-                <td><span className={`pill ${user.status}`}>{statusLabels[user.status]}</span></td>
-                <td>{new Date(user.createdAt).toLocaleDateString()}</td>
-                <td>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Phone</th>
+                <th>Role</th>
+                <th>Branch access</th>
+                <th>Status</th>
+                <th>Requested</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {db.users.map((user) => (
+                <tr key={user.id}>
+                  <td><strong>{user.name}</strong><span>{user.email}{user.id === primaryAdminId ? ' / Permanent admin' : ''}</span></td>
+                  <td>{user.phone || '-'}</td>
+                  <td>
+                    <select value={user.role} onChange={(event) => updateUser(user.id, { role: event.target.value as Role })} disabled={user.id === currentUser.id || user.id === primaryAdminId}>
+                      {Object.entries(roleLabels).map(([role, label]) => <option key={role} value={role}>{label}</option>)}
+                    </select>
+                  </td>
+                  <td>
+                    <span>{user.role === 'admin' ? 'All branches' : db.branches.filter((branch) => user.branchIds.includes(branch.id) || user.managedBranchIds.includes(branch.id)).map((branch) => branch.name).join(', ') || 'View only everywhere'}</span>
+                  </td>
+                  <td><span className={`pill ${user.status}`}>{statusLabels[user.status]}</span></td>
+                  <td>{new Date(user.createdAt).toLocaleDateString()}</td>
+                  <td>
+                    <div className="button-row">
+                      <button className="ghost-button" type="button" onClick={() => updateUser(user.id, { status: 'active' })} disabled={user.status === 'active'}>
+                        <UserCheck size={16} />
+                        Activate
+                      </button>
+                      <button className="ghost-button" type="button" onClick={() => updateUser(user.id, { status: 'suspended' })} disabled={user.id === currentUser.id || user.id === primaryAdminId || user.status === 'suspended'}>
+                        <XCircle size={16} />
+                        Suspend
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="content-section">
+        <div className="section-heading">
+          <div>
+            <h2>Password Reset Approvals</h2>
+            <p>Forgot-password requests do not change a password until an admin approves them.</p>
+          </div>
+        </div>
+        <div className="alert-list">
+          {pendingPasswordResets.length ? (
+            pendingPasswordResets.map((request) => {
+              const user = db.users.find((item) => item.id === request.userId)
+              return (
+                <article className="alert-item warning" key={request.id}>
+                  <Lock size={19} />
+                  <div>
+                    <strong>{user?.name ?? request.email}</strong>
+                    <span>{request.email} / requested {new Date(request.requestedAt).toLocaleString()}</span>
+                  </div>
                   <div className="button-row">
-                    <button className="ghost-button" type="button" onClick={() => updateUser(user.id, { status: 'active' })} disabled={user.status === 'active'}>
-                      <UserCheck size={16} />
-                      Activate
+                    <button className="ghost-button" type="button" onClick={() => resolvePasswordReset(request.id, 'approved')}>
+                      <CheckCircle2 size={16} />
+                      Approve
                     </button>
-                    <button className="ghost-button" type="button" onClick={() => updateUser(user.id, { status: 'suspended' })} disabled={user.id === currentUser.id || user.id === primaryAdminId || user.status === 'suspended'}>
+                    <button className="ghost-button" type="button" onClick={() => resolvePasswordReset(request.id, 'rejected')}>
                       <XCircle size={16} />
-                      Suspend
+                      Ignore
                     </button>
                   </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
+                </article>
+              )
+            })
+          ) : (
+            <div className="empty-state">No pending password reset requests.</div>
+          )}
+        </div>
+      </section>
+    </div>
   )
 }
 

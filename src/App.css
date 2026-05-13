@@ -459,6 +459,15 @@ td span,
   align-items: flex-start;
 }
 
+.alert-item > div:not(.button-row) {
+  flex: 1;
+}
+
+.alert-item .button-row {
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
 .notification-item {
   width: 100%;
   background: #ffffff;

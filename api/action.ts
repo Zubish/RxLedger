@@ -39,6 +39,9 @@ export default async function handler(req: HandlerRequest, res: HandlerResponse)
       case 'updateUser':
         updateUser(db, actor.id, body.payload)
         break
+      case 'resolvePasswordReset':
+        resolvePasswordReset(db, actor.id, body.payload)
+        break
       case 'upsertMedicine':
         upsertMedicine(db, actor.id, actor.role, body.payload)
         break
@@ -123,6 +126,33 @@ function updateUser(db: Database, actorId: string, payload: Record<string, unkno
     }
   }
   addAudit(db, actorId, 'Updated user access', 'user', userId, before, { ...target })
+}
+
+function resolvePasswordReset(db: Database, actorId: string, payload: Record<string, unknown> | undefined) {
+  const actor = db.users.find((user) => user.id === actorId)
+  if (!actor || !canAdmin(actor)) throw new Error('Only admins can approve password resets')
+  const requestId = requireString(payload?.requestId, 'Password reset request')
+  const decision = requireString(payload?.decision, 'Decision')
+  if (decision !== 'approved' && decision !== 'rejected') throw new Error('Decision must be approved or rejected')
+  const request = db.passwordResetRequests.find((item) => item.id === requestId)
+  if (!request || request.status !== 'pending') throw new Error('Pending password reset request not found')
+  const target = db.users.find((user) => user.id === request.userId)
+  if (!target) throw new Error('User not found')
+  const before = { ...request }
+  request.status = decision
+  request.resolvedAt = nowIso()
+  request.resolvedBy = actorId
+  if (decision === 'approved') {
+    if (!request.pendingPasswordHash || !request.pendingPasswordSalt) throw new Error('Password reset request is missing password data')
+    target.passwordHash = request.pendingPasswordHash
+    target.passwordSalt = request.pendingPasswordSalt
+  }
+  delete request.pendingPasswordHash
+  delete request.pendingPasswordSalt
+  addAudit(db, actorId, decision === 'approved' ? 'Approved password reset' : 'Ignored password reset', 'user', target.id, before, {
+    requestId,
+    status: request.status,
+  })
 }
 
 function updateBranchAccess(db: Database, actorId: string, payload: Record<string, unknown> | undefined) {

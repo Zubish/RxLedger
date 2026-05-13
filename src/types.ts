@@ -111,6 +111,16 @@ export type ChatMessage = {
   createdAt: string
 }
 
+export type PasswordResetRequest = {
+  id: string
+  userId: string
+  email: string
+  status: 'pending' | 'approved' | 'rejected'
+  requestedAt: string
+  resolvedAt?: string
+  resolvedBy?: string
+}
+
 export type AppSettings = {
   softwareName: string
   accountName: string
@@ -131,6 +141,7 @@ export type Database = {
   receipts: Receipt[]
   chatMessages: ChatMessage[]
   auditLogs: AuditLog[]
+  passwordResetRequests: PasswordResetRequest[]
   settings: AppSettings
 }
 

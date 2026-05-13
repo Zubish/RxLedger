@@ -93,6 +93,18 @@ type ChatMessage = {
   createdAt: string
 }
 
+type PasswordResetRequest = {
+  id: string
+  userId: string
+  email: string
+  status: 'pending' | 'approved' | 'rejected'
+  requestedAt: string
+  resolvedAt?: string
+  resolvedBy?: string
+  pendingPasswordHash?: string
+  pendingPasswordSalt?: string
+}
+
 type Database = {
   users: User[]
   medicines: Medicine[]
@@ -109,6 +121,7 @@ type Database = {
     items: Array<{ medicineId: string; batchId: string; quantity: number; unitCost: number }>
   }>
   chatMessages: ChatMessage[]
+  passwordResetRequests: PasswordResetRequest[]
   auditLogs: Array<{
     id: string
     userId: string
@@ -166,6 +179,7 @@ export function createEmptyDatabase(): Database {
     ledger: [],
     receipts: [],
     chatMessages: [],
+    passwordResetRequests: [],
     auditLogs: [],
     settings: {
       softwareName: 'RxLedger',
@@ -178,7 +192,7 @@ export function createEmptyDatabase(): Database {
   }
 }
 
-export type { Branch, ChatMessage, Database, HandlerRequest, HandlerResponse, LedgerType, Medicine, Role, Supplier, User }
+export type { Branch, ChatMessage, Database, HandlerRequest, HandlerResponse, LedgerType, Medicine, PasswordResetRequest, Role, Supplier, User }
 
 export function id(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${randomBytes(4).toString('hex')}`
@@ -300,6 +314,7 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
     ledger: raw.ledger ?? empty.ledger,
     receipts: raw.receipts ?? empty.receipts,
     chatMessages: raw.chatMessages ?? empty.chatMessages,
+    passwordResetRequests: raw.passwordResetRequests ?? empty.passwordResetRequests,
     auditLogs: raw.auditLogs ?? empty.auditLogs,
     settings: {
       ...empty.settings,
@@ -320,6 +335,12 @@ export function sanitizeDatabase(db: Database) {
       const clean = { ...user }
       delete clean.passwordHash
       delete clean.passwordSalt
+      return clean
+    }),
+    passwordResetRequests: db.passwordResetRequests.map((request) => {
+      const clean = { ...request }
+      delete clean.pendingPasswordHash
+      delete clean.pendingPasswordSalt
       return clean
     }),
   }
