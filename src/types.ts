@@ -12,6 +12,12 @@ export type User = {
   branchIds: string[]
   managedBranchIds: string[]
   lastChatSeenAt?: string
+  knownDevices?: Array<{
+    id: string
+    label: string
+    firstSeenAt: string
+    lastSeenAt: string
+  }>
   createdAt: string
   approvedAt?: string
   approvedBy?: string
@@ -117,10 +123,26 @@ export type PasswordResetRequest = {
   id: string
   userId: string
   email: string
-  status: 'pending' | 'approved' | 'rejected'
+  status: 'pending' | 'completed' | 'expired'
   requestedAt: string
+  expiresAt: string
+  emailSent?: boolean
   resolvedAt?: string
-  resolvedBy?: string
+}
+
+export type SecurityEventType = 'password-reset-requested' | 'password-reset-completed' | 'new-device-login' | 'panic-triggered' | 'security-email-failed'
+
+export type SecurityEvent = {
+  id: string
+  userId: string
+  email: string
+  type: SecurityEventType
+  detail: string
+  severity: 'info' | 'warning' | 'critical'
+  createdAt: string
+  ipAddress?: string
+  userAgent?: string
+  metadata?: Record<string, unknown>
 }
 
 export type RequisitionStatus = 'pending' | 'fulfilled' | 'rejected' | 'cancelled'
@@ -168,6 +190,7 @@ export type Database = {
   chatMessages: ChatMessage[]
   auditLogs: AuditLog[]
   passwordResetRequests: PasswordResetRequest[]
+  securityEvents: SecurityEvent[]
   requisitions: Requisition[]
   settings: AppSettings
 }

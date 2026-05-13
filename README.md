@@ -49,7 +49,7 @@ Admin users keep the global stock value on the dashboard, but the Medicines page
 
 Whenever a medicine is displayed, show the brand/medicine name, generic name, dosage form, and strength together. The brand/medicine name should be the bold primary line, while generic, form, and strength remain secondary supporting text.
 
-Forgot-password recovery must create an admin approval request before the new password becomes active. Do not automatically lock the account from a public reset request; admins can approve, ignore/reject, or suspend the account if the request looks suspicious.
+Forgot-password recovery is user-owned, not admin-approved. The user requests a reset code, verifies ownership through email, and changes the password directly. Admin users can view password reset requests, completions, new-device sign-ins, panic actions, and email failures in the security events log, but they do not approve the reset.
 
 Internal medicine requisitions should stay lightweight and modal-based. Users can request available stock from other branches even when they only have view access there; the request is sent to the supplying branch team, does not deduct stock until fulfilled, and remains visible in history to the concerned branches. Admins can view all requisitions globally.
 
@@ -66,7 +66,13 @@ Create a `.env.local` file before using API-backed flows locally:
 
 ```bash
 DATABASE_URL="postgresql://USER:PASSWORD@HOST/database?sslmode=require"
+RESEND_API_KEY="re_xxxxxxxxx"
+EMAIL_FROM="RxLedger <security@yourdomain.com>"
+APP_URL="http://127.0.0.1:5173"
+SUPPORT_EMAIL="support@yourdomain.com"
 ```
+
+`RESEND_API_KEY`, `EMAIL_FROM`, and `APP_URL` activate real password-reset and security alert emails. Without them, RxLedger still records security events, but no email is delivered.
 
 For local API testing, run through Vercel's local runtime:
 

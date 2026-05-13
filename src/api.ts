@@ -70,8 +70,15 @@ export async function registerUser(input: RegisterInput) {
   })
 }
 
-export async function requestPasswordReset(input: { email: string; phone: string; password: string }) {
-  return request<{ ok: boolean }>('/api/auth/request-password-reset', {
+export async function requestPasswordReset(input: { email: string; phone: string }) {
+  return request<{ ok: boolean; emailConfigured: boolean }>('/api/auth/request-password-reset', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export async function completePasswordReset(input: { email: string; code: string; password: string }) {
+  return request<{ ok: boolean }>('/api/auth/complete-password-reset', {
     method: 'POST',
     body: JSON.stringify(input),
   })

@@ -48,6 +48,7 @@ import {
   loadState,
   login as apiLogin,
   logout as apiLogout,
+  completePasswordReset as apiCompletePasswordReset,
   registerUser as apiRegisterUser,
   requestPasswordReset as apiRequestPasswordReset,
   runAction,
@@ -84,6 +85,12 @@ type User = {
   branchIds: string[]
   managedBranchIds: string[]
   lastChatSeenAt?: string
+  knownDevices?: Array<{
+    id: string
+    label: string
+    firstSeenAt: string
+    lastSeenAt: string
+  }>
   createdAt: string
   approvedAt?: string
   approvedBy?: string
@@ -197,10 +204,26 @@ type PasswordResetRequest = {
   id: string
   userId: string
   email: string
-  status: 'pending' | 'approved' | 'rejected'
+  status: 'pending' | 'completed' | 'expired'
   requestedAt: string
+  expiresAt: string
+  emailSent?: boolean
   resolvedAt?: string
-  resolvedBy?: string
+}
+
+type SecurityEventType = 'password-reset-requested' | 'password-reset-completed' | 'new-device-login' | 'panic-triggered' | 'security-email-failed'
+
+type SecurityEvent = {
+  id: string
+  userId: string
+  email: string
+  type: SecurityEventType
+  detail: string
+  severity: 'info' | 'warning' | 'critical'
+  createdAt: string
+  ipAddress?: string
+  userAgent?: string
+  metadata?: Record<string, unknown>
 }
 
 type RequisitionStatus = 'pending' | 'fulfilled' | 'rejected' | 'cancelled'
@@ -248,6 +271,7 @@ type Database = {
   chatMessages: ChatMessage[]
   auditLogs: AuditLog[]
   passwordResetRequests: PasswordResetRequest[]
+  securityEvents: SecurityEvent[]
   requisitions: Requisition[]
   settings: AppSettings
 }
@@ -302,6 +326,14 @@ const statusLabels: Record<UserStatus, string> = {
   pending: 'Pending approval',
   active: 'Active',
   suspended: 'Suspended',
+}
+
+const securityEventLabels: Record<SecurityEventType, string> = {
+  'password-reset-requested': 'Password reset requested',
+  'password-reset-completed': 'Password reset completed',
+  'new-device-login': 'New device sign-in',
+  'panic-triggered': 'Secure account triggered',
+  'security-email-failed': 'Security email failed',
 }
 
 const movementLabels: Record<LedgerType, string> = {
@@ -384,6 +416,7 @@ function createEmptyDatabase(): Database {
     chatMessages: [],
     auditLogs: [],
     passwordResetRequests: [],
+    securityEvents: [],
     requisitions: [],
     settings: {
       softwareName: 'RxLedger',
@@ -492,7 +525,7 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
   const lastChatSeen = currentUser.lastChatSeenAt ? new Date(currentUser.lastChatSeenAt).getTime() : 0
   const unreadChat = db.chatMessages.filter((message) => message.userId !== currentUser.id && new Date(message.createdAt).getTime() > lastChatSeen)
   const pendingUsers = db.users.filter((user) => user.status === 'pending')
-  const pendingPasswordResets = db.passwordResetRequests.filter((request) => request.status === 'pending')
+  const visibleSecurityEvents = db.securityEvents.filter((event) => currentUser.role === 'admin' || event.userId === currentUser.id)
   const relevantRequisitions = db.requisitions.filter((request) => (
     currentUser.role === 'admin' ||
     request.requesterUserId === currentUser.id ||
@@ -529,18 +562,19 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
         createdAt: user.createdAt,
       })
     })
-    pendingPasswordResets.forEach((request) => {
-      const user = db.users.find((item) => item.id === request.userId)
-      notifications.push({
-        id: `password-reset-${request.id}`,
-        tone: 'warning',
-        title: `${user?.name ?? request.email} requested password reset`,
-        detail: 'Admin approval is required before the new password can take effect.',
-        view: 'users',
-        createdAt: request.requestedAt,
-      })
-    })
   }
+
+  visibleSecurityEvents.slice(0, 8).forEach((event) => {
+    const user = db.users.find((item) => item.id === event.userId)
+    notifications.push({
+      id: `security-${event.id}`,
+      tone: event.severity === 'critical' ? 'danger' : event.severity === 'warning' ? 'warning' : 'info',
+      title: securityEventLabels[event.type],
+      detail: currentUser.role === 'admin' ? `${user?.name ?? event.email}: ${event.detail}` : event.detail,
+      view: currentUser.role === 'admin' ? 'users' : 'notifications',
+      createdAt: event.createdAt,
+    })
+  })
 
   incomingRequisitions.forEach((request) => {
     notifications.push({
@@ -720,7 +754,16 @@ function App() {
   }
 
   async function requestPasswordReset(input: PasswordResetInput) {
-    await apiRequestPasswordReset(input)
+    return apiRequestPasswordReset(input)
+  }
+
+  async function completePasswordReset(input: PasswordResetCompleteInput) {
+    await apiCompletePasswordReset(input)
+  }
+
+  function triggerSecurityPanic() {
+    if (!window.confirm('Secure this account now? Other active sessions will be signed out and a security event will be recorded.')) return
+    void executeAction('triggerSecurityPanic', {}, 'Other sessions were signed out')
   }
 
   async function signIn(email: string, password: string) {
@@ -849,13 +892,13 @@ function App() {
         login={signIn}
         registerUser={registerUser}
         requestPasswordReset={requestPasswordReset}
+        completePasswordReset={completePasswordReset}
       />
     )
   }
 
   const pendingUsers = canAdmin ? db.users.filter((user) => user.status === 'pending').length : 0
-  const pendingPasswordResets = canAdmin ? db.passwordResetRequests.filter((request) => request.status === 'pending').length : 0
-  const pendingAdminTasks = pendingUsers + pendingPasswordResets
+  const pendingAdminTasks = pendingUsers
   const unreadChat = notifications.some((notification) => notification.id === 'chat-unread') ? db.chatMessages.filter((message) => message.userId !== currentUser.id && new Date(message.createdAt).getTime() > (currentUser.lastChatSeenAt ? new Date(currentUser.lastChatSeenAt).getTime() : 0)).length : 0
 
   return (
@@ -964,6 +1007,10 @@ function App() {
                 {pendingAdminTasks} pending
               </button>
             )}
+            <button className="ghost-button danger-action" type="button" onClick={triggerSecurityPanic} title="Sign out other sessions and record a security alert">
+              <ShieldCheck size={16} />
+              Secure account
+            </button>
             {notifications.length > 0 && (
               <button className="ghost-button" type="button" onClick={() => navigate('notifications')}>
                 <Bell size={16} />
@@ -1019,6 +1066,11 @@ type RegisterInput = {
 type PasswordResetInput = {
   email: string
   phone: string
+}
+
+type PasswordResetCompleteInput = {
+  email: string
+  code: string
   password: string
 }
 
@@ -1047,6 +1099,7 @@ function AuthScreen({
   login,
   registerUser,
   requestPasswordReset,
+  completePasswordReset,
 }: {
   hasUsers: boolean
   pharmacyName: string
@@ -1054,7 +1107,8 @@ function AuthScreen({
   createFirstAdmin: (input: SetupInput) => Promise<void>
   login: (email: string, password: string) => Promise<void>
   registerUser: (input: RegisterInput) => Promise<void>
-  requestPasswordReset: (input: PasswordResetInput) => Promise<void>
+  requestPasswordReset: (input: PasswordResetInput) => Promise<{ ok: boolean; emailConfigured: boolean }>
+  completePasswordReset: (input: PasswordResetCompleteInput) => Promise<void>
 }) {
   const [mode, setMode] = useState<AuthMode>(hasUsers ? 'login' : 'setup')
   const [error, setError] = useState('')
@@ -1084,7 +1138,7 @@ function AuthScreen({
         {activeMode === 'setup' && <SetupForm createFirstAdmin={createFirstAdmin} setError={setError} />}
         {activeMode === 'login' && <LoginForm login={login} setError={setError} setSuccess={setSuccess} />}
         {activeMode === 'register' && <RegisterForm registerUser={registerUser} setError={setError} setSuccess={setSuccess} />}
-        {activeMode === 'reset' && <PasswordResetForm requestPasswordReset={requestPasswordReset} setError={setError} setSuccess={setSuccess} />}
+        {activeMode === 'reset' && <PasswordResetForm requestPasswordReset={requestPasswordReset} completePasswordReset={completePasswordReset} setError={setError} setSuccess={setSuccess} />}
 
         {connectionError && <div className="form-error">{connectionError}</div>}
         {error && <div className="form-error">{error}</div>}
@@ -1213,41 +1267,76 @@ function RegisterForm({
 
 function PasswordResetForm({
   requestPasswordReset,
+  completePasswordReset,
   setError,
   setSuccess,
 }: {
-  requestPasswordReset: (input: PasswordResetInput) => Promise<void>
+  requestPasswordReset: (input: PasswordResetInput) => Promise<{ ok: boolean; emailConfigured: boolean }>
+  completePasswordReset: (input: PasswordResetCompleteInput) => Promise<void>
   setError: (message: string) => void
   setSuccess: (message: string) => void
 }) {
-  const [form, setForm] = useState<PasswordResetInput>({ email: '', phone: '', password: '' })
+  const [form, setForm] = useState<PasswordResetInput>({ email: '', phone: '' })
+  const [codeRequested, setCodeRequested] = useState(false)
+  const [emailConfigured, setEmailConfigured] = useState(false)
+  const [code, setCode] = useState('')
+  const [password, setPassword] = useState('')
 
-  async function submit(event: FormEvent) {
+  async function requestCode(event: FormEvent) {
     event.preventDefault()
     setError('')
     setSuccess('')
-    if (form.password.length < 8) {
+    try {
+      const result = await requestPasswordReset(form)
+      setCodeRequested(true)
+      setEmailConfigured(result.emailConfigured)
+      setSuccess(result.emailConfigured ? 'Reset code sent. Check your email and enter the code below.' : 'Reset request recorded, but email delivery is not configured yet. Add the email keys before live testing this flow.')
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Unable to request password reset code.')
+    }
+  }
+
+  async function completeReset(event: FormEvent) {
+    event.preventDefault()
+    setError('')
+    setSuccess('')
+    if (password.length < 8) {
       setError('Password must be at least 8 characters.')
       return
     }
     try {
-      await requestPasswordReset(form)
-      setForm({ email: '', phone: '', password: '' })
-      setSuccess('Password reset request submitted. An admin must approve it before the new password works.')
+      await completePasswordReset({ email: form.email, code, password })
+      setForm({ email: '', phone: '' })
+      setCode('')
+      setPassword('')
+      setCodeRequested(false)
+      setEmailConfigured(false)
+      setSuccess('Password changed. You can sign in with the new password now.')
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Unable to submit password reset request.')
+      setError(error instanceof Error ? error.message : 'Unable to complete password reset.')
     }
   }
 
   return (
-    <form className="form-grid" onSubmit={submit}>
-      <label className="full">Account email<input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} autoComplete="username" /></label>
-      <label className="full">Phone number on account<input required value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label>
-      <label className="full">New password<input required type="password" minLength={8} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} autoComplete="new-password" /></label>
+    <form className="form-grid" onSubmit={codeRequested ? completeReset : requestCode}>
+      <label className="full">Account email<input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} autoComplete="username" disabled={codeRequested} /></label>
+      <label className="full">Phone number on account<input required value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} disabled={codeRequested} /></label>
+      {codeRequested && (
+        <>
+          <label>Reset code<input required inputMode="numeric" value={code} onChange={(event) => setCode(event.target.value)} placeholder="6-digit code" autoFocus /></label>
+          <label>New password<input required type="password" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" /></label>
+          {!emailConfigured && <div className="form-note full">Email is not active yet, so no real reset code was delivered. This screen is ready for testing once Resend keys are added.</div>}
+        </>
+      )}
       <div className="form-actions full">
+        {codeRequested && (
+          <button className="ghost-button" type="button" onClick={() => { setCodeRequested(false); setCode(''); setPassword(''); setError(''); setSuccess('') }}>
+            Start again
+          </button>
+        )}
         <button className="primary-button" type="submit">
           <Lock size={17} />
-          Request password reset
+          {codeRequested ? 'Change password' : 'Send reset code'}
         </button>
       </div>
     </form>
@@ -2593,7 +2682,7 @@ function Audit({ db }: { db: Database }) {
 
 function UserManagement({ db, currentUser, executeAction, flash }: { db: Database; currentUser: User; executeAction: ExecuteAction; flash: (message: string) => void }) {
   const primaryAdminId = getPrimaryAdminId(db)
-  const pendingPasswordResets = db.passwordResetRequests.filter((request) => request.status === 'pending')
+  const securityEvents = db.securityEvents.slice(0, 50)
 
   function updateUser(userId: string, updates: Partial<Pick<User, 'role' | 'status'>>) {
     const target = db.users.find((user) => user.id === userId)
@@ -2607,10 +2696,6 @@ function UserManagement({ db, currentUser, executeAction, flash }: { db: Databas
       return
     }
     void executeAction('updateUser', { userId, updates }, 'User access updated')
-  }
-
-  function resolvePasswordReset(requestId: string, decision: 'approved' | 'rejected') {
-    void executeAction('resolvePasswordReset', { requestId, decision }, decision === 'approved' ? 'Password reset approved' : 'Password reset ignored')
   }
 
   return (
@@ -2672,36 +2757,27 @@ function UserManagement({ db, currentUser, executeAction, flash }: { db: Databas
       <section className="content-section">
         <div className="section-heading">
           <div>
-            <h2>Password Reset Approvals</h2>
-            <p>Forgot-password requests do not change a password until an admin approves them.</p>
+            <h2>Security Events</h2>
+            <p>Password resets, new device sign-ins, panic actions, and email delivery issues are visible here for admin oversight.</p>
           </div>
         </div>
         <div className="alert-list">
-          {pendingPasswordResets.length ? (
-            pendingPasswordResets.map((request) => {
-              const user = db.users.find((item) => item.id === request.userId)
+          {securityEvents.length ? (
+            securityEvents.map((event) => {
+              const user = db.users.find((item) => item.id === event.userId)
               return (
-                <article className="alert-item warning" key={request.id}>
-                  <Lock size={19} />
+                <article className={`alert-item ${event.severity === 'critical' ? 'danger' : event.severity === 'warning' ? 'warning' : 'info'}`} key={event.id}>
+                  {event.type === 'panic-triggered' ? <ShieldCheck size={19} /> : <Lock size={19} />}
                   <div>
-                    <strong>{user?.name ?? request.email}</strong>
-                    <span>{request.email} / requested {new Date(request.requestedAt).toLocaleString()}</span>
-                  </div>
-                  <div className="button-row">
-                    <button className="ghost-button" type="button" onClick={() => resolvePasswordReset(request.id, 'approved')}>
-                      <CheckCircle2 size={16} />
-                      Approve
-                    </button>
-                    <button className="ghost-button" type="button" onClick={() => resolvePasswordReset(request.id, 'rejected')}>
-                      <XCircle size={16} />
-                      Ignore
-                    </button>
+                    <strong>{securityEventLabels[event.type]}</strong>
+                    <span>{user?.name ?? event.email} / {event.email} / {new Date(event.createdAt).toLocaleString()}</span>
+                    <small>{event.detail}{event.ipAddress ? ` / IP: ${event.ipAddress}` : ''}</small>
                   </div>
                 </article>
               )
             })
           ) : (
-            <div className="empty-state">No pending password reset requests.</div>
+            <div className="empty-state">No security events yet.</div>
           )}
         </div>
       </section>

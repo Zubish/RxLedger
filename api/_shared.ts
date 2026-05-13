@@ -19,6 +19,12 @@ type User = {
   lastChatSeenAt?: string
   passwordHash?: string
   passwordSalt?: string
+  knownDevices?: Array<{
+    id: string
+    label: string
+    firstSeenAt: string
+    lastSeenAt: string
+  }>
   createdAt: string
   approvedAt?: string
   approvedBy?: string
@@ -99,12 +105,27 @@ type PasswordResetRequest = {
   id: string
   userId: string
   email: string
-  status: 'pending' | 'approved' | 'rejected'
+  status: 'pending' | 'completed' | 'expired'
   requestedAt: string
+  expiresAt: string
+  emailSent?: boolean
+  codeHash?: string
   resolvedAt?: string
-  resolvedBy?: string
-  pendingPasswordHash?: string
-  pendingPasswordSalt?: string
+}
+
+type SecurityEventType = 'password-reset-requested' | 'password-reset-completed' | 'new-device-login' | 'panic-triggered' | 'security-email-failed'
+
+type SecurityEvent = {
+  id: string
+  userId: string
+  email: string
+  type: SecurityEventType
+  detail: string
+  severity: 'info' | 'warning' | 'critical'
+  createdAt: string
+  ipAddress?: string
+  userAgent?: string
+  metadata?: Record<string, unknown>
 }
 
 type RequisitionStatus = 'pending' | 'fulfilled' | 'rejected' | 'cancelled'
@@ -148,6 +169,7 @@ type Database = {
   }>
   chatMessages: ChatMessage[]
   passwordResetRequests: PasswordResetRequest[]
+  securityEvents: SecurityEvent[]
   requisitions: Requisition[]
   auditLogs: Array<{
     id: string
@@ -207,6 +229,7 @@ export function createEmptyDatabase(): Database {
     receipts: [],
     chatMessages: [],
     passwordResetRequests: [],
+    securityEvents: [],
     requisitions: [],
     auditLogs: [],
     settings: {
@@ -220,7 +243,7 @@ export function createEmptyDatabase(): Database {
   }
 }
 
-export type { Branch, ChatMessage, Database, HandlerRequest, HandlerResponse, LedgerType, Medicine, PasswordResetRequest, Requisition, RequisitionItem, Role, Supplier, User }
+export type { Branch, ChatMessage, Database, HandlerRequest, HandlerResponse, LedgerType, Medicine, PasswordResetRequest, Requisition, RequisitionItem, Role, SecurityEvent, SecurityEventType, Supplier, User }
 
 export function id(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${randomBytes(4).toString('hex')}`
@@ -327,6 +350,7 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
     const managedBranchIds = user.managedBranchIds?.length ? user.managedBranchIds : isPrimaryAdmin ? branches.map((branch) => branch.id) : []
     return {
       ...user,
+      knownDevices: user.knownDevices ?? [],
       branchIds: Array.from(new Set(branchIds)),
       managedBranchIds: Array.from(new Set(managedBranchIds)),
     }
@@ -342,7 +366,15 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
     ledger: raw.ledger ?? empty.ledger,
     receipts: raw.receipts ?? empty.receipts,
     chatMessages: raw.chatMessages ?? empty.chatMessages,
-    passwordResetRequests: raw.passwordResetRequests ?? empty.passwordResetRequests,
+    passwordResetRequests: (raw.passwordResetRequests ?? empty.passwordResetRequests).map((request) => {
+      const status = String(request.status)
+      return {
+        ...request,
+        status: status === 'approved' || status === 'rejected' ? 'expired' : request.status,
+        expiresAt: request.expiresAt ?? new Date(Date.now() - 1).toISOString(),
+      }
+    }),
+    securityEvents: raw.securityEvents ?? empty.securityEvents,
     requisitions: raw.requisitions ?? empty.requisitions,
     auditLogs: raw.auditLogs ?? empty.auditLogs,
     settings: {
@@ -368,8 +400,7 @@ export function sanitizeDatabase(db: Database) {
     }),
     passwordResetRequests: db.passwordResetRequests.map((request) => {
       const clean = { ...request }
-      delete clean.pendingPasswordHash
-      delete clean.pendingPasswordSalt
+      delete clean.codeHash
       return clean
     }),
   }
@@ -392,6 +423,23 @@ export function hashToken(token: string) {
   return createHash('sha256').update(token).digest('hex')
 }
 
+export function getRequestIp(req: HandlerRequest) {
+  const forwarded = req.headers['x-forwarded-for']
+  const value = Array.isArray(forwarded) ? forwarded[0] : forwarded
+  return value?.split(',')[0]?.trim() || ''
+}
+
+export function getRequestUserAgent(req: HandlerRequest) {
+  const raw = req.headers['user-agent']
+  return (Array.isArray(raw) ? raw[0] : raw) || ''
+}
+
+export function getDeviceId(req: HandlerRequest) {
+  const userAgent = getRequestUserAgent(req)
+  const ip = getRequestIp(req)
+  return hashToken(`${userAgent}|${ip}`).slice(0, 16)
+}
+
 export async function createSession(userId: string) {
   const token = randomBytes(32).toString('hex')
   const tokenHash = hashToken(token)
@@ -399,6 +447,15 @@ export async function createSession(userId: string) {
   const sql = getSql()
   await sql`INSERT INTO sessions (token_hash, user_id, expires_at, last_seen_at) VALUES (${tokenHash}, ${userId}, ${expiresAt}, now())`
   return { token, expiresAt }
+}
+
+export async function deleteOtherSessions(userId: string, currentToken = '') {
+  const sql = getSql()
+  if (currentToken) {
+    await sql`DELETE FROM sessions WHERE user_id = ${userId} AND token_hash <> ${hashToken(currentToken)}`
+    return
+  }
+  await sql`DELETE FROM sessions WHERE user_id = ${userId}`
 }
 
 export async function deleteSession(token: string) {
@@ -447,6 +504,40 @@ export function addAudit(db: Database, userId: string, action: string, entity: s
     after,
     createdAt: nowIso(),
   })
+}
+
+export function addSecurityEvent(db: Database, event: Omit<SecurityEvent, 'id' | 'createdAt'> & { createdAt?: string }) {
+  db.securityEvents.unshift({
+    id: id('sec'),
+    createdAt: event.createdAt ?? nowIso(),
+    ...event,
+  })
+}
+
+export function isEmailConfigured() {
+  return Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM && process.env.APP_URL)
+}
+
+export async function sendSecurityEmail(to: string, subject: string, text: string) {
+  if (!isEmailConfigured()) return { sent: false, reason: 'Email is not configured' }
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: process.env.EMAIL_FROM,
+      to,
+      subject,
+      text,
+    }),
+  })
+  if (!response.ok) {
+    const body = await response.text().catch(() => '')
+    throw new Error(body || 'Unable to send security email')
+  }
+  return { sent: true }
 }
 
 export function canWrite(user: User) {

@@ -463,6 +463,13 @@ td span,
   flex: 1;
 }
 
+.alert-item small {
+  color: #687981;
+  display: block;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
 .alert-item .button-row {
   justify-content: flex-end;
   margin-left: auto;
@@ -650,6 +657,16 @@ button:disabled {
   grid-column: 1 / -1;
 }
 
+.form-note {
+  border: 1px solid #d5e3e1;
+  border-radius: 8px;
+  background: #f5faf9;
+  color: #54636a;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .checkbox-row {
   display: flex;
   align-items: center;
@@ -710,6 +727,15 @@ button:disabled {
 
 .ghost-button:hover {
   background: #dfe9e8;
+}
+
+.ghost-button.danger-action {
+  background: #fff1ef;
+  color: #9d2f27;
+}
+
+.ghost-button.danger-action:hover {
+  background: #ffe2df;
 }
 
 .mobile-menu-button {
