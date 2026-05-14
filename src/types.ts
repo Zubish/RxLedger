@@ -11,6 +11,7 @@ export type User = {
   status: UserStatus
   branchIds: string[]
   managedBranchIds: string[]
+  branchAccessExpiresAt?: Record<string, string>
   lastChatSeenAt?: string
   knownDevices?: Array<{
     id: string
@@ -169,6 +170,19 @@ export type Requisition = {
   note?: string
 }
 
+export type BranchAccessRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
+
+export type BranchAccessRequest = {
+  id: string
+  userId: string
+  branchId: string
+  status: BranchAccessRequestStatus
+  requestedAt: string
+  updatedAt: string
+  resolvedBy?: string
+  resolvedAt?: string
+}
+
 export type AppSettings = {
   softwareName: string
   accountName: string
@@ -192,6 +206,7 @@ export type Database = {
   passwordResetRequests: PasswordResetRequest[]
   securityEvents: SecurityEvent[]
   requisitions: Requisition[]
+  branchAccessRequests: BranchAccessRequest[]
   settings: AppSettings
 }
 

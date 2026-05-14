@@ -51,18 +51,42 @@ Whenever a medicine is displayed, show the brand/medicine name, generic name, do
 
 Forgot-password recovery is user-owned, not admin-approved. The user requests a reset code, verifies ownership through email, and changes the password directly. Admin users can view password reset requests, completions, new-device sign-ins, panic actions, and email failures in the security events log, but they do not approve the reset.
 
+Only the permanent first admin is global and should not have an assigned branch label. Branch managers and branch-scoped admin users keep delegated admin-style power only inside their assigned/managed branch; outside it they are view-only. Login should default non-super-admin users to their assigned branch, and branch selectors should keep the assigned branch visibly marked and listed first.
+
+Refreshing the browser should preserve a valid active session. Users should only be forced to re-enter their password after explicit logout, server/session expiry, or the 30-minute inactivity timeout.
+
+Staff should have one active working branch at a time. A branch manager can assign free staff into their own branch and can release staff from that branch. Another branch manager cannot pull a staff member until the current branch manager releases them; the permanent admin can override normal staff transfers when needed.
+
+The permanent super admin is the company owner role and is not assigned to a branch. They can create branches, assign or reassign branch managers, change user roles, and override ordinary branch transfers. Branch managers are delegated administrators for only their own branch. Branch access can be indefinite or can carry an optional expiry date; expired branch access should behave like view-only access.
+
+Users can request access to a branch without being granted write access automatically. The request notifies the target branch manager and the super admin within that branch workspace; the branch manager grants access only when the staff member is free, while the super admin can still assign or override directly from the access controls.
+
+In-app notifications should be scoped to the current branch workspace. Super admin keeps global access rights but should see branch operational alerts only for the branch they are currently viewing; account-level alerts such as pending staff approval remain super-admin-only. Branch managers, pharmacists, inventory officers, and viewers should see low-stock, reorder, expiry, expired-batch, and requisition notifications for the branch they are viewing according to their access.
+
+## Access Rights Draft
+
+- Super Admin: global account control, branch creation, branch manager assignment, user activation/suspension, transfer override, all reports, all audit/security visibility.
+- Branch Manager: delegated branch control, staff assignment/release for their branch, branch receiving, issuing, adjustment/returns, branch reports, branch alerts, and requisition handling.
+- Pharmacist: assigned-branch medicine operations, issue/dispense stock, receive where allowed by branch workflow, adjustments/returns, requisitions, branch reports, and branch alerts.
+- Inventory Officer: assigned-branch inventory operations, receiving, stock counts/adjustment support, requisitions, branch reports, and branch alerts. Super admin may later grant temporary pharmacist-like authority when policy allows.
+- Viewer/Auditor: view-only branch data, branch reports, and branch alerts. No stock-changing actions.
+
+Password forms should support show/hide controls. Signup, setup, and password reset must require password confirmation before submission; the new-password eye icon controls both new and confirm fields.
+
 Internal medicine requisitions should stay lightweight and modal-based. Users can request available stock from other branches even when they only have view access there; the request is sent to the supplying branch team, does not deduct stock until fulfilled, and remains visible in history to the concerned branches. Admins can view all requisitions globally.
 
 Reports should support operational filtering. Supplier reports must show what each supplier supplied and support supplier/date filters. Movement ledger reports must support date, movement type, medicine, and generic filters, and every movement should clearly show where stock moved from and where it moved to.
 
 ## Run Locally
 
+Use Vite only when you want to work on the frontend shell:
+
 ```bash
 npm install
 npm run dev
 ```
 
-Create a `.env.local` file before using API-backed flows locally:
+For login, setup, password reset, stock posting, and every API-backed workflow, create a `.env.local` file first:
 
 ```bash
 DATABASE_URL="postgresql://USER:PASSWORD@HOST/database?sslmode=require"
@@ -77,14 +101,11 @@ SUPPORT_EMAIL="support@yourdomain.com"
 For local API testing, run through Vercel's local runtime:
 
 ```bash
-npx vercel dev
+npm run dev:api
 ```
 
-Open the local URL shown by Vite or Vercel, usually:
+Open the local URL shown by Vite or Vercel.
 
-```text
-http://127.0.0.1:5173/
-```
 
 ## Validate
 

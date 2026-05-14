@@ -16,6 +16,7 @@ type User = {
   status: UserStatus
   branchIds: string[]
   managedBranchIds: string[]
+  branchAccessExpiresAt?: Record<string, string>
   lastChatSeenAt?: string
   passwordHash?: string
   passwordSalt?: string
@@ -152,6 +153,19 @@ type Requisition = {
   note?: string
 }
 
+type BranchAccessRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
+
+type BranchAccessRequest = {
+  id: string
+  userId: string
+  branchId: string
+  status: BranchAccessRequestStatus
+  requestedAt: string
+  updatedAt: string
+  resolvedBy?: string
+  resolvedAt?: string
+}
+
 type Database = {
   users: User[]
   medicines: Medicine[]
@@ -171,6 +185,7 @@ type Database = {
   passwordResetRequests: PasswordResetRequest[]
   securityEvents: SecurityEvent[]
   requisitions: Requisition[]
+  branchAccessRequests: BranchAccessRequest[]
   auditLogs: Array<{
     id: string
     userId: string
@@ -231,6 +246,7 @@ export function createEmptyDatabase(): Database {
     passwordResetRequests: [],
     securityEvents: [],
     requisitions: [],
+    branchAccessRequests: [],
     auditLogs: [],
     settings: {
       softwareName: 'RxLedger',
@@ -243,7 +259,7 @@ export function createEmptyDatabase(): Database {
   }
 }
 
-export type { Branch, ChatMessage, Database, HandlerRequest, HandlerResponse, LedgerType, Medicine, PasswordResetRequest, Requisition, RequisitionItem, Role, SecurityEvent, SecurityEventType, Supplier, User }
+export type { Branch, BranchAccessRequest, BranchAccessRequestStatus, ChatMessage, Database, HandlerRequest, HandlerResponse, LedgerType, Medicine, PasswordResetRequest, Requisition, RequisitionItem, Role, SecurityEvent, SecurityEventType, Supplier, User }
 
 export function id(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${randomBytes(4).toString('hex')}`
@@ -341,18 +357,20 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
     id: branch.id || id('br'),
     name: branch.name || branchName,
     code: branch.code || branch.name?.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 12) || 'MAIN',
-    managerUserId: branch.managerUserId || '',
+    managerUserId: branch.managerUserId === primaryAdminId ? '' : branch.managerUserId || '',
+    managerName: branch.managerUserId === primaryAdminId ? '' : branch.managerName || '',
     active: branch.active !== false,
   }))
   const users = (raw.users ?? empty.users).map((user) => {
-    const isPrimaryAdmin = user.id === primaryAdminId || user.role === 'admin'
-    const branchIds = user.branchIds?.length ? user.branchIds : isPrimaryAdmin ? branches.map((branch) => branch.id) : []
-    const managedBranchIds = user.managedBranchIds?.length ? user.managedBranchIds : isPrimaryAdmin ? branches.map((branch) => branch.id) : []
+    const isPrimaryAdmin = user.id === primaryAdminId
+    const branchIds = isPrimaryAdmin ? [] : user.branchIds?.length ? user.branchIds : []
+    const managedBranchIds = isPrimaryAdmin ? [] : user.managedBranchIds?.length ? user.managedBranchIds : []
     return {
       ...user,
       knownDevices: user.knownDevices ?? [],
       branchIds: Array.from(new Set(branchIds)),
       managedBranchIds: Array.from(new Set(managedBranchIds)),
+      branchAccessExpiresAt: user.branchAccessExpiresAt ?? {},
     }
   })
   return {
@@ -376,6 +394,7 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
     }),
     securityEvents: raw.securityEvents ?? empty.securityEvents,
     requisitions: raw.requisitions ?? empty.requisitions,
+    branchAccessRequests: raw.branchAccessRequests ?? empty.branchAccessRequests,
     auditLogs: raw.auditLogs ?? empty.auditLogs,
     settings: {
       ...empty.settings,
@@ -548,16 +567,27 @@ export function canAdjust(user: User) {
   return user.role === 'admin' || user.role === 'pharmacist'
 }
 
-export function canAdmin(user: User) {
-  return user.role === 'admin'
+export function canAdmin(user: User, primaryAdminId = '') {
+  return user.role === 'admin' && (!primaryAdminId || user.id === primaryAdminId)
 }
 
-export function canManageBranch(user: User, branchId: string) {
-  return canAdmin(user) || user.managedBranchIds.includes(branchId)
+export function getBranchAccessExpiry(user: User, branchId: string) {
+  return user.branchAccessExpiresAt?.[branchId] || ''
 }
 
-export function canWriteBranch(user: User, branchId: string) {
-  return canAdmin(user) || (canWrite(user) && (user.branchIds.includes(branchId) || user.managedBranchIds.includes(branchId)))
+export function hasActiveBranchAssignment(user: User, branchId: string) {
+  const assigned = user.branchIds.includes(branchId) || user.managedBranchIds.includes(branchId)
+  if (!assigned) return false
+  const expiresAt = getBranchAccessExpiry(user, branchId)
+  return !expiresAt || expiresAt >= today()
+}
+
+export function canManageBranch(user: User, branchId: string, primaryAdminId = '') {
+  return canAdmin(user, primaryAdminId) || (user.managedBranchIds.includes(branchId) && hasActiveBranchAssignment(user, branchId))
+}
+
+export function canWriteBranch(user: User, branchId: string, primaryAdminId = '') {
+  return canAdmin(user, primaryAdminId) || (canWrite(user) && hasActiveBranchAssignment(user, branchId))
 }
 
 export function fail(res: HandlerResponse, status: number, message: string) {

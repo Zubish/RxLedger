@@ -14,6 +14,8 @@ import {
   ChevronRight,
   ClipboardList,
   Download,
+  Eye,
+  EyeOff,
   FileText,
   LayoutDashboard,
   Lock,
@@ -84,6 +86,7 @@ type User = {
   status: UserStatus
   branchIds: string[]
   managedBranchIds: string[]
+  branchAccessExpiresAt?: Record<string, string>
   lastChatSeenAt?: string
   knownDevices?: Array<{
     id: string
@@ -250,6 +253,19 @@ type Requisition = {
   note?: string
 }
 
+type BranchAccessRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
+
+type BranchAccessRequest = {
+  id: string
+  userId: string
+  branchId: string
+  status: BranchAccessRequestStatus
+  requestedAt: string
+  updatedAt: string
+  resolvedBy?: string
+  resolvedAt?: string
+}
+
 type AppSettings = {
   softwareName: string
   accountName: string
@@ -273,6 +289,7 @@ type Database = {
   passwordResetRequests: PasswordResetRequest[]
   securityEvents: SecurityEvent[]
   requisitions: Requisition[]
+  branchAccessRequests: BranchAccessRequest[]
   settings: AppSettings
 }
 
@@ -296,6 +313,9 @@ type AppNotification = {
   title: string
   detail: string
   view: View
+  branchId?: string
+  audience?: 'branch' | 'super-admin'
+  requiredPermission?: 'manage-branch'
   createdAt?: string
 }
 
@@ -418,6 +438,7 @@ function createEmptyDatabase(): Database {
     passwordResetRequests: [],
     securityEvents: [],
     requisitions: [],
+    branchAccessRequests: [],
     settings: {
       softwareName: 'RxLedger',
       accountName: 'Pharmacy Account',
@@ -473,23 +494,68 @@ function getPrimaryAdminId(db: Database) {
   return db.settings.primaryAdminId || db.users.find((user) => user.role === 'admin' && user.status === 'active')?.id || ''
 }
 
-function canManageBranch(user: User, branchId: string) {
-  return user.role === 'admin' || user.managedBranchIds.includes(branchId)
+function isSuperAdmin(db: Database, user: User | null | undefined) {
+  return Boolean(user && user.role === 'admin' && user.id === getPrimaryAdminId(db))
 }
 
-function canWriteBranch(user: User, branchId: string) {
-  return user.role === 'admin' || (user.role !== 'viewer' && (user.branchIds.includes(branchId) || user.managedBranchIds.includes(branchId)))
+function getBranchAccessExpiry(user: User, branchId: string) {
+  return user.branchAccessExpiresAt?.[branchId] || ''
 }
 
-function canViewBranch(user: User, branchId: string) {
-  return user.role === 'admin' || user.branchIds.includes(branchId) || user.managedBranchIds.includes(branchId)
+function hasActiveBranchAssignment(user: User, branchId: string) {
+  const assigned = user.branchIds.includes(branchId) || user.managedBranchIds.includes(branchId)
+  if (!assigned) return false
+  const expiresAt = getBranchAccessExpiry(user, branchId)
+  return !expiresAt || expiresAt >= today()
 }
 
-function getUserBranchStatus(user: User, branchId: string) {
-  if (user.role === 'admin') return 'Admin access'
-  if (user.managedBranchIds.includes(branchId)) return 'Manager'
-  if (user.branchIds.includes(branchId)) return 'Assigned'
+function canManageBranch(db: Database, user: User, branchId: string) {
+  return isSuperAdmin(db, user) || (user.managedBranchIds.includes(branchId) && hasActiveBranchAssignment(user, branchId))
+}
+
+function canWriteBranch(db: Database, user: User, branchId: string) {
+  return isSuperAdmin(db, user) || (user.role !== 'viewer' && hasActiveBranchAssignment(user, branchId))
+}
+
+function canViewBranch(db: Database, user: User, branchId: string) {
+  return isSuperAdmin(db, user) || hasActiveBranchAssignment(user, branchId)
+}
+
+function getUserHomeBranch(db: Database, user: User | null | undefined) {
+  const activeBranches = getActiveBranches(db)
+  if (!user) return activeBranches[0] ?? db.branches[0]
+  if (isSuperAdmin(db, user)) return undefined
+  const activeManagedBranchIds = user.managedBranchIds.filter((branchId) => hasActiveBranchAssignment(user, branchId))
+  const activeBranchIds = user.branchIds.filter((branchId) => hasActiveBranchAssignment(user, branchId))
+  const homeId = activeManagedBranchIds[0] || activeBranchIds[0]
+  return activeBranches.find((branch) => branch.id === homeId) ?? activeBranches[0] ?? db.branches[0]
+}
+
+function prioritizeAssignedBranch(branches: Branch[], assignedBranchId?: string) {
+  if (!assignedBranchId) return branches
+  return [...branches].sort((a, b) => {
+    if (a.id === assignedBranchId) return -1
+    if (b.id === assignedBranchId) return 1
+    return a.name.localeCompare(b.name)
+  })
+}
+
+function getUserBranchStatus(db: Database, user: User, branchId: string) {
+  if (isSuperAdmin(db, user)) return 'Super admin'
+  if (user.managedBranchIds.includes(branchId) && hasActiveBranchAssignment(user, branchId)) return 'Manager'
+  if (user.branchIds.includes(branchId) && hasActiveBranchAssignment(user, branchId)) return 'Assigned'
   return 'View only'
+}
+
+function getUserHomeRoleLabel(db: Database, user: User, branchId?: string) {
+  if (isSuperAdmin(db, user)) return 'Super admin'
+  if (branchId && user.managedBranchIds.includes(branchId) && hasActiveBranchAssignment(user, branchId)) return 'Manager'
+  return roleLabels[user.role]
+}
+
+function getOtherAssignedBranch(db: Database, user: User, branchId: string) {
+  const otherId = [...user.managedBranchIds, ...user.branchIds].find((id) => id !== branchId && hasActiveBranchAssignment(user, id))
+  return otherId ? db.branches.find((branch) => branch.id === otherId) : undefined
 }
 
 function findMedicineByScan(db: Database, scan: string) {
@@ -520,19 +586,27 @@ function exportCsv(filename: string, rows: ReportRow[]) {
   URL.revokeObjectURL(url)
 }
 
-function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Map<string, number>, currentUser: User): AppNotification[] {
+function isNotificationVisible(db: Database, currentUser: User, notification: AppNotification, activeBranch?: Branch) {
+  if (notification.audience === 'super-admin') return isSuperAdmin(db, currentUser)
+  if (!notification.branchId) return true
+  if (notification.requiredPermission === 'manage-branch' && !canManageBranch(db, currentUser, notification.branchId)) return false
+  return activeBranch ? notification.branchId === activeBranch.id : true
+}
+
+function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Map<string, number>, currentUser: User, activeBranch?: Branch): AppNotification[] {
   const notifications: AppNotification[] = []
   const lastChatSeen = currentUser.lastChatSeenAt ? new Date(currentUser.lastChatSeenAt).getTime() : 0
   const unreadChat = db.chatMessages.filter((message) => message.userId !== currentUser.id && new Date(message.createdAt).getTime() > lastChatSeen)
   const pendingUsers = db.users.filter((user) => user.status === 'pending')
   const relevantRequisitions = db.requisitions.filter((request) => (
-    currentUser.role === 'admin' ||
+    isSuperAdmin(db, currentUser) ||
     request.requesterUserId === currentUser.id ||
-    canViewBranch(currentUser, request.sourceBranchId) ||
-    canViewBranch(currentUser, request.requestingBranchId)
+    canViewBranch(db, currentUser, request.sourceBranchId) ||
+    canViewBranch(db, currentUser, request.requestingBranchId)
   ))
-  const incomingRequisitions = relevantRequisitions.filter((request) => request.status === 'pending' && (currentUser.role === 'admin' || canViewBranch(currentUser, request.sourceBranchId)))
+  const incomingRequisitions = relevantRequisitions.filter((request) => request.status === 'pending')
   const handledRequisitions = relevantRequisitions.filter((request) => request.requesterUserId === currentUser.id && request.status !== 'pending')
+  const branchAccessRequests = db.branchAccessRequests.filter((request) => request.status === 'pending' && canViewBranch(db, currentUser, request.branchId))
   const scopedMedicineIds = new Set(stockRows.map((row) => row.medicine.id))
   const expired = stockRows.filter((row) => row.quantity > 0 && row.status === 'expired')
   const nearExpiry = stockRows.filter((row) => row.quantity > 0 && row.status === 'near-expiry')
@@ -550,7 +624,7 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
     })
   }
 
-  if (currentUser.role === 'admin') {
+  if (isSuperAdmin(db, currentUser)) {
     pendingUsers.forEach((user) => {
       notifications.push({
         id: `pending-${user.id}`,
@@ -558,19 +632,40 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
         title: `${user.name} is waiting for access`,
         detail: 'Admin should assign the correct role and activate the account.',
         view: 'users',
+        audience: 'super-admin',
         createdAt: user.createdAt,
       })
     })
   }
 
   incomingRequisitions.forEach((request) => {
+    const viewingSourceBranch = activeBranch?.id === request.sourceBranchId
+    const sourceBranch = getBranchName(db, request.sourceBranchId)
+    const requestingBranch = getBranchName(db, request.requestingBranchId)
     notifications.push({
       id: `incoming-requisition-${request.id}`,
       tone: 'info',
-      title: `Medicine request from ${getBranchName(db, request.requestingBranchId)}`,
-      detail: `${request.items.length} item${request.items.length === 1 ? '' : 's'} requested from ${getBranchName(db, request.sourceBranchId)}.`,
+      title: viewingSourceBranch ? `Medicine request from ${requestingBranch}` : `Medicine request to ${sourceBranch}`,
+      detail: viewingSourceBranch
+        ? `${request.items.length} item${request.items.length === 1 ? '' : 's'} requested from this branch.`
+        : `${request.items.length} item${request.items.length === 1 ? '' : 's'} awaiting ${sourceBranch}.`,
       view: 'medicines',
+      branchId: activeBranch?.id === request.requestingBranchId ? request.requestingBranchId : request.sourceBranchId,
       createdAt: request.createdAt,
+    })
+  })
+
+  branchAccessRequests.forEach((request) => {
+    const user = db.users.find((item) => item.id === request.userId)
+    notifications.push({
+      id: `branch-access-${request.id}`,
+      tone: 'info',
+      title: `${user?.name ?? 'Staff member'} requested branch access`,
+      detail: `${getBranchName(db, request.branchId)} access can be granted when the staff member is free.`,
+      view: 'branches',
+      branchId: request.branchId,
+      requiredPermission: 'manage-branch',
+      createdAt: request.requestedAt,
     })
   })
 
@@ -581,6 +676,7 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
       title: `Your requisition was ${request.status}`,
       detail: `${getBranchName(db, request.sourceBranchId)} responded to your request.`,
       view: 'medicines',
+      branchId: request.requestingBranchId,
       createdAt: request.updatedAt,
     })
   })
@@ -590,8 +686,9 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
       id: `expired-${row.batch.id}`,
       tone: 'danger',
       title: `${medicineOptionLabel(row.medicine)} has expired stock`,
-      detail: `${row.batch.batchNumber} has ${number.format(row.quantity)} ${row.medicine.unit} in ${row.batch.location}.`,
+      detail: `${getBranchName(db, row.batch.branchId)} / ${row.batch.batchNumber} has ${number.format(row.quantity)} ${row.medicine.unit} in ${row.batch.location}.`,
       view: 'reports',
+      branchId: row.batch.branchId,
     })
   })
 
@@ -600,8 +697,9 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
       id: `near-${row.batch.id}`,
       tone: 'warning',
       title: `${medicineOptionLabel(row.medicine)} expires in ${row.daysToExpiry} days`,
-      detail: `${row.batch.batchNumber}, ${number.format(row.quantity)} ${row.medicine.unit} available.`,
+      detail: `${getBranchName(db, row.batch.branchId)} / ${row.batch.batchNumber}, ${number.format(row.quantity)} ${row.medicine.unit} available.`,
       view: 'reports',
+      branchId: row.batch.branchId,
     })
   })
 
@@ -610,8 +708,9 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
       id: `out-${medicine.id}`,
       tone: 'danger',
       title: `${medicineOptionLabel(medicine)} is out of stock`,
-      detail: `Reorder level is ${number.format(medicine.reorderLevel)} ${medicine.unit}.`,
+      detail: `${activeBranch?.name ?? 'Current branch'} / reorder level is ${number.format(medicine.reorderLevel)} ${medicine.unit}.`,
       view: 'medicines',
+      branchId: activeBranch?.id,
     })
   })
 
@@ -622,12 +721,15 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
         id: `low-${medicine.id}`,
         tone: 'info',
         title: `${medicineOptionLabel(medicine)} is low on stock`,
-        detail: `Available: ${number.format(stockTotals.get(medicine.id) ?? 0)}. Reorder level: ${number.format(medicine.reorderLevel)}.`,
+        detail: `${activeBranch?.name ?? 'Current branch'} / available: ${number.format(stockTotals.get(medicine.id) ?? 0)}. Reorder level: ${number.format(medicine.reorderLevel)}.`,
         view: 'medicines',
+        branchId: activeBranch?.id,
       })
     })
 
-  return notifications.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
+  return notifications
+    .filter((notification) => isNotificationVisible(db, currentUser, notification, activeBranch))
+    .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
 }
 
 type ExecuteAction = (action: string, payload: Record<string, unknown>, successMessage?: string) => Promise<void>
@@ -638,6 +740,7 @@ function App() {
   const [activeView, setActiveView] = useState<View>('dashboard')
   const [notice, setNotice] = useState('')
   const [loading, setLoading] = useState(true)
+  const [signingIn, setSigningIn] = useState(false)
   const [connectionError, setConnectionError] = useState('')
   const [hasUsers, setHasUsers] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -653,20 +756,23 @@ function App() {
 
   const currentUser = db.users.find((user) => user.id === sessionUserId && user.status === 'active') ?? null
   const activeBranches = useMemo(() => getActiveBranches(db), [db])
-  const activeBranch = activeBranches.find((branch) => branch.id === activeBranchId) ?? activeBranches[0] ?? db.branches[0]
+  const assignedBranch = useMemo(() => getUserHomeBranch(db, currentUser), [currentUser, db])
+  const branchMenuBranches = useMemo(() => prioritizeAssignedBranch(activeBranches, assignedBranch?.id), [activeBranches, assignedBranch?.id])
+  const activeBranch = activeBranches.find((branch) => branch.id === activeBranchId) ?? assignedBranch ?? activeBranches[0] ?? db.branches[0]
   const stockRows = useMemo(() => getStockRows(db), [db])
   const activeBranchStockRows = useMemo(() => activeBranch ? stockRows.filter((row) => row.batch.branchId === activeBranch.id) : stockRows, [activeBranch, stockRows])
-  const permittedStockRows = useMemo(() => currentUser ? stockRows.filter((row) => canViewBranch(currentUser, row.batch.branchId)) : [], [currentUser, stockRows])
-  const permittedStockTotals = useMemo(() => aggregateMedicineStock(permittedStockRows), [permittedStockRows])
+  const permittedStockRows = useMemo(() => currentUser ? stockRows.filter((row) => canViewBranch(db, currentUser, row.batch.branchId)) : [], [currentUser, db, stockRows])
   const canWrite = currentUser ? currentUser.role !== 'viewer' : false
   const canAdjust = currentUser ? currentUser.role === 'admin' || currentUser.role === 'pharmacist' : false
-  const canAdmin = currentUser?.role === 'admin'
+  const canAdmin = isSuperAdmin(db, currentUser)
   const dashboardStockRows = useMemo(() => canAdmin ? stockRows : activeBranchStockRows, [activeBranchStockRows, canAdmin, stockRows])
   const dashboardStockTotals = useMemo(() => aggregateMedicineStock(dashboardStockRows), [dashboardStockRows])
   const medicinePageStockRows = activeBranchStockRows
   const medicinePageStockTotals = useMemo(() => aggregateMedicineStock(medicinePageStockRows), [medicinePageStockRows])
-  const canWriteActiveBranch = currentUser && activeBranch ? canWriteBranch(currentUser, activeBranch.id) : false
-  const notifications = useMemo(() => currentUser ? buildNotifications(db, permittedStockRows, permittedStockTotals, currentUser) : [], [currentUser, db, permittedStockRows, permittedStockTotals])
+  const notificationStockRows = activeBranch ? activeBranchStockRows : permittedStockRows
+  const notificationStockTotals = useMemo(() => aggregateMedicineStock(notificationStockRows), [notificationStockRows])
+  const canWriteActiveBranch = currentUser && activeBranch ? canWriteBranch(db, currentUser, activeBranch.id) : false
+  const notifications = useMemo(() => currentUser ? buildNotifications(db, notificationStockRows, notificationStockTotals, currentUser, activeBranch) : [], [activeBranch, currentUser, db, notificationStockRows, notificationStockTotals])
 
   useEffect(() => {
     async function load() {
@@ -682,6 +788,7 @@ function App() {
           const state = await loadState()
           setDb(state.db)
           setSessionUserId(state.currentUser.id)
+          setActiveBranchId(getUserHomeBranch(state.db, state.currentUser)?.id ?? state.db.branches.find((branch) => branch.active)?.id ?? 'main')
         }
       } catch (error) {
         clearStoredToken()
@@ -729,11 +836,17 @@ function App() {
   }
 
   async function createFirstAdmin(input: SetupInput) {
-    const result = await setupWorkspace(input)
-    setDb(result.db)
-    setSessionUserId(result.currentUser.id)
-    setHasUsers(true)
-    setActiveView('dashboard')
+    setSigningIn(true)
+    try {
+      const result = await setupWorkspace(input)
+      setDb(result.db)
+      setSessionUserId(result.currentUser.id)
+      setHasUsers(true)
+      setActiveBranchId(getUserHomeBranch(result.db, result.currentUser)?.id ?? result.db.branches.find((branch) => branch.active)?.id ?? 'main')
+      setActiveView('dashboard')
+    } finally {
+      setSigningIn(false)
+    }
   }
 
   async function registerUser(input: RegisterInput) {
@@ -754,11 +867,17 @@ function App() {
   }
 
   async function signIn(email: string, password: string) {
-    const result = await apiLogin(email, password)
-    setDb(result.db)
-    setSessionUserId(result.currentUser.id)
-    setConnectionError('')
-    setActiveView('dashboard')
+    setSigningIn(true)
+    try {
+      const result = await apiLogin(email, password)
+      setDb(result.db)
+      setSessionUserId(result.currentUser.id)
+      setConnectionError('')
+      setActiveBranchId(getUserHomeBranch(result.db, result.currentUser)?.id ?? result.db.branches.find((branch) => branch.active)?.id ?? 'main')
+      setActiveView('dashboard')
+    } finally {
+      setSigningIn(false)
+    }
   }
 
   async function signOut() {
@@ -867,7 +986,7 @@ function App() {
     return () => window.clearTimeout(branchSwitchTimerRef.current)
   }, [])
 
-  if (loading) return <LoadingScreen />
+  if (loading || signingIn) return <LoadingScreen />
 
   if (!currentUser) {
     return (
@@ -932,7 +1051,8 @@ function App() {
           <div className="user-panel">
             <div>
               <strong>{currentUser.name}</strong>
-              <span>{roleLabels[currentUser.role]}</span>
+              <span>{canAdmin ? 'Global access' : assignedBranch?.name ?? 'No assigned branch'}</span>
+              <span>{getUserHomeRoleLabel(db, currentUser, assignedBranch?.id)}</span>
             </div>
             <button className="icon-button" type="button" onClick={() => { void signOut() }} title="Log out">
               <LogOut size={18} />
@@ -976,18 +1096,22 @@ function App() {
               <div className="branch-switcher">
                 <button className="branch-switcher-trigger" type="button" onClick={() => setBranchMenuOpen((open) => !open)} aria-expanded={branchMenuOpen}>
                   <Building2 size={16} />
-                  <span>{activeBranch.name}</span>
+                  <span className="branch-trigger-text">
+                    <strong>{activeBranch.name}</strong>
+                    <small>{canAdmin ? 'Global super admin' : assignedBranch?.id === activeBranch.id ? 'Assigned branch' : `Assigned: ${assignedBranch?.name ?? 'None'}`}</small>
+                  </span>
                 </button>
                 {branchMenuOpen && (
                   <div className="branch-menu">
-                    {activeBranches.map((branch) => (
+                    {branchMenuBranches.map((branch) => (
                       <button
                         className={branch.id === activeBranch.id ? 'active' : ''}
                         key={branch.id}
                         type="button"
                         onClick={() => switchActiveBranch(branch.id)}
                       >
-                        {branch.name}
+                        <span>{branch.name}</span>
+                        {!canAdmin && branch.id === assignedBranch?.id && <b><CheckCircle2 size={13} /> Assigned</b>}
                       </button>
                     ))}
                   </div>
@@ -1017,8 +1141,8 @@ function App() {
               <span>Loading {branchSwitchLabel} workspace...</span>
             </div>
           )}
-          {activeView === 'dashboard' && <Dashboard db={db} currentUser={currentUser} stockRows={dashboardStockRows} stockTotals={dashboardStockTotals} canAdmin={canAdmin} activeBranch={activeBranch} setActiveView={setActiveView} />}
-          {activeView === 'medicines' && <Medicines db={db} currentUser={currentUser} stockRows={medicinePageStockRows} stockTotals={medicinePageStockTotals} activeBranch={activeBranch} canWrite={canWrite} canFulfillActiveBranch={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
+          {activeView === 'dashboard' && <Dashboard db={db} currentUser={currentUser} stockRows={dashboardStockRows} alertStockRows={notificationStockRows} alertStockTotals={notificationStockTotals} canAdmin={canAdmin} activeBranch={activeBranch} assignedBranch={assignedBranch} setActiveView={setActiveView} />}
+          {activeView === 'medicines' && <Medicines db={db} currentUser={currentUser} stockRows={medicinePageStockRows} stockTotals={medicinePageStockTotals} activeBranch={activeBranch} canWrite={Boolean(canWriteActiveBranch)} canFulfillActiveBranch={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
           {activeView === 'suppliers' && <Suppliers db={db} canWrite={canWrite} executeAction={executeAction} />}
           {activeView === 'receive' && activeBranch && <ReceiveStock db={db} activeBranch={activeBranch} canWrite={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
           {activeView === 'issue' && activeBranch && <IssueStock db={db} activeBranch={activeBranch} stockRows={activeBranchStockRows} canWrite={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
@@ -1077,6 +1201,44 @@ function LoadingScreen() {
         </div>
       </section>
     </main>
+  )
+}
+
+function PasswordInput({
+  label,
+  value,
+  onChange,
+  visible,
+  onToggle,
+  autoComplete,
+  minLength,
+  full = false,
+  required = true,
+  showToggle = true,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  visible: boolean
+  onToggle?: () => void
+  autoComplete?: string
+  minLength?: number
+  full?: boolean
+  required?: boolean
+  showToggle?: boolean
+}) {
+  return (
+    <label className={full ? 'password-field full' : 'password-field'}>
+      {label}
+      <span className="password-control">
+        <input required={required} type={visible ? 'text' : 'password'} minLength={minLength} value={value} onChange={(event) => onChange(event.target.value)} autoComplete={autoComplete} />
+        {showToggle && onToggle && (
+          <button type="button" onClick={onToggle} aria-label={visible ? 'Hide password' : 'Show password'} title={visible ? 'Hide password' : 'Show password'}>
+            {visible ? <EyeOff size={17} /> : <Eye size={17} />}
+          </button>
+        )}
+      </span>
+    </label>
   )
 }
 
@@ -1146,12 +1308,18 @@ function SetupForm({ createFirstAdmin, setError }: { createFirstAdmin: (input: S
     phone: '',
     password: '',
   })
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
 
   async function submit(event: FormEvent) {
     event.preventDefault()
     setError('')
     if (form.password.length < 8) {
       setError('Password must be at least 8 characters.')
+      return
+    }
+    if (form.password !== confirmPassword) {
+      setError('Passwords do not match.')
       return
     }
     await createFirstAdmin(form)
@@ -1164,7 +1332,8 @@ function SetupForm({ createFirstAdmin, setError }: { createFirstAdmin: (input: S
       <label className="full">Permanent admin full name<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
       <label>Email<input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
       <label>Phone<input required value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label>
-      <label className="full">Password<input required type="password" minLength={8} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /></label>
+      <PasswordInput label="New password" value={form.password} onChange={(password) => setForm({ ...form, password })} visible={showPassword} onToggle={() => setShowPassword((visible) => !visible)} autoComplete="new-password" minLength={8} full />
+      <PasswordInput label="Confirm password" value={confirmPassword} onChange={setConfirmPassword} visible={showPassword} autoComplete="new-password" minLength={8} full showToggle={false} />
       <div className="form-actions full">
         <button className="primary-button" type="submit">
           <ShieldCheck size={17} />
@@ -1186,6 +1355,7 @@ function LoginForm({
 }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -1201,7 +1371,7 @@ function LoginForm({
   return (
     <form className="stack" onSubmit={submit}>
       <label>Email<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" /></label>
-      <label>Password<input required type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" /></label>
+      <PasswordInput label="Password" value={password} onChange={setPassword} visible={showPassword} onToggle={() => setShowPassword((visible) => !visible)} autoComplete="current-password" />
       <button className="primary-button" type="submit">
         <Lock size={17} />
         Log in
@@ -1220,6 +1390,8 @@ function RegisterForm({
   setSuccess: (message: string) => void
 }) {
   const [form, setForm] = useState<RegisterInput>({ name: '', email: '', phone: '', password: '' })
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -1229,9 +1401,14 @@ function RegisterForm({
       setError('Password must be at least 8 characters.')
       return
     }
+    if (form.password !== confirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
     try {
       await registerUser(form)
       setForm({ name: '', email: '', phone: '', password: '' })
+      setConfirmPassword('')
       setSuccess('Access request submitted. An admin must approve and assign your role before you can sign in.')
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Unable to submit access request.')
@@ -1243,7 +1420,8 @@ function RegisterForm({
       <label className="full">Full name<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
       <label>Email<input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
       <label>Phone<input required value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label>
-      <label className="full">Password<input required type="password" minLength={8} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /></label>
+      <PasswordInput label="New password" value={form.password} onChange={(password) => setForm({ ...form, password })} visible={showPassword} onToggle={() => setShowPassword((visible) => !visible)} autoComplete="new-password" minLength={8} full />
+      <PasswordInput label="Confirm password" value={confirmPassword} onChange={setConfirmPassword} visible={showPassword} autoComplete="new-password" minLength={8} full showToggle={false} />
       <div className="form-actions full">
         <button className="primary-button" type="submit">
           <UserPlus size={17} />
@@ -1270,6 +1448,8 @@ function PasswordResetForm({
   const [emailConfigured, setEmailConfigured] = useState(false)
   const [code, setCode] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
 
   async function requestCode(event: FormEvent) {
     event.preventDefault()
@@ -1293,11 +1473,16 @@ function PasswordResetForm({
       setError('Password must be at least 8 characters.')
       return
     }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
     try {
       await completePasswordReset({ email: form.email, code, password })
       setForm({ email: '', phone: '' })
       setCode('')
       setPassword('')
+      setConfirmPassword('')
       setCodeRequested(false)
       setEmailConfigured(false)
       setSuccess('Password changed. You can sign in with the new password now.')
@@ -1313,13 +1498,14 @@ function PasswordResetForm({
       {codeRequested && (
         <>
           <label>Reset code<input required inputMode="numeric" value={code} onChange={(event) => setCode(event.target.value)} placeholder="6-digit code" autoFocus /></label>
-          <label>New password<input required type="password" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" /></label>
+          <PasswordInput label="New password" value={password} onChange={setPassword} visible={showPassword} onToggle={() => setShowPassword((visible) => !visible)} autoComplete="new-password" minLength={8} />
+          <PasswordInput label="Confirm password" value={confirmPassword} onChange={setConfirmPassword} visible={showPassword} autoComplete="new-password" minLength={8} showToggle={false} />
           {!emailConfigured && <div className="form-note full">Email is not active yet, so no real reset code was delivered. This screen is ready for testing once Resend keys are added.</div>}
         </>
       )}
       <div className="form-actions full">
         {codeRequested && (
-          <button className="ghost-button" type="button" onClick={() => { setCodeRequested(false); setCode(''); setPassword(''); setError(''); setSuccess('') }}>
+          <button className="ghost-button" type="button" onClick={() => { setCodeRequested(false); setCode(''); setPassword(''); setConfirmPassword(''); setError(''); setSuccess('') }}>
             Start again
           </button>
         )}
@@ -1336,29 +1522,34 @@ function Dashboard({
   db,
   currentUser,
   stockRows,
-  stockTotals,
+  alertStockRows,
+  alertStockTotals,
   canAdmin,
   activeBranch,
+  assignedBranch,
   setActiveView,
 }: {
   db: Database
   currentUser: User
   stockRows: StockRow[]
-  stockTotals: Map<string, number>
+  alertStockRows: StockRow[]
+  alertStockTotals: Map<string, number>
   canAdmin: boolean
   activeBranch?: Branch
+  assignedBranch?: Branch
   setActiveView: (view: View) => void
 }) {
   const scopedMedicineIds = new Set(stockRows.map((row) => row.medicine.id))
-  const lowStock = db.medicines.filter((medicine) => scopedMedicineIds.has(medicine.id) && (stockTotals.get(medicine.id) ?? 0) > 0 && (stockTotals.get(medicine.id) ?? 0) <= medicine.reorderLevel)
-  const nearExpiry = stockRows.filter((row) => row.quantity > 0 && row.status === 'near-expiry')
-  const expired = stockRows.filter((row) => row.quantity > 0 && row.status === 'expired')
+  const alertMedicineIds = new Set(alertStockRows.map((row) => row.medicine.id))
+  const lowStock = db.medicines.filter((medicine) => alertMedicineIds.has(medicine.id) && (alertStockTotals.get(medicine.id) ?? 0) > 0 && (alertStockTotals.get(medicine.id) ?? 0) <= medicine.reorderLevel)
+  const nearExpiry = alertStockRows.filter((row) => row.quantity > 0 && row.status === 'near-expiry')
+  const expired = alertStockRows.filter((row) => row.quantity > 0 && row.status === 'expired')
   const costValue = stockRows.reduce((sum, row) => sum + Math.max(0, row.costValue), 0)
   const activeSkuCount = canAdmin ? db.medicines.filter((medicine) => medicine.active).length : scopedMedicineIds.size
-  const permittedBatchIds = new Set(stockRows.map((row) => row.batch.id))
+  const permittedBatchIds = new Set(alertStockRows.map((row) => row.batch.id))
   const todayMovements = db.ledger.filter((entry) => entry.createdAt.slice(0, 10) === today() && permittedBatchIds.has(entry.batchId)).length
   const pendingUsers = canAdmin ? db.users.filter((user) => user.status === 'pending').length : 0
-  const activeBranches = canAdmin ? getActiveBranches(db).filter((branch) => canViewBranch(currentUser, branch.id)) : getActiveBranches(db).filter((branch) => branch.id === activeBranch?.id)
+  const activeBranches = canAdmin ? getActiveBranches(db).filter((branch) => canViewBranch(db, currentUser, branch.id)) : getActiveBranches(db).filter((branch) => branch.id === activeBranch?.id)
   const branchSummaries = activeBranches.map((branch) => {
     const rows = stockRows.filter((row) => row.batch.branchId === branch.id && row.quantity > 0)
     const branchStockValue = rows.reduce((sum, row) => sum + Math.max(0, row.costValue), 0)
@@ -1378,6 +1569,17 @@ function Dashboard({
         <Metric icon={XCircle} label="Expired batches" value={compactNumber(expired.length)} tone={expired.length ? 'danger' : 'good'} />
         <Metric icon={Activity} label="Movements today" value={compactNumber(todayMovements)} />
       </section>
+
+      {assignedBranch && (
+        <section className="content-section assignment-strip">
+          <CheckCircle2 size={18} />
+          <div>
+            <strong>{assignedBranch.name}</strong>
+            <span>{getUserHomeRoleLabel(db, currentUser, assignedBranch.id)} / assigned branch</span>
+          </div>
+          {activeBranch && activeBranch.id !== assignedBranch.id && <b className="pill warning">Currently viewing {activeBranch.code || activeBranch.name}</b>}
+        </section>
+      )}
 
       <section className="content-section">
         <div className="section-heading">
@@ -1406,7 +1608,7 @@ function Dashboard({
         <div className="section-heading">
           <div>
             <h2>Operational Alerts</h2>
-            <p>Low stock, expiry risk, expired inventory, and access approvals.</p>
+            <p>{activeBranch ? `${activeBranch.name} alerts based on current branch scope.` : 'Low stock, expiry risk, expired inventory, and access approvals.'}</p>
           </div>
           <button className="ghost-button" type="button" onClick={() => setActiveView('reports')}>
             <FileText size={16} />
@@ -1424,7 +1626,7 @@ function Dashboard({
             <AlertItem key={row.batch.id} tone="warning" title={<MedicineIdentity medicine={row.medicine} />} detail={`Batch ${row.batch.batchNumber} expires in ${row.daysToExpiry} days. ${number.format(row.quantity)} ${row.medicine.unit} available`} />
           ))}
           {lowStock.map((medicine) => (
-            <AlertItem key={medicine.id} tone="info" title={<MedicineIdentity medicine={medicine} />} detail={`At or below reorder level. Available: ${number.format(stockTotals.get(medicine.id) ?? 0)}. Reorder level: ${number.format(medicine.reorderLevel)}`} />
+            <AlertItem key={medicine.id} tone="info" title={<MedicineIdentity medicine={medicine} />} detail={`At or below reorder level. Available: ${number.format(alertStockTotals.get(medicine.id) ?? 0)}. Reorder level: ${number.format(medicine.reorderLevel)}`} />
           ))}
           {!pendingUsers && !expired.length && !nearExpiry.length && !lowStock.length && (
             <AlertItem tone="good" title="No active inventory alerts" detail="Stock levels, expiry windows, and access approvals are currently clear." />
@@ -1595,7 +1797,7 @@ function Medicines({
     const text = `${medicine.sku} ${medicine.brandName} ${medicine.genericName} ${medicine.form} ${medicine.strength} ${medicine.category} ${medicine.nafdacNumber} ${medicine.barcodes.join(' ')}`.toLowerCase()
     return text.includes(query.toLowerCase())
   })
-  const requestableBranches = getActiveBranches(db).filter((branch) => branch.id !== activeBranch?.id && (currentUser.role === 'admin' || currentUser.branchIds.includes(branch.id) || currentUser.managedBranchIds.includes(branch.id)))
+  const requestableBranches = getActiveBranches(db).filter((branch) => branch.id !== activeBranch?.id && (isSuperAdmin(db, currentUser) || currentUser.branchIds.includes(branch.id) || currentUser.managedBranchIds.includes(branch.id)))
   const requestingBranch = requestableBranches[0]
   const requestMedicine = db.medicines.find((medicine) => medicine.id === requestMedicineId)
   const requestBatches = stockRows.filter((row) => row.medicine.id === requestMedicineId && row.quantity > 0 && row.daysToExpiry >= 0).sort((a, b) => a.batch.expiryDate.localeCompare(b.batch.expiryDate))
@@ -1606,11 +1808,11 @@ function Medicines({
     return { ...item, medicine, row }
   })
   const visibleRequisitions = db.requisitions.filter((request) => {
-    const involved = currentUser.role === 'admin' || request.requesterUserId === currentUser.id || canViewBranch(currentUser, request.sourceBranchId) || canViewBranch(currentUser, request.requestingBranchId)
+    const involved = isSuperAdmin(db, currentUser) || request.requesterUserId === currentUser.id || canViewBranch(db, currentUser, request.sourceBranchId) || canViewBranch(db, currentUser, request.requestingBranchId)
     const dateMatches = !historyDate || request.createdAt.slice(0, 10) === historyDate
     return involved && dateMatches
   })
-  const incomingRequisitions = db.requisitions.filter((request) => request.status === 'pending' && activeBranch && request.sourceBranchId === activeBranch.id && (currentUser.role === 'admin' || canViewBranch(currentUser, request.sourceBranchId)))
+  const incomingRequisitions = db.requisitions.filter((request) => request.status === 'pending' && activeBranch && request.sourceBranchId === activeBranch.id && (isSuperAdmin(db, currentUser) || canViewBranch(db, currentUser, request.sourceBranchId)))
 
   function openRequestModal(medicineId: string) {
     setRequestMedicineId(medicineId)
@@ -2739,7 +2941,10 @@ function UserManagement({ db, currentUser, executeAction, flash }: { db: Databas
                     </select>
                   </td>
                   <td>
-                    <span>{user.role === 'admin' ? 'All branches' : db.branches.filter((branch) => user.branchIds.includes(branch.id) || user.managedBranchIds.includes(branch.id)).map((branch) => branch.name).join(', ') || 'View only everywhere'}</span>
+                    <span>{isSuperAdmin(db, user) ? 'All branches' : db.branches.filter((branch) => hasActiveBranchAssignment(user, branch.id)).map((branch) => {
+                      const expiresAt = getBranchAccessExpiry(user, branch.id)
+                      return `${branch.name}${expiresAt ? ` until ${expiresAt}` : ''}`
+                    }).join(', ') || 'View only everywhere'}</span>
                   </td>
                   <td><span className={`pill ${user.status}`}>{statusLabels[user.status]}</span></td>
                   <td>{new Date(user.createdAt).toLocaleDateString()}</td>
@@ -2819,9 +3024,16 @@ function BranchesView({
   })
   const [form, setForm] = useState<Branch>(createBlank)
   const selectedBranch = db.branches.find((branch) => branch.id === activeBranchId) ?? db.branches[0]
-  const canManageSelected = selectedBranch ? canManageBranch(currentUser, selectedBranch.id) : false
-  const assignableUsers = db.users.filter((user) => user.status === 'active' && user.role !== 'admin')
-  const managerOptions = db.users.filter((user) => user.status === 'active' && user.role !== 'viewer')
+  const primaryAdminId = getPrimaryAdminId(db)
+  const superAdmin = isSuperAdmin(db, currentUser)
+  const canManageSelected = selectedBranch ? canManageBranch(db, currentUser, selectedBranch.id) : false
+  const assignableUsers = useMemo(() => db.users.filter((user) => user.status === 'active' && user.id !== primaryAdminId), [db.users, primaryAdminId])
+  const managerOptions = useMemo(() => db.users.filter((user) => user.status === 'active' && user.role !== 'viewer' && user.id !== primaryAdminId), [db.users, primaryAdminId])
+  const [accessExpiryByUser, setAccessExpiryByUser] = useState<Record<string, string>>({})
+  const currentUserHasSelectedAccess = selectedBranch ? hasActiveBranchAssignment(currentUser, selectedBranch.id) : false
+  const currentUserPendingAccessRequest = selectedBranch
+    ? db.branchAccessRequests.find((request) => request.userId === currentUser.id && request.branchId === selectedBranch.id && request.status === 'pending')
+    : undefined
 
   function edit(branch: Branch) {
     setForm(branch)
@@ -2836,7 +3048,7 @@ function BranchesView({
   function submit(event: FormEvent) {
     event.preventDefault()
     if (!canManageSelected && form.id) return
-    if (form.id && form.id !== selectedBranch?.id && currentUser.role !== 'admin') return
+    if (form.id && form.id !== selectedBranch?.id && !superAdmin) return
     const record: Branch = {
       ...form,
       id: form.id || id('br'),
@@ -2849,11 +3061,19 @@ function BranchesView({
 
   function updateBranchAccess(user: User, canAccess: boolean) {
     if (!selectedBranch) return
+    const draftKey = `${selectedBranch.id}:${user.id}`
+    const expiresAt = accessExpiryByUser[draftKey] ?? getBranchAccessExpiry(user, selectedBranch.id)
     void executeAction('updateBranchAccess', {
       userId: user.id,
       branchId: selectedBranch.id,
       canAccess,
+      expiresAt: canAccess ? expiresAt : '',
     }, 'Branch access updated')
+  }
+
+  function requestBranchAccess() {
+    if (!selectedBranch) return
+    void executeAction('requestBranchAccess', { branchId: selectedBranch.id }, 'Branch access request sent')
   }
 
   return (
@@ -2871,14 +3091,14 @@ function BranchesView({
               <Building2 size={19} />
               <div>
                 <strong>{branch.name}</strong>
-                <span>{branch.code || 'No code'} / {branch.active ? 'Active' : 'Inactive'} / {getUserBranchStatus(currentUser, branch.id)}</span>
+                <span>{branch.code || 'No code'} / {branch.active ? 'Active' : 'Inactive'} / {getUserBranchStatus(db, currentUser, branch.id)}</span>
                 <span>{db.users.find((user) => user.id === branch.managerUserId)?.name || branch.managerName || 'No manager'} / {branch.phone || 'No phone'}</span>
                 <span>{branch.address || 'No address recorded'}</span>
               </div>
               <button className="ghost-button" type="button" onClick={() => switchBranch(branch)}>
                 Use
               </button>
-              <button className="icon-button" type="button" onClick={() => edit(branch)} disabled={!canManageBranch(currentUser, branch.id)} title="Edit branch">
+              <button className="icon-button" type="button" onClick={() => edit(branch)} disabled={!canManageBranch(db, currentUser, branch.id)} title="Edit branch">
                 <ClipboardList size={16} />
               </button>
             </article>
@@ -2895,16 +3115,16 @@ function BranchesView({
         </div>
         {!canManageSelected && form.id && <div className="form-error">You can view {form.name}, but only its manager or an admin can edit it.</div>}
         <form className="form-grid" onSubmit={submit}>
-          <label className="full">Branch/site name<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} disabled={form.id ? !canManageSelected : currentUser.role !== 'admin'} /></label>
-          <label>Code<input value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} placeholder="LOS-01" disabled={form.id ? !canManageSelected : currentUser.role !== 'admin'} /></label>
-          <label>Phone<input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} disabled={form.id ? !canManageSelected : currentUser.role !== 'admin'} /></label>
-          <label className="full">Manager<select value={form.managerUserId || ''} onChange={(event) => setForm({ ...form, managerUserId: event.target.value, managerName: db.users.find((user) => user.id === event.target.value)?.name ?? form.managerName })} disabled={currentUser.role !== 'admin'}><option value="">No assigned manager</option>{managerOptions.map((user) => <option key={user.id} value={user.id}>{user.name} / {roleLabels[user.role]}</option>)}</select></label>
-          <label className="full">Manager/contact person<input value={form.managerName} onChange={(event) => setForm({ ...form, managerName: event.target.value })} disabled={form.id ? !canManageSelected : currentUser.role !== 'admin'} /></label>
-          <label className="full">Address<textarea value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} disabled={form.id ? !canManageSelected : currentUser.role !== 'admin'} /></label>
-          <label className="checkbox-row full"><input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} disabled={currentUser.role !== 'admin' || form.id === 'main'} /> Active branch</label>
+          <label className="full">Branch/site name<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} disabled={form.id ? !canManageSelected : !superAdmin} /></label>
+          <label>Code<input value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} placeholder="LOS-01" disabled={form.id ? !canManageSelected : !superAdmin} /></label>
+          <label>Phone<input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} disabled={form.id ? !canManageSelected : !superAdmin} /></label>
+          <label className="full">Manager<select value={form.managerUserId || ''} onChange={(event) => setForm({ ...form, managerUserId: event.target.value, managerName: db.users.find((user) => user.id === event.target.value)?.name ?? form.managerName })} disabled={!superAdmin}><option value="">No assigned manager</option>{managerOptions.map((user) => <option key={user.id} value={user.id}>{user.name} / {roleLabels[user.role]}</option>)}</select></label>
+          <label className="full">Manager/contact person<input value={form.managerName} onChange={(event) => setForm({ ...form, managerName: event.target.value })} disabled={form.id ? !canManageSelected : !superAdmin} /></label>
+          <label className="full">Address<textarea value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} disabled={form.id ? !canManageSelected : !superAdmin} /></label>
+          <label className="checkbox-row full"><input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} disabled={!superAdmin || form.id === 'main'} /> Active branch</label>
           <div className="form-actions full">
             <button className="ghost-button" type="button" onClick={() => setForm(createBlank())}>Clear</button>
-            <button className="primary-button" type="submit" disabled={form.id ? !canManageSelected : currentUser.role !== 'admin'}>
+            <button className="primary-button" type="submit" disabled={form.id ? !canManageSelected : !superAdmin}>
               <Building2 size={17} />
               Save branch
             </button>
@@ -2916,20 +3136,50 @@ function BranchesView({
             <div className="section-heading">
               <div>
                 <h2>{selectedBranch.name} Staff Access</h2>
-                <p>Users without access can view this branch only. Assigned users can work here according to their role.</p>
+                <p>Super admin can assign managers and override transfers. Branch managers can grant access to free staff for their own branch.</p>
               </div>
               <span className={canManageSelected ? 'pill active' : 'pill muted'}>{canManageSelected ? 'Can authorize' : 'View only'}</span>
             </div>
+            {!canManageSelected && !currentUserHasSelectedAccess && currentUser.id !== primaryAdminId && (
+              <div className="access-request-box">
+                <div>
+                  <strong>Need to work in this branch?</strong>
+                  <span>Request access from the branch manager.</span>
+                </div>
+                <button className="ghost-button" type="button" onClick={requestBranchAccess} disabled={Boolean(currentUserPendingAccessRequest)}>
+                  <Send size={16} />
+                  {currentUserPendingAccessRequest ? 'Request sent' : 'Request access'}
+                </button>
+              </div>
+            )}
             <div className="access-list">
               {assignableUsers.map((user) => {
-                const hasAccess = user.branchIds.includes(selectedBranch.id) || user.managedBranchIds.includes(selectedBranch.id)
-                const isManager = user.managedBranchIds.includes(selectedBranch.id)
+                const hasAccess = hasActiveBranchAssignment(user, selectedBranch.id)
+                const isManager = user.managedBranchIds.includes(selectedBranch.id) && hasActiveBranchAssignment(user, selectedBranch.id)
+                const otherAssignedBranch = getOtherAssignedBranch(db, user, selectedBranch.id)
+                const waitingForRelease = Boolean(otherAssignedBranch && !hasAccess && !superAdmin)
                 return (
-                  <label className="access-row" key={user.id}>
-                    <input type="checkbox" checked={hasAccess} onChange={(event) => updateBranchAccess(user, event.target.checked)} disabled={!canManageSelected || isManager} />
-                    <span><strong>{user.name}</strong>{user.email}</span>
-                    <b className={isManager ? 'pill active' : hasAccess ? 'pill good' : 'pill muted'}>{isManager ? 'Manager' : hasAccess ? roleLabels[user.role] : 'View only'}</b>
-                  </label>
+                  <article className="access-row" key={user.id}>
+                    <input type="checkbox" checked={hasAccess} onChange={(event) => updateBranchAccess(user, event.target.checked)} disabled={!canManageSelected || isManager || waitingForRelease} />
+                    <span>
+                      <strong>{user.name}</strong>
+                      {user.email}
+                    </span>
+                    <div className="access-row-controls">
+                      <b className={isManager ? 'pill active' : hasAccess ? 'pill good' : 'pill muted'}>{isManager ? 'Manager' : hasAccess ? roleLabels[user.role] : 'View only'}</b>
+                      {canManageSelected && !isManager && (
+                        <label className="access-expiry">
+                          Until
+                          <input type="date" value={accessExpiryByUser[`${selectedBranch.id}:${user.id}`] ?? getBranchAccessExpiry(user, selectedBranch.id)} onChange={(event) => setAccessExpiryByUser((current) => ({ ...current, [`${selectedBranch.id}:${user.id}`]: event.target.value }))} disabled={waitingForRelease} />
+                        </label>
+                      )}
+                      {canManageSelected && hasAccess && !isManager && (
+                        <button className="icon-button" type="button" onClick={() => updateBranchAccess(user, true)} title="Save access timeframe">
+                          <CheckCircle2 size={16} />
+                        </button>
+                      )}
+                    </div>
+                  </article>
                 )
               })}
             </div>
