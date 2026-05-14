@@ -1,4 +1,4 @@
-import { addAudit, addSecurityEvent, deleteOtherSessions, fail, getRequestIp, getRequestUserAgent, hashPassword, hashToken, loadDatabase, nowIso, requireMethod, saveDatabase, sendSecurityEmail } from '../_shared.js'
+import { addAudit, addSecurityEvent, deleteOtherSessions, fail, getCompanySlugFromRequest, getRequestIp, getRequestUserAgent, hashPassword, hashToken, loadTenantDatabase, nowIso, requireMethod, saveTenantDatabase, sendSecurityEmail } from '../_shared.js'
 import type { HandlerRequest, HandlerResponse } from '../_shared.js'
 
 export default async function handler(req: HandlerRequest, res: HandlerResponse) {
@@ -16,7 +16,16 @@ export default async function handler(req: HandlerRequest, res: HandlerResponse)
       return
     }
 
-    const db = await loadDatabase()
+    const companySlug = getCompanySlugFromRequest(req)
+    if (!companySlug) {
+      fail(res, 400, 'Choose a company portal before resetting password')
+      return
+    }
+    const db = await loadTenantDatabase(companySlug)
+    if (!db) {
+      fail(res, 404, 'Company portal not found')
+      return
+    }
     const user = db.users.find((item) => item.email === email)
     if (!user) {
       fail(res, 400, 'Invalid or expired password reset code')
@@ -25,7 +34,7 @@ export default async function handler(req: HandlerRequest, res: HandlerResponse)
     const request = db.passwordResetRequests.find((item) => item.userId === user.id && item.status === 'pending')
     if (!request || !request.codeHash || request.expiresAt < nowIso() || request.codeHash !== hashToken(code)) {
       if (request && request.expiresAt < nowIso()) request.status = 'expired'
-      await saveDatabase(db)
+      await saveTenantDatabase(companySlug, db)
       fail(res, 400, 'Invalid or expired password reset code')
       return
     }
@@ -47,7 +56,7 @@ export default async function handler(req: HandlerRequest, res: HandlerResponse)
       metadata: { requestId: request.id },
     })
     addAudit(db, user.id, 'Completed password reset', 'user', user.id, undefined, { requestId: request.id })
-    await saveDatabase(db)
+    await saveTenantDatabase(companySlug, db)
     await deleteOtherSessions(user.id)
     try {
       await sendSecurityEmail(email, 'Your RxLedger password was changed', 'Your RxLedger account password was changed using a verification code. If this was not you, contact your account admin immediately.')

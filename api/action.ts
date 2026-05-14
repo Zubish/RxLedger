@@ -11,19 +11,20 @@ import {
   fail,
   getAuthenticatedUser,
   getBearerToken,
+  getCompanySlugFromRequest,
   getRequestIp,
   getRequestUserAgent,
   hasActiveBranchAssignment,
   id,
-  loadDatabase,
+  loadTenantDatabase,
   nowIso,
   requireMethod,
   sanitizeDatabase,
-  saveDatabase,
+  saveTenantDatabase,
   sendSecurityEmail,
   today,
 } from './_shared.js'
-import type { Database, HandlerRequest, HandlerResponse, LedgerType, Medicine, Role, Supplier } from './_shared.js'
+import type { Database, HandlerRequest, HandlerResponse, LedgerType, Medicine, Role, Sale, Supplier, User } from './_shared.js'
 import type { Branch } from './_shared.js'
 
 type ActionBody = {
@@ -35,7 +36,16 @@ export default async function handler(req: HandlerRequest, res: HandlerResponse)
   if (!requireMethod(req, res, ['POST'])) return
   try {
     const body = req.body as ActionBody
-    const db = await loadDatabase()
+    const companySlug = getCompanySlugFromRequest(req)
+    if (!companySlug) {
+      fail(res, 400, 'Choose a company portal before making changes')
+      return
+    }
+    const db = await loadTenantDatabase(companySlug)
+    if (!db) {
+      fail(res, 404, 'Company portal not found')
+      return
+    }
     const actor = await getAuthenticatedUser(req, db)
     if (!actor) {
       fail(res, 401, 'Authentication required')
@@ -82,6 +92,9 @@ export default async function handler(req: HandlerRequest, res: HandlerResponse)
       case 'issueStock':
         issueStock(db, actor.id, actor.role, body.payload)
         break
+      case 'recordSale':
+        recordSale(db, actor.id, actor.role, body.payload)
+        break
       case 'adjustStock':
         adjustStock(db, actor.id, actor.role, body.payload)
         break
@@ -99,7 +112,7 @@ export default async function handler(req: HandlerRequest, res: HandlerResponse)
         return
     }
 
-    await saveDatabase(db)
+    await saveTenantDatabase(companySlug, db)
     const clean = sanitizeDatabase(db)
     res.status(200).json({ db: clean, currentUser: clean.users.find((user) => user.id === actor.id) })
   } catch (error) {
@@ -331,7 +344,7 @@ function upsertBranch(db: Database, actorId: string, actorRole: Role, payload: R
     if (managerUserId === primaryAdminId) throw new Error('The permanent admin remains global and should not be assigned as a branch manager')
     const manager = db.users.find((user) => user.id === managerUserId && user.status === 'active')
     if (!manager) throw new Error('Manager user not found')
-    if (manager.role === 'viewer') throw new Error('Viewers cannot be branch managers')
+    if (manager.role === 'viewer' || manager.role === 'cashier') throw new Error('Cashiers and viewers cannot be branch managers')
   }
   const record: Branch = {
     id: input.id || id('br'),
@@ -625,6 +638,86 @@ function issueStock(db: Database, actorId: string, actorRole: Role, payload: Rec
   addAudit(db, actorId, 'Issued stock using FEFO', 'ledger', entries[0]?.id ?? id('led'), undefined, entries)
 }
 
+function canSellInBranch(db: Database, actor: User, branchId: string) {
+  return canAdmin(actor, getPrimaryAdminId(db)) || ((actor.role === 'admin' || actor.role === 'pharmacist' || actor.role === 'cashier') && hasActiveBranchAssignment(actor, branchId))
+}
+
+function recordSale(db: Database, actorId: string, actorRole: Role, payload: Record<string, unknown> | undefined) {
+  const actor = db.users.find((user) => user.id === actorId)
+  if (!actor) throw new Error('Authentication required')
+  const branchId = optionalString(payload?.branchId) || db.branches.find((branch) => branch.active)?.id || 'main'
+  if (!db.branches.some((branch) => branch.id === branchId && branch.active)) throw new Error('Active branch not found')
+  if (!canSellInBranch(db, { ...actor, role: actorRole }, branchId)) throw new Error('You do not have permission to sell in this branch')
+  const inputs = Array.isArray(payload?.items) ? (payload.items as Record<string, unknown>[]) : []
+  if (!inputs.length) throw new Error('Add at least one item to the POS cart')
+
+  const saleItems: Sale['items'] = []
+  const ledgerEntries = []
+  for (const input of inputs) {
+    const medicineId = requireString(input.medicineId, 'Medicine')
+    const medicine = db.medicines.find((item) => item.id === medicineId && item.active)
+    if (!medicine) throw new Error('Active medicine not found')
+    const quantity = requireNumber(input.quantity, 'Quantity')
+    if (quantity <= 0) throw new Error('Quantity must be greater than zero')
+    const requestedUnitPrice = Number(input.unitPrice) || 0
+    const rows = db.batches
+      .filter((batch) => batch.branchId === branchId && batch.medicineId === medicineId)
+      .map((batch) => ({
+        batch,
+        quantity: getBatchAvailable(db, batch.id),
+        daysToExpiry: daysUntil(batch.expiryDate),
+      }))
+      .filter((row) => row.quantity > 0 && row.daysToExpiry >= 0)
+      .sort((a, b) => a.batch.expiryDate.localeCompare(b.batch.expiryDate))
+    const total = rows.reduce((sum, row) => sum + row.quantity, 0)
+    if (quantity > total) throw new Error(`${medicine.brandName} does not have enough non-expired stock in this branch`)
+    let remaining = quantity
+    for (const row of rows) {
+      if (remaining <= 0) break
+      const take = Math.min(row.quantity, remaining)
+      const unitPrice = requestedUnitPrice || row.batch.sellingPrice
+      if (unitPrice <= 0) throw new Error(`${medicine.brandName} needs a selling price before it can be sold`)
+      const lineTotal = take * unitPrice
+      saleItems.push({
+        medicineId,
+        batchId: row.batch.id,
+        quantity: take,
+        unitPrice,
+        lineTotal,
+      })
+      ledgerEntries.push({
+        id: id('led'),
+        medicineId,
+        batchId: row.batch.id,
+        type: 'stock-out' as LedgerType,
+        quantity: -take,
+        reason: 'POS sale',
+        reference: optionalString(payload?.reference) || 'POS sale',
+        userId: actorId,
+        createdAt: nowIso(),
+      })
+      remaining -= take
+    }
+  }
+
+  const sale: Sale = {
+    id: id('sale'),
+    branchId,
+    cashierUserId: actorId,
+    customerName: optionalString(payload?.customerName),
+    customerPhone: optionalString(payload?.customerPhone),
+    paymentMethod: (optionalString(payload?.paymentMethod) || 'cash') as Sale['paymentMethod'],
+    reference: optionalString(payload?.reference) || `SALE-${Date.now().toString(36).toUpperCase()}`,
+    note: optionalString(payload?.note),
+    soldAt: nowIso(),
+    subtotal: saleItems.reduce((sum, item) => sum + item.lineTotal, 0),
+    items: saleItems,
+  }
+  db.ledger.unshift(...ledgerEntries)
+  db.sales.unshift(sale)
+  addAudit(db, actorId, 'Completed POS sale', 'sale', sale.id, undefined, sale)
+}
+
 function adjustStock(db: Database, actorId: string, actorRole: Role, payload: Record<string, unknown> | undefined) {
   const actor = db.users.find((user) => user.id === actorId)
   if (!actor || !canAdjust({ ...actor, role: actorRole })) throw new Error('You do not have permission to adjust stock')
@@ -661,6 +754,10 @@ function updateSettings(db: Database, actorId: string, actorRole: Role, payload:
     softwareName: optionalString(payload?.softwareName) || db.settings.softwareName,
     accountName: optionalString(payload?.accountName) || db.settings.accountName,
     branchName: optionalString(payload?.branchName) || db.settings.branchName,
+    companySlug: db.settings.companySlug,
+    companyCode: db.settings.companyCode,
+    businessLicense: optionalString(payload?.businessLicense) || db.settings.businessLicense,
+    mainBranchAddress: optionalString(payload?.mainBranchAddress) || db.settings.mainBranchAddress,
     primaryAdminId: db.settings.primaryAdminId || actorId,
     nearExpiryDays: Number(payload?.nearExpiryDays) || db.settings.nearExpiryDays,
     approvalThreshold: Number(payload?.approvalThreshold) || db.settings.approvalThreshold,

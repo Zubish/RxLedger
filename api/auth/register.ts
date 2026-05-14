@@ -1,11 +1,20 @@
-import { addAudit, fail, hashPassword, id, loadDatabase, nowIso, requireMethod, saveDatabase } from '../_shared.js'
+import { addAudit, fail, getCompanySlugFromRequest, hashPassword, id, loadTenantDatabase, nowIso, requireMethod, saveTenantDatabase } from '../_shared.js'
 import type { HandlerRequest, HandlerResponse, User } from '../_shared.js'
 
 export default async function handler(req: HandlerRequest, res: HandlerResponse) {
   if (!requireMethod(req, res, ['POST'])) return
   try {
     const body = req.body as Partial<{ name: string; email: string; phone: string; password: string }>
-    const db = await loadDatabase()
+    const companySlug = getCompanySlugFromRequest(req)
+    if (!companySlug) {
+      fail(res, 400, 'Choose a company portal before requesting access')
+      return
+    }
+    const db = await loadTenantDatabase(companySlug)
+    if (!db) {
+      fail(res, 404, 'Company portal not found')
+      return
+    }
     if (!body.name || !body.email || !body.phone || !body.password) {
       fail(res, 400, 'All registration fields are required')
       return
@@ -39,7 +48,7 @@ export default async function handler(req: HandlerRequest, res: HandlerResponse)
       email: user.email,
       status: user.status,
     })
-    await saveDatabase(db)
+    await saveTenantDatabase(companySlug, db)
     res.status(200).json({ ok: true })
   } catch (error) {
     fail(res, 500, error instanceof Error ? error.message : 'Unable to register user')

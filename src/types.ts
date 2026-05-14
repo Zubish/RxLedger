@@ -1,4 +1,4 @@
-export type Role = 'admin' | 'pharmacist' | 'inventory' | 'viewer'
+export type Role = 'admin' | 'pharmacist' | 'inventory' | 'cashier' | 'viewer'
 export type UserStatus = 'pending' | 'active' | 'suspended'
 export type LedgerType = 'stock-in' | 'stock-out' | 'adjustment' | 'write-off' | 'supplier-return' | 'customer-return'
 
@@ -102,6 +102,26 @@ export type Receipt = {
   }>
 }
 
+export type Sale = {
+  id: string
+  branchId: string
+  cashierUserId: string
+  customerName: string
+  customerPhone: string
+  paymentMethod: 'cash' | 'card' | 'transfer' | 'mixed'
+  reference: string
+  note: string
+  soldAt: string
+  subtotal: number
+  items: Array<{
+    medicineId: string
+    batchId: string
+    quantity: number
+    unitPrice: number
+    lineTotal: number
+  }>
+}
+
 export type AuditLog = {
   id: string
   userId: string
@@ -188,6 +208,10 @@ export type AppSettings = {
   accountName: string
   pharmacyName: string
   branchName: string
+  companySlug: string
+  companyCode: string
+  businessLicense: string
+  mainBranchAddress: string
   primaryAdminId?: string
   nearExpiryDays: number
   approvalThreshold: number
@@ -201,6 +225,7 @@ export type Database = {
   batches: Batch[]
   ledger: LedgerEntry[]
   receipts: Receipt[]
+  sales: Sale[]
   chatMessages: ChatMessage[]
   auditLogs: AuditLog[]
   passwordResetRequests: PasswordResetRequest[]
@@ -212,6 +237,9 @@ export type Database = {
 
 export type SetupInput = {
   pharmacyName: string
+  companySlug: string
+  businessLicense: string
+  mainBranchAddress: string
   branchName: string
   name: string
   email: string

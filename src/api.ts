@@ -1,6 +1,7 @@
 import type { Database, RegisterInput, SetupInput, User } from './types'
 
 const TOKEN_KEY = 'pharmacy-inventory-session-token'
+const COMPANY_KEY = 'rxledger-company-slug'
 
 type ApiResult<T> = T & {
   token?: string
@@ -21,11 +22,25 @@ export function clearStoredToken() {
   localStorage.removeItem(TOKEN_KEY)
 }
 
+export function getStoredCompanySlug() {
+  return localStorage.getItem(COMPANY_KEY) || ''
+}
+
+export function storeCompanySlug(slug: string) {
+  if (slug) localStorage.setItem(COMPANY_KEY, slug)
+}
+
+export function clearStoredCompanySlug() {
+  localStorage.removeItem(COMPANY_KEY)
+}
+
 async function request<T>(path: string, options: RequestInit = {}) {
   const token = getStoredToken()
+  const companySlug = getStoredCompanySlug()
   const headers = new Headers(options.headers)
   headers.set('Content-Type', 'application/json')
   if (token) headers.set('Authorization', `Bearer ${token}`)
+  if (companySlug) headers.set('X-RxLedger-Company', companySlug)
 
   const response = await fetch(path, { ...options, headers })
   const contentType = response.headers.get('content-type') || ''
@@ -38,7 +53,7 @@ async function request<T>(path: string, options: RequestInit = {}) {
 }
 
 export async function bootstrap() {
-  return request<{ hasUsers: boolean; settings: Database['settings'] }>('/api/bootstrap')
+  return request<{ hasUsers: boolean; tenantExists: boolean; requestedSlug: string; tenants: Array<{ name: string; slug: string; code: string }>; settings: Database['settings'] }>('/api/bootstrap')
 }
 
 export async function loadState() {
@@ -51,7 +66,12 @@ export async function setupWorkspace(input: SetupInput) {
     body: JSON.stringify(input),
   })
   if (result.token) storeToken(result.token)
+  if (result.db?.settings.companySlug) storeCompanySlug(result.db.settings.companySlug)
   return result
+}
+
+export async function checkCompanySlug(slug: string) {
+  return request<{ slug: string; available: boolean; claimedBy: string }>(`/api/tenant/check?slug=${encodeURIComponent(slug)}`)
 }
 
 export async function login(email: string, password: string) {

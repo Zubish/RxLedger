@@ -47,7 +47,8 @@
 .tabs,
 .search-box,
 .branch-switcher,
-.access-row {
+.access-row,
+.company-selector {
   display: flex;
   align-items: center;
 }
@@ -688,6 +689,90 @@ td strong {
   font-size: 14px;
 }
 
+.pos-layout {
+  align-items: start;
+}
+
+.pos-product-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  margin-top: 14px;
+}
+
+.pos-product {
+  background: #ffffff;
+  border: 1px solid #dce6e7;
+  border-radius: 8px;
+  color: #182126;
+  cursor: pointer;
+  display: grid;
+  gap: 6px;
+  min-height: 112px;
+  padding: 12px;
+  text-align: left;
+}
+
+.pos-product:hover {
+  border-color: #2fa37d;
+}
+
+.pos-product span,
+.cart-item span {
+  color: #68777e;
+  font-size: 12px;
+}
+
+.pos-product b {
+  color: #1f7f63;
+  font-size: 12px;
+}
+
+.cart-list,
+.recent-sales {
+  display: grid;
+  gap: 10px;
+}
+
+.cart-item {
+  align-items: center;
+  border: 1px solid #dce6e7;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 78px 100px 36px;
+  padding: 10px;
+}
+
+.cart-item input {
+  min-width: 0;
+}
+
+.sale-total {
+  align-items: center;
+  background: #122025;
+  border-radius: 8px;
+  color: white;
+  display: flex;
+  justify-content: space-between;
+  padding: 14px;
+}
+
+.sale-total strong {
+  font-size: 22px;
+}
+
+.recent-sales {
+  border-top: 1px solid #e1e8e9;
+  margin-top: 18px;
+  padding-top: 16px;
+}
+
+.recent-sales h3 {
+  font-size: 15px;
+  margin: 0;
+}
+
 label {
   color: #54636a;
   display: grid;
@@ -779,6 +864,35 @@ button:disabled {
   padding: 10px 12px;
   font-size: 13px;
   line-height: 1.45;
+}
+
+.company-selector {
+  align-items: flex-start;
+  background: #eef6f3;
+  border: 1px solid #d4e5df;
+  border-radius: 8px;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 12px;
+}
+
+.company-selector label {
+  flex: 1;
+}
+
+.slug-available {
+  border-color: #b9dacd;
+  color: #1f7f63;
+}
+
+.slug-taken {
+  border-color: #f2b8b5;
+  color: #b42318;
+}
+
+.slug-checking {
+  border-color: #efd99a;
+  color: #7a5b12;
 }
 
 .checkbox-row {

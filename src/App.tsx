@@ -9,6 +9,7 @@ import {
   Bell,
   Boxes,
   Building2,
+  Calculator,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -46,7 +47,9 @@ import {
 import {
   bootstrap,
   clearStoredToken,
+  checkCompanySlug,
   getStoredToken,
+  getStoredCompanySlug,
   loadState,
   login as apiLogin,
   logout as apiLogout,
@@ -55,18 +58,20 @@ import {
   requestPasswordReset as apiRequestPasswordReset,
   runAction,
   setupWorkspace,
+  storeCompanySlug,
 } from './api'
 import './App.css'
 
 const SIDEBAR_WIDTH = 280
 
-type Role = 'admin' | 'pharmacist' | 'inventory' | 'viewer'
+type Role = 'admin' | 'pharmacist' | 'inventory' | 'cashier' | 'viewer'
 type UserStatus = 'pending' | 'active' | 'suspended'
 type View =
   | 'dashboard'
   | 'medicines'
   | 'suppliers'
   | 'receive'
+  | 'pos'
   | 'issue'
   | 'adjust'
   | 'reports'
@@ -185,6 +190,26 @@ type Receipt = {
   }>
 }
 
+type Sale = {
+  id: string
+  branchId: string
+  cashierUserId: string
+  customerName: string
+  customerPhone: string
+  paymentMethod: 'cash' | 'card' | 'transfer' | 'mixed'
+  reference: string
+  note: string
+  soldAt: string
+  subtotal: number
+  items: Array<{
+    medicineId: string
+    batchId: string
+    quantity: number
+    unitPrice: number
+    lineTotal: number
+  }>
+}
+
 type AuditLog = {
   id: string
   userId: string
@@ -271,6 +296,10 @@ type AppSettings = {
   accountName: string
   pharmacyName: string
   branchName: string
+  companySlug: string
+  companyCode: string
+  businessLicense: string
+  mainBranchAddress: string
   primaryAdminId?: string
   nearExpiryDays: number
   approvalThreshold: number
@@ -284,6 +313,7 @@ type Database = {
   batches: Batch[]
   ledger: LedgerEntry[]
   receipts: Receipt[]
+  sales: Sale[]
   chatMessages: ChatMessage[]
   auditLogs: AuditLog[]
   passwordResetRequests: PasswordResetRequest[]
@@ -324,6 +354,7 @@ const views: Array<{ id: View; label: string; icon: typeof LayoutDashboard; admi
   { id: 'medicines', label: 'Medicines', icon: Pill },
   { id: 'suppliers', label: 'Suppliers', icon: Truck },
   { id: 'receive', label: 'Receive', icon: PackagePlus },
+  { id: 'pos', label: 'POS', icon: Calculator },
   { id: 'issue', label: 'Issue Stock', icon: PackageMinus },
   { id: 'adjust', label: 'Adjust/Returns', icon: RotateCcw },
   { id: 'reports', label: 'Reports', icon: FileText },
@@ -339,6 +370,7 @@ const roleLabels: Record<Role, string> = {
   admin: 'Admin',
   pharmacist: 'Pharmacist',
   inventory: 'Inventory Officer',
+  cashier: 'Cashier',
   viewer: 'Viewer/Auditor',
 }
 
@@ -372,6 +404,23 @@ const IDLE_TIMEOUT_MS = 30 * 60 * 1000
 
 function id(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+function slugifyCompany(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48)
+}
+
+function getPortalSlugFromLocation() {
+  if (typeof window === 'undefined') return ''
+  const [segment = ''] = window.location.pathname.split('/').filter(Boolean)
+  if (!segment || segment === 'api') return ''
+  return slugifyCompany(segment)
 }
 
 function daysUntil(date: string) {
@@ -433,6 +482,7 @@ function createEmptyDatabase(): Database {
     batches: [],
     ledger: [],
     receipts: [],
+    sales: [],
     chatMessages: [],
     auditLogs: [],
     passwordResetRequests: [],
@@ -444,6 +494,10 @@ function createEmptyDatabase(): Database {
       accountName: 'Pharmacy Account',
       pharmacyName: 'RxLedger',
       branchName: 'Main Branch',
+      companySlug: '',
+      companyCode: '',
+      businessLicense: '',
+      mainBranchAddress: '',
       nearExpiryDays: 90,
       approvalThreshold: 25_000,
     },
@@ -514,7 +568,7 @@ function canManageBranch(db: Database, user: User, branchId: string) {
 }
 
 function canWriteBranch(db: Database, user: User, branchId: string) {
-  return isSuperAdmin(db, user) || (user.role !== 'viewer' && hasActiveBranchAssignment(user, branchId))
+  return isSuperAdmin(db, user) || ((user.role === 'admin' || user.role === 'pharmacist' || user.role === 'inventory') && hasActiveBranchAssignment(user, branchId))
 }
 
 function canViewBranch(db: Database, user: User, branchId: string) {
@@ -743,6 +797,9 @@ function App() {
   const [signingIn, setSigningIn] = useState(false)
   const [connectionError, setConnectionError] = useState('')
   const [hasUsers, setHasUsers] = useState(false)
+  const [tenantExists, setTenantExists] = useState(false)
+  const [companySlug, setCompanySlug] = useState(() => getPortalSlugFromLocation() || getStoredCompanySlug())
+  const [availableTenants, setAvailableTenants] = useState<Array<{ name: string; slug: string; code: string }>>([])
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
   const [drawerHandleTop, setDrawerHandleTop] = useState(() => typeof window === 'undefined' ? 360 : Math.round(window.innerHeight / 2))
@@ -762,7 +819,8 @@ function App() {
   const stockRows = useMemo(() => getStockRows(db), [db])
   const activeBranchStockRows = useMemo(() => activeBranch ? stockRows.filter((row) => row.batch.branchId === activeBranch.id) : stockRows, [activeBranch, stockRows])
   const permittedStockRows = useMemo(() => currentUser ? stockRows.filter((row) => canViewBranch(db, currentUser, row.batch.branchId)) : [], [currentUser, db, stockRows])
-  const canWrite = currentUser ? currentUser.role !== 'viewer' : false
+  const canWrite = currentUser ? currentUser.role === 'admin' || currentUser.role === 'pharmacist' || currentUser.role === 'inventory' : false
+  const canSell = currentUser ? currentUser.role === 'admin' || currentUser.role === 'pharmacist' || currentUser.role === 'cashier' : false
   const canAdjust = currentUser ? currentUser.role === 'admin' || currentUser.role === 'pharmacist' : false
   const canAdmin = isSuperAdmin(db, currentUser)
   const dashboardStockRows = useMemo(() => canAdmin ? stockRows : activeBranchStockRows, [activeBranchStockRows, canAdmin, stockRows])
@@ -778,11 +836,22 @@ function App() {
     async function load() {
       try {
         setConnectionError('')
+        const portalSlug = getPortalSlugFromLocation() || getStoredCompanySlug()
+        if (portalSlug) {
+          storeCompanySlug(portalSlug)
+          setCompanySlug(portalSlug)
+        }
         const boot = await bootstrap()
         if (!boot.settings) {
           throw new Error('Backend API is not available. Run npx vercel dev with DATABASE_URL for API-backed flows.')
         }
         setHasUsers(boot.hasUsers)
+        setTenantExists(boot.tenantExists)
+        setAvailableTenants(boot.tenants ?? [])
+        if (boot.settings.companySlug) {
+          storeCompanySlug(boot.settings.companySlug)
+          setCompanySlug(boot.settings.companySlug)
+        }
         setDb((previous) => ({ ...previous, settings: boot.settings }))
         if (getStoredToken()) {
           const state = await loadState()
@@ -842,6 +911,12 @@ function App() {
       setDb(result.db)
       setSessionUserId(result.currentUser.id)
       setHasUsers(true)
+      setTenantExists(true)
+      setCompanySlug(result.db.settings.companySlug)
+      storeCompanySlug(result.db.settings.companySlug)
+      if (result.db.settings.companySlug && getPortalSlugFromLocation() !== result.db.settings.companySlug) {
+        window.history.replaceState(null, '', `/${result.db.settings.companySlug}`)
+      }
       setActiveBranchId(getUserHomeBranch(result.db, result.currentUser)?.id ?? result.db.branches.find((branch) => branch.active)?.id ?? 'main')
       setActiveView('dashboard')
     } finally {
@@ -992,6 +1067,9 @@ function App() {
     return (
       <AuthScreen
         hasUsers={hasUsers}
+        tenantExists={tenantExists}
+        companySlug={companySlug}
+        availableTenants={availableTenants}
         pharmacyName={db.settings.pharmacyName}
         connectionError={connectionError}
         createFirstAdmin={createFirstAdmin}
@@ -999,6 +1077,11 @@ function App() {
         registerUser={registerUser}
         requestPasswordReset={requestPasswordReset}
         completePasswordReset={completePasswordReset}
+        setCompanySlug={(slug) => {
+          const clean = slugifyCompany(slug)
+          setCompanySlug(clean)
+          storeCompanySlug(clean)
+        }}
       />
     )
   }
@@ -1145,6 +1228,7 @@ function App() {
           {activeView === 'medicines' && <Medicines db={db} currentUser={currentUser} stockRows={medicinePageStockRows} stockTotals={medicinePageStockTotals} activeBranch={activeBranch} canWrite={Boolean(canWriteActiveBranch)} canFulfillActiveBranch={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
           {activeView === 'suppliers' && <Suppliers db={db} canWrite={canWrite} executeAction={executeAction} />}
           {activeView === 'receive' && activeBranch && <ReceiveStock db={db} activeBranch={activeBranch} canWrite={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
+          {activeView === 'pos' && activeBranch && <POSView db={db} activeBranch={activeBranch} stockRows={activeBranchStockRows} canSell={canSell && Boolean(canAdmin || (currentUser && hasActiveBranchAssignment(currentUser, activeBranch.id)))} executeAction={executeAction} flash={flash} />}
           {activeView === 'issue' && activeBranch && <IssueStock db={db} activeBranch={activeBranch} stockRows={activeBranchStockRows} canWrite={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
           {activeView === 'adjust' && activeBranch && <Adjustments activeBranch={activeBranch} stockRows={activeBranchStockRows} canAdjust={canAdjust && Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
           {activeView === 'reports' && <Reports db={db} stockRows={dashboardStockRows} stockTotals={dashboardStockTotals} />}
@@ -1162,6 +1246,9 @@ function App() {
 
 type SetupInput = {
   pharmacyName: string
+  companySlug: string
+  businessLicense: string
+  mainBranchAddress: string
   branchName: string
   name: string
   email: string
@@ -1244,6 +1331,9 @@ function PasswordInput({
 
 function AuthScreen({
   hasUsers,
+  tenantExists,
+  companySlug,
+  availableTenants,
   pharmacyName,
   connectionError,
   createFirstAdmin,
@@ -1251,8 +1341,12 @@ function AuthScreen({
   registerUser,
   requestPasswordReset,
   completePasswordReset,
+  setCompanySlug,
 }: {
   hasUsers: boolean
+  tenantExists: boolean
+  companySlug: string
+  availableTenants: Array<{ name: string; slug: string; code: string }>
   pharmacyName: string
   connectionError: string
   createFirstAdmin: (input: SetupInput) => Promise<void>
@@ -1260,11 +1354,12 @@ function AuthScreen({
   registerUser: (input: RegisterInput) => Promise<void>
   requestPasswordReset: (input: PasswordResetInput) => Promise<{ ok: boolean; emailConfigured: boolean }>
   completePasswordReset: (input: PasswordResetCompleteInput) => Promise<void>
+  setCompanySlug: (slug: string) => void
 }) {
   const [mode, setMode] = useState<AuthMode>(hasUsers ? 'login' : 'setup')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-  const activeMode: AuthMode = hasUsers ? mode : 'setup'
+  const activeMode: AuthMode = tenantExists && hasUsers ? mode : 'setup'
 
   return (
     <main className="login-screen">
@@ -1275,8 +1370,12 @@ function AuthScreen({
         <div>
           <span className="eyebrow">{activeMode === 'setup' ? 'RxLedger setup' : pharmacyName}</span>
           <h1>{activeMode === 'setup' ? 'Create your pharmacy account' : 'Sign in to RxLedger'}</h1>
-          <p>{activeMode === 'setup' ? 'Create the company account, first branch, and permanent administrator before adding medicines, suppliers, and stock.' : 'Use your approved staff account. New staff can request access for admin review.'}</p>
+          <p>{activeMode === 'setup' ? 'Create the company account, claim its URL, first branch, and permanent administrator.' : `Use the ${companySlug ? `/${companySlug}` : 'company'} portal. New staff can request access for admin review.`}</p>
         </div>
+
+        {activeMode !== 'setup' && availableTenants.length > 0 && (
+          <CompanyPortalSelector companySlug={companySlug} tenants={availableTenants} setCompanySlug={setCompanySlug} />
+        )}
 
         {activeMode !== 'setup' && (
           <div className="tabs auth-tabs">
@@ -1286,7 +1385,7 @@ function AuthScreen({
           </div>
         )}
 
-        {activeMode === 'setup' && <SetupForm createFirstAdmin={createFirstAdmin} setError={setError} />}
+        {activeMode === 'setup' && <SetupForm createFirstAdmin={createFirstAdmin} setError={setError} initialSlug={companySlug} />}
         {activeMode === 'login' && <LoginForm login={login} setError={setError} setSuccess={setSuccess} />}
         {activeMode === 'register' && <RegisterForm registerUser={registerUser} setError={setError} setSuccess={setSuccess} />}
         {activeMode === 'reset' && <PasswordResetForm requestPasswordReset={requestPasswordReset} completePasswordReset={completePasswordReset} setError={setError} setSuccess={setSuccess} />}
@@ -1299,9 +1398,44 @@ function AuthScreen({
   )
 }
 
-function SetupForm({ createFirstAdmin, setError }: { createFirstAdmin: (input: SetupInput) => Promise<void>; setError: (message: string) => void }) {
+function CompanyPortalSelector({
+  companySlug,
+  tenants,
+  setCompanySlug,
+}: {
+  companySlug: string
+  tenants: Array<{ name: string; slug: string; code: string }>
+  setCompanySlug: (slug: string) => void
+}) {
+  return (
+    <div className="company-selector">
+      <label>
+        Company portal
+        <select value={companySlug} onChange={(event) => { setCompanySlug(event.target.value); window.location.assign(`/${event.target.value}`) }}>
+          {tenants.map((tenant) => (
+            <option value={tenant.slug} key={tenant.slug}>{tenant.name} / rxledger.com/{tenant.slug}</option>
+          ))}
+        </select>
+      </label>
+      {companySlug && <span className="form-note">Portal URL: rxledger.com/{companySlug}</span>}
+    </div>
+  )
+}
+
+function SetupForm({
+  createFirstAdmin,
+  setError,
+  initialSlug,
+}: {
+  createFirstAdmin: (input: SetupInput) => Promise<void>
+  setError: (message: string) => void
+  initialSlug: string
+}) {
   const [form, setForm] = useState<SetupInput>({
     pharmacyName: '',
+    companySlug: initialSlug,
+    businessLicense: '',
+    mainBranchAddress: '',
     branchName: 'Main Branch',
     name: '',
     email: '',
@@ -1310,6 +1444,26 @@ function SetupForm({ createFirstAdmin, setError }: { createFirstAdmin: (input: S
   })
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [slugStatus, setSlugStatus] = useState<{ state: 'idle' | 'checking' | 'available' | 'taken'; message: string }>({ state: 'idle', message: '' })
+
+  useEffect(() => {
+    const slug = slugifyCompany(form.companySlug || form.pharmacyName)
+    const timeoutId = window.setTimeout(() => {
+      if (!slug) {
+        setSlugStatus({ state: 'idle', message: '' })
+        return
+      }
+      setSlugStatus({ state: 'checking', message: 'Checking company URL...' })
+      void checkCompanySlug(slug)
+        .then((result) => {
+          setSlugStatus(result.available
+            ? { state: 'available', message: `rxledger.com/${result.slug} is available` }
+            : { state: 'taken', message: `rxledger.com/${result.slug} has already been claimed${result.claimedBy ? ` by ${result.claimedBy}` : ''}` })
+        })
+        .catch((error) => setSlugStatus({ state: 'taken', message: error instanceof Error ? error.message : 'Unable to check company URL' }))
+    }, 350)
+    return () => window.clearTimeout(timeoutId)
+  }, [form.companySlug, form.pharmacyName])
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -1322,12 +1476,25 @@ function SetupForm({ createFirstAdmin, setError }: { createFirstAdmin: (input: S
       setError('Passwords do not match.')
       return
     }
-    await createFirstAdmin(form)
+    const companySlug = slugifyCompany(form.companySlug || form.pharmacyName)
+    if (!companySlug) {
+      setError('Choose a company URL.')
+      return
+    }
+    if (slugStatus.state === 'taken') {
+      setError(slugStatus.message)
+      return
+    }
+    await createFirstAdmin({ ...form, companySlug })
   }
 
   return (
     <form className="form-grid" onSubmit={submit}>
-      <label className="full">Account/company name<input required value={form.pharmacyName} onChange={(event) => setForm({ ...form, pharmacyName: event.target.value })} placeholder="Totalenergies EP" autoFocus /></label>
+      <label className="full">Pharmacy/company name<input required value={form.pharmacyName} onChange={(event) => setForm({ ...form, pharmacyName: event.target.value, companySlug: form.companySlug || slugifyCompany(event.target.value) })} placeholder="Totalenergies EP" autoFocus /></label>
+      <label className="full">Preferred company URL<input required value={form.companySlug} onChange={(event) => setForm({ ...form, companySlug: slugifyCompany(event.target.value) })} placeholder="tep-ng" /></label>
+      {slugStatus.message && <div className={`form-note full slug-${slugStatus.state}`}>{slugStatus.message}</div>}
+      <label className="full">Business registration/licence details<input required value={form.businessLicense} onChange={(event) => setForm({ ...form, businessLicense: event.target.value })} placeholder="PCN, CAC, or internal licence reference" /></label>
+      <label className="full">Main branch address<input required value={form.mainBranchAddress} onChange={(event) => setForm({ ...form, mainBranchAddress: event.target.value })} placeholder="Address of the main branch, warehouse, or dispensary" /></label>
       <label className="full">First branch/site<input required value={form.branchName} onChange={(event) => setForm({ ...form, branchName: event.target.value })} placeholder="Deepwater Medical LOS" /></label>
       <label className="full">Permanent admin full name<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
       <label>Email<input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
@@ -2518,6 +2685,210 @@ function IssueStock({
   )
 }
 
+function POSView({
+  db,
+  activeBranch,
+  stockRows,
+  canSell,
+  executeAction,
+  flash,
+}: {
+  db: Database
+  activeBranch: Branch
+  stockRows: StockRow[]
+  canSell: boolean
+  executeAction: ExecuteAction
+  flash: (message: string) => void
+}) {
+  type CartItem = {
+    rowId: string
+    medicineId: string
+    quantity: number
+    unitPrice: number
+  }
+  const [query, setQuery] = useState('')
+  const [scan, setScan] = useState('')
+  const [cart, setCart] = useState<CartItem[]>([])
+  const [customerName, setCustomerName] = useState('')
+  const [customerPhone, setCustomerPhone] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState<Sale['paymentMethod']>('cash')
+  const [reference, setReference] = useState('')
+  const [note, setNote] = useState('')
+
+  const stockByMedicine = useMemo(() => aggregateMedicineStock(stockRows.filter((row) => row.quantity > 0 && row.daysToExpiry >= 0)), [stockRows])
+  const saleOptions = db.medicines
+    .filter((medicine) => medicine.active && (stockByMedicine.get(medicine.id) ?? 0) > 0)
+    .filter((medicine) => {
+      const text = `${medicine.sku} ${medicine.brandName} ${medicine.genericName} ${medicine.form} ${medicine.strength} ${medicine.barcodes.join(' ')}`.toLowerCase()
+      return text.includes(query.toLowerCase())
+    })
+    .slice(0, 12)
+  const cartRows = cart.map((item) => {
+    const medicine = db.medicines.find((entry) => entry.id === item.medicineId)
+    const available = stockByMedicine.get(item.medicineId) ?? 0
+    return { ...item, medicine, available, lineTotal: item.quantity * item.unitPrice }
+  })
+  const subtotal = cartRows.reduce((sum, item) => sum + item.lineTotal, 0)
+  const branchSales = db.sales
+    .filter((sale) => sale.branchId === activeBranch.id)
+    .sort((a, b) => b.soldAt.localeCompare(a.soldAt))
+    .slice(0, 8)
+
+  function defaultPrice(medicineId: string) {
+    return stockRows
+      .filter((row) => row.medicine.id === medicineId && row.quantity > 0 && row.daysToExpiry >= 0)
+      .sort((a, b) => a.batch.expiryDate.localeCompare(b.batch.expiryDate))[0]?.batch.sellingPrice ?? 0
+  }
+
+  function addMedicine(medicineId: string) {
+    const medicine = db.medicines.find((item) => item.id === medicineId)
+    if (!medicine) return
+    setCart((current) => {
+      const existing = current.find((item) => item.medicineId === medicineId)
+      if (existing) {
+        return current.map((item) => item.medicineId === medicineId ? { ...item, quantity: Math.min(item.quantity + 1, stockByMedicine.get(medicineId) ?? item.quantity + 1) } : item)
+      }
+      return [...current, { rowId: id('pos'), medicineId, quantity: 1, unitPrice: defaultPrice(medicineId) }]
+    })
+    flash(`${medicine.brandName} added to POS cart`)
+  }
+
+  function applyScan() {
+    const medicine = findMedicineByScan(db, scan)
+    if (!medicine) {
+      flash('No medicine found for scanned code')
+      return
+    }
+    if ((stockByMedicine.get(medicine.id) ?? 0) <= 0) {
+      flash(`${medicine.brandName} has no non-expired stock in ${activeBranch.name}`)
+      return
+    }
+    addMedicine(medicine.id)
+    setScan('')
+  }
+
+  function updateCart(rowId: string, updates: Partial<CartItem>) {
+    setCart((current) => current.map((item) => {
+      if (item.rowId !== rowId) return item
+      const available = stockByMedicine.get(item.medicineId) ?? 0
+      return {
+        ...item,
+        ...updates,
+        quantity: Math.max(1, Math.min(Number(updates.quantity ?? item.quantity) || 1, available || 1)),
+        unitPrice: Math.max(0, Number(updates.unitPrice ?? item.unitPrice) || 0),
+      }
+    }))
+  }
+
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    if (!canSell || !cart.length) return
+    if (cartRows.some((item) => item.quantity > item.available)) {
+      flash('Sale blocked: one or more quantities exceed available stock')
+      return
+    }
+    if (cartRows.some((item) => item.unitPrice <= 0)) {
+      flash('Every POS item needs a selling price')
+      return
+    }
+    void executeAction('recordSale', {
+      branchId: activeBranch.id,
+      customerName,
+      customerPhone,
+      paymentMethod,
+      reference,
+      note,
+      items: cart.map((item) => ({ medicineId: item.medicineId, quantity: item.quantity, unitPrice: item.unitPrice })),
+    }, 'Sale completed and inventory deducted')
+    setCart([])
+    setCustomerName('')
+    setCustomerPhone('')
+    setReference('')
+    setNote('')
+    setScan('')
+  }
+
+  return (
+    <div className="two-column pos-layout">
+      <section className="content-section">
+        <div className="section-heading">
+          <div>
+            <h2>Point of Sale</h2>
+            <p>Selling from {activeBranch.name}. FEFO batches are deducted automatically.</p>
+          </div>
+          <span className="pill active">{money.format(subtotal)}</span>
+        </div>
+        {!canSell && <div className="form-error">You need cashier, pharmacist, or admin access in {activeBranch.name} to sell medicines.</div>}
+        <label className="scan-field full">Scan barcode or SKU<div><Barcode size={17} /><input value={scan} onChange={(event) => setScan(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); applyScan() } }} placeholder="Scan, then press Enter" disabled={!canSell} /><button className="ghost-button" type="button" onClick={applyScan} disabled={!canSell}><Search size={16} />Add</button></div></label>
+        <label className="search-box full"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search medicines for sale" disabled={!canSell} /></label>
+        <div className="pos-product-grid">
+          {saleOptions.map((medicine) => (
+            <button className="pos-product" type="button" key={medicine.id} onClick={() => addMedicine(medicine.id)} disabled={!canSell}>
+              <strong>{medicine.brandName}</strong>
+              <span>{medicineMeta(medicine)}</span>
+              <b>{number.format(stockByMedicine.get(medicine.id) ?? 0)} available</b>
+            </button>
+          ))}
+          {!saleOptions.length && <div className="empty-state">No stocked medicines match this search.</div>}
+        </div>
+      </section>
+
+      <section className="content-section">
+        <div className="section-heading">
+          <div>
+            <h2>Sale Cart</h2>
+            <p>{cart.length} item{cart.length === 1 ? '' : 's'} ready for checkout.</p>
+          </div>
+        </div>
+        <form className="stack" onSubmit={submit}>
+          <div className="cart-list">
+            {cartRows.map((item) => (
+              <div className="cart-item" key={item.rowId}>
+                <div>
+                  <strong>{item.medicine?.brandName ?? 'Unknown medicine'}</strong>
+                  <span>{number.format(item.available)} available / {money.format(item.lineTotal)}</span>
+                </div>
+                <input aria-label="Quantity" type="number" min="1" max={item.available} value={item.quantity} onChange={(event) => updateCart(item.rowId, { quantity: Number(event.target.value) })} disabled={!canSell} />
+                <input aria-label="Unit price" type="number" min="0" value={item.unitPrice} onChange={(event) => updateCart(item.rowId, { unitPrice: Number(event.target.value) })} disabled={!canSell} />
+                <button className="icon-button" type="button" onClick={() => setCart((current) => current.filter((cartItem) => cartItem.rowId !== item.rowId))} title="Remove item">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))}
+            {!cartRows.length && <div className="empty-state">Add medicines to begin a sale.</div>}
+          </div>
+          <div className="form-grid">
+            <label>Customer name<input value={customerName} onChange={(event) => setCustomerName(event.target.value)} disabled={!canSell} /></label>
+            <label>Customer phone<input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} disabled={!canSell} /></label>
+            <label>Payment<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as Sale['paymentMethod'])} disabled={!canSell}><option value="cash">Cash</option><option value="card">Card</option><option value="transfer">Transfer</option><option value="mixed">Mixed</option></select></label>
+            <label>Receipt reference<input value={reference} onChange={(event) => setReference(event.target.value)} disabled={!canSell} /></label>
+            <label className="full">Note<input value={note} onChange={(event) => setNote(event.target.value)} disabled={!canSell} /></label>
+          </div>
+          <div className="sale-total">
+            <span>Total</span>
+            <strong>{money.format(subtotal)}</strong>
+          </div>
+          <button className="primary-button" type="submit" disabled={!canSell || !cartRows.length || subtotal <= 0}>
+            <ShoppingCart size={17} />
+            Complete sale
+          </button>
+        </form>
+
+        <div className="recent-sales">
+          <h3>Recent sales</h3>
+          {branchSales.map((sale) => (
+            <div className="audit-item" key={sale.id}>
+              <strong>{money.format(sale.subtotal)} / {sale.paymentMethod}</strong>
+              <span>{new Date(sale.soldAt).toLocaleString()} / {sale.items.length} line{sale.items.length === 1 ? '' : 's'}</span>
+            </div>
+          ))}
+          {!branchSales.length && <div className="empty-state">No sales recorded for this branch yet.</div>}
+        </div>
+      </section>
+    </div>
+  )
+}
+
 function allocateFefo(rows: StockRow[], quantity: number) {
   let remaining = quantity
   const allocation: Array<{ row: StockRow; quantity: number }> = []
@@ -3028,7 +3399,7 @@ function BranchesView({
   const superAdmin = isSuperAdmin(db, currentUser)
   const canManageSelected = selectedBranch ? canManageBranch(db, currentUser, selectedBranch.id) : false
   const assignableUsers = useMemo(() => db.users.filter((user) => user.status === 'active' && user.id !== primaryAdminId), [db.users, primaryAdminId])
-  const managerOptions = useMemo(() => db.users.filter((user) => user.status === 'active' && user.role !== 'viewer' && user.id !== primaryAdminId), [db.users, primaryAdminId])
+  const managerOptions = useMemo(() => db.users.filter((user) => user.status === 'active' && (user.role === 'admin' || user.role === 'pharmacist' || user.role === 'inventory') && user.id !== primaryAdminId), [db.users, primaryAdminId])
   const [accessExpiryByUser, setAccessExpiryByUser] = useState<Record<string, string>>({})
   const currentUserHasSelectedAccess = selectedBranch ? hasActiveBranchAssignment(currentUser, selectedBranch.id) : false
   const currentUserPendingAccessRequest = selectedBranch
@@ -3209,6 +3580,10 @@ function SettingsView({ db, canAdmin, executeAction }: { db: Database; canAdmin:
       <form className="form-grid" onSubmit={submit}>
         <label>Software name<input value={form.softwareName} onChange={(event) => setForm({ ...form, softwareName: event.target.value })} disabled={!canAdmin} /></label>
         <label>Account/company name<input value={form.accountName} onChange={(event) => setForm({ ...form, accountName: event.target.value, pharmacyName: event.target.value })} disabled={!canAdmin} /></label>
+        <label>Company URL<input value={`rxledger.com/${form.companySlug}`} disabled /></label>
+        <label>Company code<input value={form.companyCode} disabled /></label>
+        <label className="full">Business registration/licence<input value={form.businessLicense} onChange={(event) => setForm({ ...form, businessLicense: event.target.value })} disabled={!canAdmin} /></label>
+        <label className="full">Main branch address<input value={form.mainBranchAddress} onChange={(event) => setForm({ ...form, mainBranchAddress: event.target.value })} disabled={!canAdmin} /></label>
         <label>Default branch name<input value={form.branchName} onChange={(event) => setForm({ ...form, branchName: event.target.value })} disabled={!canAdmin} /></label>
         <label>Near-expiry days<input type="number" min="1" value={form.nearExpiryDays} onChange={(event) => setForm({ ...form, nearExpiryDays: Number(event.target.value) })} disabled={!canAdmin} /></label>
         <label>Approval threshold (NGN)<input type="number" min="0" value={form.approvalThreshold} onChange={(event) => setForm({ ...form, approvalThreshold: Number(event.target.value) })} disabled={!canAdmin} /></label>

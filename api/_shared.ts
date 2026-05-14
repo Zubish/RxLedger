@@ -3,7 +3,7 @@
 import { neon } from '@neondatabase/serverless'
 import { createHash, pbkdf2Sync, randomBytes, timingSafeEqual } from 'node:crypto'
 
-type Role = 'admin' | 'pharmacist' | 'inventory' | 'viewer'
+type Role = 'admin' | 'pharmacist' | 'inventory' | 'cashier' | 'viewer'
 type UserStatus = 'pending' | 'active' | 'suspended'
 type LedgerType = 'stock-in' | 'stock-out' | 'adjustment' | 'write-off' | 'supplier-return' | 'customer-return'
 
@@ -153,6 +153,45 @@ type Requisition = {
   note?: string
 }
 
+type Sale = {
+  id: string
+  branchId: string
+  cashierUserId: string
+  customerName: string
+  customerPhone: string
+  paymentMethod: 'cash' | 'card' | 'transfer' | 'mixed'
+  reference: string
+  note: string
+  soldAt: string
+  subtotal: number
+  items: Array<{
+    medicineId: string
+    batchId: string
+    quantity: number
+    unitPrice: number
+    lineTotal: number
+  }>
+}
+
+type TenantRecord = {
+  id: string
+  name: string
+  slug: string
+  code: string
+  businessLicense: string
+  mainBranchAddress: string
+  superAdminName: string
+  superAdminEmail: string
+  superAdminPhone: string
+  createdAt: string
+  workspace: Database
+}
+
+type RootState = {
+  tenants: TenantRecord[]
+  defaultSlug: string
+}
+
 type BranchAccessRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
 
 type BranchAccessRequest = {
@@ -181,6 +220,7 @@ type Database = {
     userId: string
     items: Array<{ medicineId: string; batchId: string; quantity: number; unitCost: number }>
   }>
+  sales: Sale[]
   chatMessages: ChatMessage[]
   passwordResetRequests: PasswordResetRequest[]
   securityEvents: SecurityEvent[]
@@ -201,6 +241,10 @@ type Database = {
     accountName: string
     pharmacyName: string
     branchName: string
+    companySlug: string
+    companyCode: string
+    businessLicense: string
+    mainBranchAddress: string
     primaryAdminId?: string
     nearExpiryDays: number
     approvalThreshold: number
@@ -242,6 +286,7 @@ export function createEmptyDatabase(): Database {
     batches: [],
     ledger: [],
     receipts: [],
+    sales: [],
     chatMessages: [],
     passwordResetRequests: [],
     securityEvents: [],
@@ -253,13 +298,17 @@ export function createEmptyDatabase(): Database {
       accountName: 'Pharmacy Account',
       pharmacyName: 'RxLedger',
       branchName: 'Main Branch',
+      companySlug: '',
+      companyCode: '',
+      businessLicense: '',
+      mainBranchAddress: '',
       nearExpiryDays: 90,
       approvalThreshold: 25000,
     },
   }
 }
 
-export type { Branch, BranchAccessRequest, BranchAccessRequestStatus, ChatMessage, Database, HandlerRequest, HandlerResponse, LedgerType, Medicine, PasswordResetRequest, Requisition, RequisitionItem, Role, SecurityEvent, SecurityEventType, Supplier, User }
+export type { Branch, BranchAccessRequest, BranchAccessRequestStatus, ChatMessage, Database, HandlerRequest, HandlerResponse, LedgerType, Medicine, PasswordResetRequest, Requisition, RequisitionItem, Role, Sale, SecurityEvent, SecurityEventType, Supplier, TenantRecord, User }
 
 export function id(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${randomBytes(4).toString('hex')}`
@@ -271,6 +320,36 @@ export function nowIso() {
 
 export function today() {
   return nowIso().slice(0, 10)
+}
+
+export function slugifyCompany(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48)
+}
+
+export function normalizeCompanySlug(value: string) {
+  return slugifyCompany(value)
+}
+
+export function generateCompanyCode(name: string) {
+  const prefix = slugifyCompany(name)
+    .split('-')
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 5) || 'RXL'
+  return `${prefix}-${String(Math.floor(1000 + Math.random() * 9000))}`
+}
+
+export function getCompanySlugFromRequest(req: HandlerRequest) {
+  const header = req.headers['x-rxledger-company']
+  const raw = Array.isArray(header) ? header[0] : header
+  return normalizeCompanySlug(raw || '')
 }
 
 export function daysUntil(date: string) {
@@ -325,20 +404,142 @@ export async function ensureSchema() {
 }
 
 export async function loadDatabase() {
-  await ensureSchema()
-  const sql = getSql()
-  const rows = await sql`SELECT data FROM app_state WHERE id = 1`
-  return normalizeDatabase(rows[0].data as Partial<Database>)
+  const root = await loadRootState()
+  const tenant = root.tenants.find((item) => item.slug === root.defaultSlug) || root.tenants[0]
+  return normalizeDatabase(tenant?.workspace ?? createEmptyDatabase())
 }
 
 export async function saveDatabase(db: Database) {
+  const root = await loadRootState()
+  const slug = db.settings.companySlug || root.defaultSlug
+  const existing = root.tenants.find((item) => item.slug === slug)
+  if (existing) {
+    existing.name = db.settings.accountName
+    existing.businessLicense = db.settings.businessLicense
+    existing.mainBranchAddress = db.settings.mainBranchAddress
+    existing.workspace = normalizeDatabase(db)
+  } else {
+    root.tenants.unshift(createTenantRecord(db, slug || db.settings.accountName))
+    root.defaultSlug = root.tenants[0].slug
+  }
+  await saveRootState(root)
+}
+
+export async function loadRootState() {
+  await ensureSchema()
+  const sql = getSql()
+  const rows = await sql`SELECT data FROM app_state WHERE id = 1`
+  return normalizeRootState(rows[0].data as Partial<RootState> | Partial<Database>)
+}
+
+export async function saveRootState(root: RootState) {
   const sql = getSql()
   await sql`
     UPDATE app_state
-    SET data = ${JSON.stringify(db)}::jsonb,
+    SET data = ${JSON.stringify(normalizeRootState(root))}::jsonb,
         updated_at = now()
     WHERE id = 1
   `
+}
+
+export async function loadTenantDatabase(slug: string) {
+  const root = await loadRootState()
+  const normalizedSlug = normalizeCompanySlug(slug)
+  const tenant = root.tenants.find((item) => item.slug === normalizedSlug)
+  return tenant ? normalizeDatabase(tenant.workspace) : null
+}
+
+export async function saveTenantDatabase(slug: string, db: Database) {
+  const root = await loadRootState()
+  const normalizedSlug = normalizeCompanySlug(slug)
+  const tenant = root.tenants.find((item) => item.slug === normalizedSlug)
+  if (!tenant) throw new Error('Company portal not found')
+  const clean = normalizeDatabase({
+    ...db,
+    settings: {
+      ...db.settings,
+      companySlug: normalizedSlug,
+      companyCode: db.settings.companyCode || tenant.code,
+      businessLicense: db.settings.businessLicense || tenant.businessLicense,
+      mainBranchAddress: db.settings.mainBranchAddress || tenant.mainBranchAddress,
+    },
+  })
+  tenant.name = clean.settings.accountName
+  tenant.businessLicense = clean.settings.businessLicense
+  tenant.mainBranchAddress = clean.settings.mainBranchAddress
+  tenant.superAdminName = clean.users.find((user) => user.id === clean.settings.primaryAdminId)?.name || tenant.superAdminName
+  tenant.superAdminEmail = clean.users.find((user) => user.id === clean.settings.primaryAdminId)?.email || tenant.superAdminEmail
+  tenant.superAdminPhone = clean.users.find((user) => user.id === clean.settings.primaryAdminId)?.phone || tenant.superAdminPhone
+  tenant.workspace = clean
+  await saveRootState(root)
+}
+
+export function normalizeRootState(raw: Partial<RootState> | Partial<Database>): RootState {
+  const candidate = raw as Partial<RootState>
+  if (Array.isArray(candidate.tenants)) {
+    const tenants = candidate.tenants.map((tenant) => {
+      const workspace = normalizeDatabase(tenant.workspace ?? createEmptyDatabase())
+      const slug = normalizeCompanySlug(tenant.slug || workspace.settings.companySlug || workspace.settings.accountName) || id('company')
+      workspace.settings.companySlug = slug
+      workspace.settings.companyCode = workspace.settings.companyCode || tenant.code || generateCompanyCode(workspace.settings.accountName)
+      workspace.settings.businessLicense = workspace.settings.businessLicense || tenant.businessLicense || ''
+      workspace.settings.mainBranchAddress = workspace.settings.mainBranchAddress || tenant.mainBranchAddress || ''
+      return {
+        id: tenant.id || id('tenant'),
+        name: tenant.name || workspace.settings.accountName,
+        slug,
+        code: tenant.code || workspace.settings.companyCode,
+        businessLicense: tenant.businessLicense || workspace.settings.businessLicense,
+        mainBranchAddress: tenant.mainBranchAddress || workspace.settings.mainBranchAddress,
+        superAdminName: tenant.superAdminName || workspace.users.find((user) => user.id === workspace.settings.primaryAdminId)?.name || '',
+        superAdminEmail: tenant.superAdminEmail || workspace.users.find((user) => user.id === workspace.settings.primaryAdminId)?.email || '',
+        superAdminPhone: tenant.superAdminPhone || workspace.users.find((user) => user.id === workspace.settings.primaryAdminId)?.phone || '',
+        createdAt: tenant.createdAt || nowIso(),
+        workspace,
+      }
+    })
+    return {
+      tenants,
+      defaultSlug: normalizeCompanySlug(candidate.defaultSlug || tenants[0]?.slug || ''),
+    }
+  }
+  const database = normalizeDatabase(raw as Partial<Database>)
+  const tenant = createTenantRecord(database, database.settings.companySlug || database.settings.accountName)
+  const hasExistingWorkspace = Boolean(
+    tenant.workspace.users.length ||
+    tenant.workspace.medicines.length ||
+    tenant.workspace.suppliers.length ||
+    tenant.workspace.batches.length ||
+    tenant.workspace.ledger.length ||
+    tenant.workspace.sales.length ||
+    ((raw as Partial<Database>).settings?.primaryAdminId),
+  )
+  return {
+    tenants: hasExistingWorkspace ? [tenant] : [],
+    defaultSlug: hasExistingWorkspace ? tenant.slug : '',
+  }
+}
+
+export function createTenantRecord(db: Database, slugSource: string): TenantRecord {
+  const workspace = normalizeDatabase(db)
+  const slug = normalizeCompanySlug(slugSource || workspace.settings.accountName) || 'rxledger'
+  const code = workspace.settings.companyCode || generateCompanyCode(workspace.settings.accountName)
+  workspace.settings.companySlug = slug
+  workspace.settings.companyCode = code
+  const primaryAdmin = workspace.users.find((user) => user.id === workspace.settings.primaryAdminId)
+  return {
+    id: id('tenant'),
+    name: workspace.settings.accountName,
+    slug,
+    code,
+    businessLicense: workspace.settings.businessLicense || '',
+    mainBranchAddress: workspace.settings.mainBranchAddress || '',
+    superAdminName: primaryAdmin?.name || '',
+    superAdminEmail: primaryAdmin?.email || '',
+    superAdminPhone: primaryAdmin?.phone || '',
+    createdAt: nowIso(),
+    workspace,
+  }
 }
 
 export function normalizeDatabase(raw: Partial<Database>): Database {
@@ -383,6 +584,7 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
     batches: raw.batches ?? empty.batches,
     ledger: raw.ledger ?? empty.ledger,
     receipts: raw.receipts ?? empty.receipts,
+    sales: raw.sales ?? empty.sales,
     chatMessages: raw.chatMessages ?? empty.chatMessages,
     passwordResetRequests: (raw.passwordResetRequests ?? empty.passwordResetRequests).map((request) => {
       const status = String(request.status)
@@ -403,6 +605,10 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
       accountName,
       pharmacyName: rawSettings.pharmacyName || accountName,
       branchName,
+      companySlug: normalizeCompanySlug(rawSettings.companySlug || accountName),
+      companyCode: rawSettings.companyCode || '',
+      businessLicense: rawSettings.businessLicense || '',
+      mainBranchAddress: rawSettings.mainBranchAddress || '',
       primaryAdminId,
     },
   }
@@ -560,7 +766,7 @@ export async function sendSecurityEmail(to: string, subject: string, text: strin
 }
 
 export function canWrite(user: User) {
-  return user.role !== 'viewer'
+  return user.role === 'admin' || user.role === 'pharmacist' || user.role === 'inventory'
 }
 
 export function canAdjust(user: User) {

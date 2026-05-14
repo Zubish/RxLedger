@@ -1,11 +1,20 @@
-import { addAudit, addSecurityEvent, fail, getRequestIp, getRequestUserAgent, hashToken, id, isEmailConfigured, loadDatabase, nowIso, requireMethod, saveDatabase, sendSecurityEmail } from '../_shared.js'
+import { addAudit, addSecurityEvent, fail, getCompanySlugFromRequest, getRequestIp, getRequestUserAgent, hashToken, id, isEmailConfigured, loadTenantDatabase, nowIso, requireMethod, saveTenantDatabase, sendSecurityEmail } from '../_shared.js'
 import type { HandlerRequest, HandlerResponse, PasswordResetRequest } from '../_shared.js'
 
 export default async function handler(req: HandlerRequest, res: HandlerResponse) {
   if (!requireMethod(req, res, ['POST'])) return
   try {
     const body = req.body as Partial<{ email: string; phone: string }>
-    const db = await loadDatabase()
+    const companySlug = getCompanySlugFromRequest(req)
+    if (!companySlug) {
+      fail(res, 400, 'Choose a company portal before resetting password')
+      return
+    }
+    const db = await loadTenantDatabase(companySlug)
+    if (!db) {
+      fail(res, 404, 'Company portal not found')
+      return
+    }
     const email = body.email?.trim().toLowerCase() ?? ''
     const phone = body.phone?.trim() ?? ''
     if (!email || !phone) {
@@ -77,7 +86,7 @@ export default async function handler(req: HandlerRequest, res: HandlerResponse)
       requestId: request.id,
       email,
     })
-    await saveDatabase(db)
+    await saveTenantDatabase(companySlug, db)
     res.status(200).json({ ok: true, emailConfigured: isEmailConfigured() })
   } catch (error) {
     fail(res, 500, error instanceof Error ? error.message : 'Unable to request password reset')

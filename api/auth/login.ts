@@ -1,11 +1,20 @@
-import { addSecurityEvent, createSession, fail, getDeviceId, getRequestIp, getRequestUserAgent, loadDatabase, nowIso, requireMethod, sanitizeDatabase, saveDatabase, sendSecurityEmail, verifyPassword } from '../_shared.js'
+import { addSecurityEvent, createSession, fail, getCompanySlugFromRequest, getDeviceId, getRequestIp, getRequestUserAgent, loadTenantDatabase, nowIso, requireMethod, sanitizeDatabase, saveTenantDatabase, sendSecurityEmail, verifyPassword } from '../_shared.js'
 import type { HandlerRequest, HandlerResponse } from '../_shared.js'
 
 export default async function handler(req: HandlerRequest, res: HandlerResponse) {
   if (!requireMethod(req, res, ['POST'])) return
   try {
     const body = req.body as Partial<{ email: string; password: string }>
-    const db = await loadDatabase()
+    const companySlug = getCompanySlugFromRequest(req)
+    if (!companySlug) {
+      fail(res, 400, 'Choose a company portal before signing in')
+      return
+    }
+    const db = await loadTenantDatabase(companySlug)
+    if (!db) {
+      fail(res, 404, 'Company portal not found')
+      return
+    }
     const user = db.users.find((item) => item.email === body.email?.trim().toLowerCase())
     if (!user || !body.password || !verifyPassword(body.password, user)) {
       fail(res, 401, 'Invalid email or password')
@@ -56,7 +65,7 @@ export default async function handler(req: HandlerRequest, res: HandlerResponse)
         })
       }
     }
-    await saveDatabase(db)
+    await saveTenantDatabase(companySlug, db)
     const session = await createSession(user.id)
     const clean = sanitizeDatabase(db)
     res.status(200).json({ ...session, db: clean, currentUser: clean.users.find((item) => item.id === user.id) })
