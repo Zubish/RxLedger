@@ -245,6 +245,7 @@ type Database = {
     companyCode: string
     businessLicense: string
     mainBranchAddress: string
+    logoDataUrl: string
     primaryAdminId?: string
     nearExpiryDays: number
     approvalThreshold: number
@@ -302,6 +303,7 @@ export function createEmptyDatabase(): Database {
       companyCode: '',
       businessLicense: '',
       mainBranchAddress: '',
+      logoDataUrl: '',
       nearExpiryDays: 90,
       approvalThreshold: 25000,
     },
@@ -479,16 +481,18 @@ export function normalizeRootState(raw: Partial<RootState> | Partial<Database>):
   if (Array.isArray(candidate.tenants)) {
     const tenants = candidate.tenants.map((tenant) => {
       const workspace = normalizeDatabase(tenant.workspace ?? createEmptyDatabase())
-      const slug = normalizeCompanySlug(tenant.slug || workspace.settings.companySlug || workspace.settings.accountName) || id('company')
+      const baseSlug = normalizeCompanySlug(tenant.slug || workspace.settings.companySlug || workspace.settings.accountName) || id('company')
+      const lowerName = `${tenant.name || ''} ${workspace.settings.accountName || ''}`.toLowerCase()
+      const slug = lowerName.includes('totalenergies') ? 'totalenergies-pharmacy' : baseSlug
       workspace.settings.companySlug = slug
-      workspace.settings.companyCode = workspace.settings.companyCode || tenant.code || generateCompanyCode(workspace.settings.accountName)
+      workspace.settings.companyCode = tenant.code || workspace.settings.companyCode || generateCompanyCode(workspace.settings.accountName)
       workspace.settings.businessLicense = workspace.settings.businessLicense || tenant.businessLicense || ''
       workspace.settings.mainBranchAddress = workspace.settings.mainBranchAddress || tenant.mainBranchAddress || ''
       return {
         id: tenant.id || id('tenant'),
         name: tenant.name || workspace.settings.accountName,
         slug,
-        code: tenant.code || workspace.settings.companyCode,
+        code: workspace.settings.companyCode,
         businessLicense: tenant.businessLicense || workspace.settings.businessLicense,
         mainBranchAddress: tenant.mainBranchAddress || workspace.settings.mainBranchAddress,
         superAdminName: tenant.superAdminName || workspace.users.find((user) => user.id === workspace.settings.primaryAdminId)?.name || '',
@@ -609,6 +613,7 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
       companyCode: rawSettings.companyCode || '',
       businessLicense: rawSettings.businessLicense || '',
       mainBranchAddress: rawSettings.mainBranchAddress || '',
+      logoDataUrl: rawSettings.logoDataUrl || '',
       primaryAdminId,
     },
   }

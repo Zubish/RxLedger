@@ -7,6 +7,100 @@
   transition: grid-template-columns 180ms ease;
 }
 
+.landing-page {
+  min-height: 100vh;
+  background: #f5f7f8;
+  color: #182126;
+}
+
+.landing-nav {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 auto;
+  max-width: 1180px;
+  padding: 22px 24px;
+}
+
+.landing-hero {
+  align-items: center;
+  display: grid;
+  gap: 36px;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.65fr);
+  margin: 0 auto;
+  max-width: 1180px;
+  min-height: calc(100vh - 260px);
+  padding: 36px 24px;
+}
+
+.landing-hero h1 {
+  font-size: clamp(42px, 7vw, 74px);
+  line-height: 0.98;
+  margin: 10px 0 18px;
+  max-width: 920px;
+}
+
+.landing-hero p {
+  color: #52626a;
+  font-size: 18px;
+  line-height: 1.6;
+  max-width: 740px;
+}
+
+.landing-code-panel {
+  background: white;
+  border: 1px solid #dce6e7;
+  border-radius: 8px;
+  box-shadow: 0 20px 50px rgba(18, 32, 37, 0.1);
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+}
+
+.landing-code-panel > span,
+.known-workspaces span,
+.landing-feature-grid span,
+.workspace-logo-editor span {
+  color: #68777e;
+  font-size: 13px;
+}
+
+.known-workspaces {
+  display: grid;
+  gap: 8px;
+}
+
+.known-workspaces button {
+  background: #f6faf9;
+  border: 1px solid #dce6e7;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
+  text-align: left;
+}
+
+.landing-feature-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 0 auto;
+  max-width: 1180px;
+  padding: 0 24px 36px;
+}
+
+.landing-feature-grid article {
+  background: white;
+  border: 1px solid #dce6e7;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+}
+
 .app-shell.sidebar-collapsed {
   grid-template-columns: 1fr;
 }
@@ -91,11 +185,18 @@ td span,
   display: grid;
   place-items: center;
   flex: 0 0 auto;
+  overflow: hidden;
 }
 
 .brand-mark.large {
   width: 56px;
   height: 56px;
+}
+
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .nav-list {
@@ -748,6 +849,12 @@ td strong {
   min-width: 0;
 }
 
+.table-price-input {
+  max-width: 110px;
+  min-height: 34px;
+  padding: 6px 8px;
+}
+
 .sale-total {
   align-items: center;
   background: #122025;
@@ -877,6 +984,19 @@ button:disabled {
 }
 
 .company-selector label {
+  flex: 1;
+}
+
+.workspace-logo-editor {
+  align-items: center;
+  border: 1px solid #dce6e7;
+  border-radius: 8px;
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+}
+
+.workspace-logo-editor > div {
   flex: 1;
 }
 
@@ -1559,6 +1679,25 @@ button:disabled {
 }
 
 @media (max-width: 760px) {
+  .landing-nav,
+  .landing-hero {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .landing-nav,
+  .landing-nav .button-row {
+    flex-direction: column;
+  }
+
+  .landing-feature-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .landing-hero h1 {
+    font-size: 42px;
+  }
+
   .workspace {
     padding: 16px;
   }
@@ -1585,6 +1724,10 @@ button:disabled {
   }
 
   .chat-composer {
+    grid-template-columns: 1fr;
+  }
+
+  .cart-item {
     grid-template-columns: 1fr;
   }
 

@@ -98,6 +98,9 @@ export default async function handler(req: HandlerRequest, res: HandlerResponse)
       case 'adjustStock':
         adjustStock(db, actor.id, actor.role, body.payload)
         break
+      case 'updateSellingPrice':
+        updateSellingPrice(db, actor.id, actor.role, body.payload)
+        break
       case 'updateSettings':
         updateSettings(db, actor.id, actor.role, body.payload)
         break
@@ -718,6 +721,30 @@ function recordSale(db: Database, actorId: string, actorRole: Role, payload: Rec
   addAudit(db, actorId, 'Completed POS sale', 'sale', sale.id, undefined, sale)
 }
 
+function updateSellingPrice(db: Database, actorId: string, actorRole: Role, payload: Record<string, unknown> | undefined) {
+  const actor = db.users.find((user) => user.id === actorId)
+  if (!actor || !canWrite({ ...actor, role: actorRole })) throw new Error('You do not have permission to update selling prices')
+  const medicineId = requireString(payload?.medicineId, 'Medicine')
+  const branchId = requireString(payload?.branchId, 'Branch')
+  const sellingPrice = requireNumber(payload?.sellingPrice, 'Selling price')
+  if (sellingPrice < 0) throw new Error('Selling price cannot be negative')
+  if (!canWriteBranch(actor, branchId, getPrimaryAdminId(db))) throw new Error('You only have view access in this branch')
+  const medicine = db.medicines.find((item) => item.id === medicineId)
+  if (!medicine) throw new Error('Medicine not found')
+  const batches = db.batches.filter((batch) => batch.branchId === branchId && batch.medicineId === medicineId && getBatchAvailable(db, batch.id) > 0)
+  if (!batches.length) throw new Error('No active batches found for this medicine in this branch')
+  const before = batches.map((batch) => ({ id: batch.id, sellingPrice: batch.sellingPrice }))
+  batches.forEach((batch) => {
+    if (batch.unitCost > 0 && sellingPrice > 0 && sellingPrice < batch.unitCost) {
+      throw new Error(`Selling price cannot be below unit cost for batch ${batch.batchNumber}`)
+    }
+  })
+  batches.forEach((batch) => {
+    batch.sellingPrice = sellingPrice
+  })
+  addAudit(db, actorId, `Updated selling price for ${medicine.brandName}`, 'medicine', medicineId, before, { branchId, sellingPrice })
+}
+
 function adjustStock(db: Database, actorId: string, actorRole: Role, payload: Record<string, unknown> | undefined) {
   const actor = db.users.find((user) => user.id === actorId)
   if (!actor || !canAdjust({ ...actor, role: actorRole })) throw new Error('You do not have permission to adjust stock')
@@ -758,6 +785,7 @@ function updateSettings(db: Database, actorId: string, actorRole: Role, payload:
     companyCode: db.settings.companyCode,
     businessLicense: optionalString(payload?.businessLicense) || db.settings.businessLicense,
     mainBranchAddress: optionalString(payload?.mainBranchAddress) || db.settings.mainBranchAddress,
+    logoDataUrl: optionalString(payload?.logoDataUrl),
     primaryAdminId: db.settings.primaryAdminId || actorId,
     nearExpiryDays: Number(payload?.nearExpiryDays) || db.settings.nearExpiryDays,
     approvalThreshold: Number(payload?.approvalThreshold) || db.settings.approvalThreshold,

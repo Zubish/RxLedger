@@ -212,6 +212,7 @@ export type AppSettings = {
   companyCode: string
   businessLicense: string
   mainBranchAddress: string
+  logoDataUrl: string
   primaryAdminId?: string
   nearExpiryDays: number
   approvalThreshold: number

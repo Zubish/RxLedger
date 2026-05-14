@@ -72,6 +72,7 @@ export default async function handler(req: HandlerRequest, res: HandlerResponse)
         companyCode,
         businessLicense: body.businessLicense.trim(),
         mainBranchAddress: body.mainBranchAddress.trim(),
+        logoDataUrl: '',
         primaryAdminId: adminId,
         nearExpiryDays: 90,
         approvalThreshold: 25000,

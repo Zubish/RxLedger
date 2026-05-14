@@ -300,6 +300,7 @@ type AppSettings = {
   companyCode: string
   businessLicense: string
   mainBranchAddress: string
+  logoDataUrl: string
   primaryAdminId?: string
   nearExpiryDays: number
   approvalThreshold: number
@@ -463,6 +464,14 @@ function MedicineIdentity({ medicine }: { medicine: Medicine }) {
   )
 }
 
+function BrandMark({ settings, size = 'normal' }: { settings: AppSettings; size?: 'normal' | 'large' }) {
+  return (
+    <div className={size === 'large' ? 'brand-mark large' : 'brand-mark'}>
+      {settings.logoDataUrl ? <img src={settings.logoDataUrl} alt={`${settings.accountName} logo`} /> : <Pill size={size === 'large' ? 30 : 22} />}
+    </div>
+  )
+}
+
 function createEmptyDatabase(): Database {
   return {
     users: [],
@@ -498,6 +507,7 @@ function createEmptyDatabase(): Database {
       companyCode: '',
       businessLicense: '',
       mainBranchAddress: '',
+      logoDataUrl: '',
       nearExpiryDays: 90,
       approvalThreshold: 25_000,
     },
@@ -534,6 +544,13 @@ function aggregateMedicineStock(rows: StockRow[]) {
     totals.set(row.medicine.id, (totals.get(row.medicine.id) ?? 0) + row.quantity)
   })
   return totals
+}
+
+function getMedicineSellingPrice(rows: StockRow[], medicineId: string) {
+  const row = rows
+    .filter((item) => item.medicine.id === medicineId && item.quantity > 0 && item.daysToExpiry >= 0)
+    .sort((a, b) => a.batch.expiryDate.localeCompare(b.batch.expiryDate))[0]
+  return row?.batch.sellingPrice ?? 0
 }
 
 function getActiveBranches(db: Database) {
@@ -800,6 +817,7 @@ function App() {
   const [tenantExists, setTenantExists] = useState(false)
   const [companySlug, setCompanySlug] = useState(() => getPortalSlugFromLocation() || getStoredCompanySlug())
   const [availableTenants, setAvailableTenants] = useState<Array<{ name: string; slug: string; code: string }>>([])
+  const [authIntent, setAuthIntent] = useState<'landing' | 'setup' | 'signin'>('landing')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
   const [drawerHandleTop, setDrawerHandleTop] = useState(() => typeof window === 'undefined' ? 360 : Math.round(window.innerHeight / 2))
@@ -1064,11 +1082,25 @@ function App() {
   if (loading || signingIn) return <LoadingScreen />
 
   if (!currentUser) {
+    const isPortalRoute = Boolean(getPortalSlugFromLocation())
+    if (!isPortalRoute && authIntent === 'landing') {
+      return (
+        <LandingPage
+          tenants={availableTenants}
+          startSignup={() => setAuthIntent('setup')}
+          startSignin={() => setAuthIntent('signin')}
+          chooseTenant={(slug) => {
+            storeCompanySlug(slug)
+            window.location.assign(`/${slug}`)
+          }}
+        />
+      )
+    }
     return (
       <AuthScreen
-        hasUsers={hasUsers}
-        tenantExists={tenantExists}
-        companySlug={companySlug}
+        hasUsers={authIntent === 'setup' && !isPortalRoute ? false : hasUsers}
+        tenantExists={authIntent === 'setup' && !isPortalRoute ? false : tenantExists}
+        companySlug={authIntent === 'setup' && !isPortalRoute ? '' : companySlug}
         availableTenants={availableTenants}
         pharmacyName={db.settings.pharmacyName}
         connectionError={connectionError}
@@ -1082,6 +1114,7 @@ function App() {
           setCompanySlug(clean)
           storeCompanySlug(clean)
         }}
+        backToLanding={!isPortalRoute ? () => setAuthIntent('landing') : undefined}
       />
     )
   }
@@ -1095,9 +1128,7 @@ function App() {
       <button className="sidebar-backdrop" type="button" aria-label="Close menu" onClick={collapseSidebar} />
       <aside className="sidebar">
         <div className="brand-block">
-          <div className="brand-mark">
-            <Pill size={22} />
-          </div>
+          <BrandMark settings={db.settings} />
           <div>
             <strong>{db.settings.softwareName}</strong>
             <span>{db.settings.accountName}</span>
@@ -1291,6 +1322,91 @@ function LoadingScreen() {
   )
 }
 
+function LandingPage({
+  tenants,
+  startSignup,
+  startSignin,
+  chooseTenant,
+}: {
+  tenants: Array<{ name: string; slug: string; code: string }>
+  startSignup: () => void
+  startSignin: () => void
+  chooseTenant: (slug: string) => void
+}) {
+  const [companyCode, setCompanyCode] = useState('')
+  const [notice, setNotice] = useState('')
+
+  function submitCode(event: FormEvent) {
+    event.preventDefault()
+    const needle = companyCode.trim().toLowerCase()
+    const tenant = tenants.find((item) => item.code.toLowerCase() === needle || item.slug.toLowerCase() === slugifyCompany(needle))
+    if (!tenant) {
+      setNotice('No workspace matched that company code or URL.')
+      return
+    }
+    chooseTenant(tenant.slug)
+  }
+
+  return (
+    <main className="landing-page">
+      <header className="landing-nav">
+        <div className="brand-block">
+          <div className="brand-mark"><Pill size={22} /></div>
+          <div>
+            <strong>RxLedger</strong>
+            <span>Pharmacy inventory and POS workspaces</span>
+          </div>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button" type="button" onClick={startSignin}>Sign in</button>
+          <button className="primary-button" type="button" onClick={startSignup}>Register pharmacy</button>
+        </div>
+      </header>
+
+      <section className="landing-hero">
+        <div>
+          <span className="eyebrow">Multi-branch pharmacy operations</span>
+          <h1>Run stock, staff access, branch inventory, and POS sales in one pharmacy workspace.</h1>
+          <p>RxLedger gives each pharmacy a private portal with its own URL, users, branches, inventory ledger, sales checkout, reports, and audit trail.</p>
+          <div className="button-row">
+            <button className="primary-button" type="button" onClick={startSignup}>
+              <Building2 size={17} />
+              Create pharmacy workspace
+            </button>
+            <button className="ghost-button" type="button" onClick={startSignin}>
+              <Lock size={17} />
+              Sign in to workspace
+            </button>
+          </div>
+        </div>
+        <form className="landing-code-panel" onSubmit={submitCode}>
+          <strong>Find your company portal</strong>
+          <span>Enter a workspace URL or company code from your pharmacy admin.</span>
+          <input value={companyCode} onChange={(event) => setCompanyCode(event.target.value)} placeholder="totalenergies-pharmacy or TPI-1895" />
+          <button className="primary-button" type="submit">Open workspace</button>
+          {notice && <div className="form-error">{notice}</div>}
+          {tenants.length > 0 && (
+            <div className="known-workspaces">
+              {tenants.slice(0, 3).map((tenant) => (
+                <button type="button" key={tenant.slug} onClick={() => chooseTenant(tenant.slug)}>
+                  <span>{tenant.name}</span>
+                  <b>/{tenant.slug}</b>
+                </button>
+              ))}
+            </div>
+          )}
+        </form>
+      </section>
+
+      <section className="landing-feature-grid">
+        <article><Building2 size={20} /><strong>Tenant portals</strong><span>Every pharmacy claims a unique URL and manages its own users, branches, and brand.</span></article>
+        <article><Boxes size={20} /><strong>Inventory ledger</strong><span>Track batches, expiry, receiving, stock issue, transfers, returns, and audit logs.</span></article>
+        <article><Calculator size={20} /><strong>POS checkout</strong><span>Cashiers and pharmacists sell medicines while FEFO inventory deductions happen automatically.</span></article>
+      </section>
+    </main>
+  )
+}
+
 function PasswordInput({
   label,
   value,
@@ -1342,6 +1458,7 @@ function AuthScreen({
   requestPasswordReset,
   completePasswordReset,
   setCompanySlug,
+  backToLanding,
 }: {
   hasUsers: boolean
   tenantExists: boolean
@@ -1355,6 +1472,7 @@ function AuthScreen({
   requestPasswordReset: (input: PasswordResetInput) => Promise<{ ok: boolean; emailConfigured: boolean }>
   completePasswordReset: (input: PasswordResetCompleteInput) => Promise<void>
   setCompanySlug: (slug: string) => void
+  backToLanding?: () => void
 }) {
   const [mode, setMode] = useState<AuthMode>(hasUsers ? 'login' : 'setup')
   const [error, setError] = useState('')
@@ -1372,6 +1490,12 @@ function AuthScreen({
           <h1>{activeMode === 'setup' ? 'Create your pharmacy account' : 'Sign in to RxLedger'}</h1>
           <p>{activeMode === 'setup' ? 'Create the company account, claim its URL, first branch, and permanent administrator.' : `Use the ${companySlug ? `/${companySlug}` : 'company'} portal. New staff can request access for admin review.`}</p>
         </div>
+        {backToLanding && (
+          <button className="ghost-button" type="button" onClick={backToLanding}>
+            <ChevronLeft size={16} />
+            Back to RxLedger
+          </button>
+        )}
 
         {activeMode !== 'setup' && availableTenants.length > 0 && (
           <CompanyPortalSelector companySlug={companySlug} tenants={availableTenants} setCompanySlug={setCompanySlug} />
@@ -2138,6 +2262,20 @@ function Medicines({
     resetDrafts()
   }
 
+  function updateSellingPrice(medicine: Medicine, value: string) {
+    if (!activeBranch || !canWrite) return
+    const sellingPrice = Number(value)
+    if (!Number.isFinite(sellingPrice) || sellingPrice < 0) {
+      flash('Enter a valid selling price')
+      return
+    }
+    void executeAction('updateSellingPrice', {
+      medicineId: medicine.id,
+      branchId: activeBranch.id,
+      sellingPrice,
+    }, `${medicine.brandName} selling price updated`)
+  }
+
   return (
     <div className="two-column">
       <section className="content-section">
@@ -2170,6 +2308,7 @@ function Medicines({
                 <th>NAFDAC</th>
                 <th>Barcode</th>
                 <th>Stock</th>
+                <th>Selling price</th>
                 <th>Cost value</th>
                 <th>Status</th>
                 <th></th>
@@ -2187,6 +2326,17 @@ function Medicines({
                     <td>{medicine.nafdacNumber || '-'}</td>
                     <td>{medicine.barcodes[0] ?? '-'}</td>
                     <td>{number.format(stockTotals.get(medicine.id) ?? 0)}</td>
+                    <td>
+                      <input
+                        className="table-price-input"
+                        type="number"
+                        min="0"
+                        defaultValue={getMedicineSellingPrice(stockRows, medicine.id)}
+                        onBlur={(event) => updateSellingPrice(medicine, event.currentTarget.value)}
+                        disabled={!canWrite || !activeBranch || (stockTotals.get(medicine.id) ?? 0) <= 0}
+                        aria-label={`Selling price for ${medicine.brandName}`}
+                      />
+                    </td>
                     <td>{money.format(stockCostTotals.get(medicine.id) ?? 0)}</td>
                     <td><span className={medicine.active ? 'pill good' : 'pill muted'}>{medicine.active ? 'Active' : 'Inactive'}</span></td>
                     <td>
@@ -2202,7 +2352,7 @@ function Medicines({
                   </tr>
                 ))
               ) : (
-                <tr><td colSpan={9}>No medicine records yet. Add the pharmacy catalog before receiving stock.</td></tr>
+                <tr><td colSpan={10}>No medicine records yet. Add the pharmacy catalog before receiving stock.</td></tr>
               )}
             </tbody>
           </table>
@@ -3564,6 +3714,20 @@ function BranchesView({
 function SettingsView({ db, canAdmin, executeAction }: { db: Database; canAdmin: boolean; executeAction: ExecuteAction }) {
   const [form, setForm] = useState(db.settings)
 
+  async function uploadLogo(file: File) {
+    if (file.size > 500_000) {
+      window.alert('Logo must be below 500KB.')
+      return
+    }
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result || ''))
+      reader.onerror = () => reject(new Error('Unable to read logo'))
+      reader.readAsDataURL(file)
+    })
+    setForm((current) => ({ ...current, logoDataUrl: dataUrl }))
+  }
+
   function submit(event: FormEvent) {
     event.preventDefault()
     void executeAction('updateSettings', form, 'Settings saved')
@@ -3578,6 +3742,23 @@ function SettingsView({ db, canAdmin, executeAction }: { db: Database; canAdmin:
         </div>
       </div>
       <form className="form-grid" onSubmit={submit}>
+        <div className="workspace-logo-editor full">
+          <BrandMark settings={form} />
+          <div>
+            <strong>Workspace logo</strong>
+            <span>This replaces the default capsule mark inside your company workspace.</span>
+          </div>
+          <label className="file-button">
+            <Upload size={16} />
+            Upload logo
+            <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadLogo(file); event.currentTarget.value = '' }} disabled={!canAdmin} />
+          </label>
+          {form.logoDataUrl && (
+            <button className="ghost-button" type="button" onClick={() => setForm({ ...form, logoDataUrl: '' })} disabled={!canAdmin}>
+              Remove
+            </button>
+          )}
+        </div>
         <label>Software name<input value={form.softwareName} onChange={(event) => setForm({ ...form, softwareName: event.target.value })} disabled={!canAdmin} /></label>
         <label>Account/company name<input value={form.accountName} onChange={(event) => setForm({ ...form, accountName: event.target.value, pharmacyName: event.target.value })} disabled={!canAdmin} /></label>
         <label>Company URL<input value={`rxledger.com/${form.companySlug}`} disabled /></label>
