@@ -69,6 +69,7 @@ type UserStatus = 'pending' | 'active' | 'suspended'
 type View =
   | 'dashboard'
   | 'medicines'
+  | 'products'
   | 'suppliers'
   | 'receive'
   | 'pos'
@@ -112,12 +113,31 @@ type Medicine = {
   form: string
   strength: string
   unit: string
+  packSize: number
+  sellableUnit: string
+  costPrice: number
+  sellingPrice: number
   category: string
   manufacturer: string
   nafdacNumber: string
   barcodes: string[]
   reorderLevel: number
   active: boolean
+}
+
+type Product = {
+  id: string
+  sku: string
+  name: string
+  category: string
+  unit: string
+  costPrice: number
+  sellingPrice: number
+  quantity: number
+  barcodes: string[]
+  supplierId: string
+  active: boolean
+  createdAt: string
 }
 
 type Supplier = {
@@ -201,13 +221,39 @@ type Sale = {
   note: string
   soldAt: string
   subtotal: number
+  discount: number
+  total: number
+  bookingCode?: string
   items: Array<{
+    itemType: 'medicine' | 'product'
     medicineId: string
-    batchId: string
+    productId?: string
+    batchId?: string
+    itemName?: string
     quantity: number
     unitPrice: number
     lineTotal: number
   }>
+}
+
+type PosDraft = {
+  id: string
+  userId: string
+  branchId: string
+  bookingCode: string
+  customerName: string
+  customerPhone: string
+  paymentMethod: Sale['paymentMethod']
+  discount: number
+  note: string
+  items: Array<{
+    itemType: 'medicine' | 'product'
+    itemId: string
+    quantity: number
+  }>
+  createdAt: string
+  updatedAt: string
+  expiresAt: string
 }
 
 type AuditLog = {
@@ -309,12 +355,14 @@ type AppSettings = {
 type Database = {
   users: User[]
   medicines: Medicine[]
+  products: Product[]
   suppliers: Supplier[]
   branches: Branch[]
   batches: Batch[]
   ledger: LedgerEntry[]
   receipts: Receipt[]
   sales: Sale[]
+  posDrafts: PosDraft[]
   chatMessages: ChatMessage[]
   auditLogs: AuditLog[]
   passwordResetRequests: PasswordResetRequest[]
@@ -353,6 +401,7 @@ type AppNotification = {
 const views: Array<{ id: View; label: string; icon: typeof LayoutDashboard; adminOnly?: boolean }> = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'medicines', label: 'Medicines', icon: Pill },
+  { id: 'products', label: 'Products', icon: Boxes },
   { id: 'suppliers', label: 'Suppliers', icon: Truck },
   { id: 'receive', label: 'Receive', icon: PackagePlus },
   { id: 'pos', label: 'POS', icon: Calculator },
@@ -455,6 +504,12 @@ function medicineReportName(medicine?: Medicine) {
   return medicine ? medicine.brandName : 'Unknown'
 }
 
+function sellableUnitLabel(medicine: Medicine) {
+  const unit = medicine.sellableUnit || medicine.unit || 'unit'
+  const packSize = Number(medicine.packSize) || 1
+  return packSize > 1 ? `${packSize} ${unit} per ${medicine.unit || 'pack'}` : unit
+}
+
 function MedicineIdentity({ medicine }: { medicine: Medicine }) {
   return (
     <span className="medicine-identity">
@@ -476,6 +531,7 @@ function createEmptyDatabase(): Database {
   return {
     users: [],
     medicines: [],
+    products: [],
     suppliers: [],
     branches: [{
       id: 'main',
@@ -492,6 +548,7 @@ function createEmptyDatabase(): Database {
     ledger: [],
     receipts: [],
     sales: [],
+    posDrafts: [],
     chatMessages: [],
     auditLogs: [],
     passwordResetRequests: [],
@@ -838,7 +895,8 @@ function App() {
   const activeBranchStockRows = useMemo(() => activeBranch ? stockRows.filter((row) => row.batch.branchId === activeBranch.id) : stockRows, [activeBranch, stockRows])
   const permittedStockRows = useMemo(() => currentUser ? stockRows.filter((row) => canViewBranch(db, currentUser, row.batch.branchId)) : [], [currentUser, db, stockRows])
   const canWrite = currentUser ? currentUser.role === 'admin' || currentUser.role === 'pharmacist' || currentUser.role === 'inventory' : false
-  const canSell = currentUser ? currentUser.role === 'admin' || currentUser.role === 'pharmacist' || currentUser.role === 'cashier' : false
+  const canSell = currentUser && activeBranch ? isSuperAdmin(db, currentUser) || canManageBranch(db, currentUser, activeBranch.id) || ((currentUser.role === 'pharmacist' || currentUser.role === 'cashier') && hasActiveBranchAssignment(currentUser, activeBranch.id)) : false
+  const canManagePrices = currentUser && activeBranch ? isSuperAdmin(db, currentUser) || canManageBranch(db, currentUser, activeBranch.id) || ((currentUser.role === 'pharmacist' || currentUser.role === 'cashier') && hasActiveBranchAssignment(currentUser, activeBranch.id)) : false
   const canAdjust = currentUser ? currentUser.role === 'admin' || currentUser.role === 'pharmacist' : false
   const canAdmin = isSuperAdmin(db, currentUser)
   const dashboardStockRows = useMemo(() => canAdmin ? stockRows : activeBranchStockRows, [activeBranchStockRows, canAdmin, stockRows])
@@ -1256,10 +1314,11 @@ function App() {
             </div>
           )}
           {activeView === 'dashboard' && <Dashboard db={db} currentUser={currentUser} stockRows={dashboardStockRows} alertStockRows={notificationStockRows} alertStockTotals={notificationStockTotals} canAdmin={canAdmin} activeBranch={activeBranch} assignedBranch={assignedBranch} setActiveView={setActiveView} />}
-          {activeView === 'medicines' && <Medicines db={db} currentUser={currentUser} stockRows={medicinePageStockRows} stockTotals={medicinePageStockTotals} activeBranch={activeBranch} canWrite={Boolean(canWriteActiveBranch)} canFulfillActiveBranch={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
+          {activeView === 'medicines' && <Medicines db={db} currentUser={currentUser} stockRows={medicinePageStockRows} stockTotals={medicinePageStockTotals} activeBranch={activeBranch} canWrite={Boolean(canWriteActiveBranch)} canManagePrices={Boolean(canManagePrices)} canFulfillActiveBranch={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
+          {activeView === 'products' && activeBranch && <ProductsView db={db} canWrite={Boolean(canManagePrices)} executeAction={executeAction} flash={flash} />}
           {activeView === 'suppliers' && <Suppliers db={db} canWrite={canWrite} executeAction={executeAction} />}
           {activeView === 'receive' && activeBranch && <ReceiveStock db={db} activeBranch={activeBranch} canWrite={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
-          {activeView === 'pos' && activeBranch && <POSView db={db} activeBranch={activeBranch} stockRows={activeBranchStockRows} canSell={canSell && Boolean(canAdmin || (currentUser && hasActiveBranchAssignment(currentUser, activeBranch.id)))} executeAction={executeAction} flash={flash} />}
+          {activeView === 'pos' && activeBranch && <POSView key={`${currentUser.id}-${activeBranch.id}`} db={db} currentUser={currentUser} activeBranch={activeBranch} stockRows={activeBranchStockRows} canSell={Boolean(canSell)} executeAction={executeAction} flash={flash} />}
           {activeView === 'issue' && activeBranch && <IssueStock db={db} activeBranch={activeBranch} stockRows={activeBranchStockRows} canWrite={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
           {activeView === 'adjust' && activeBranch && <Adjustments activeBranch={activeBranch} stockRows={activeBranchStockRows} canAdjust={canAdjust && Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
           {activeView === 'reports' && <Reports db={db} stockRows={dashboardStockRows} stockTotals={dashboardStockTotals} />}
@@ -2025,6 +2084,7 @@ function Medicines({
   stockTotals,
   activeBranch,
   canWrite,
+  canManagePrices,
   canFulfillActiveBranch,
   executeAction,
   flash,
@@ -2035,6 +2095,7 @@ function Medicines({
   stockTotals: Map<string, number>
   activeBranch?: Branch
   canWrite: boolean
+  canManagePrices: boolean
   canFulfillActiveBranch: boolean
   executeAction: ExecuteAction
   flash: (message: string) => void
@@ -2058,7 +2119,11 @@ function Medicines({
     genericName: '',
     form: 'Tablet',
     strength: '',
-    unit: 'Unit',
+    unit: 'Pack',
+    packSize: 1,
+    sellableUnit: 'Unit',
+    costPrice: 0,
+    sellingPrice: 0,
     category: '',
     manufacturer: '',
     nafdacNumber: '',
@@ -2188,7 +2253,11 @@ function Medicines({
       genericName: draft.genericName.trim(),
       form: draft.form.trim() || 'Tablet',
       strength: draft.strength.trim(),
-      unit: draft.unit.trim() || 'Unit',
+      unit: draft.unit.trim() || 'Pack',
+      packSize: Math.max(1, Number(draft.packSize) || 1),
+      sellableUnit: draft.sellableUnit.trim() || draft.unit.trim() || 'Unit',
+      costPrice: Math.max(0, Number(draft.costPrice) || 0),
+      sellingPrice: Math.max(0, Number(draft.sellingPrice) || 0),
       category: draft.category.trim(),
       manufacturer: draft.manufacturer.trim(),
       nafdacNumber: draft.nafdacNumber.trim(),
@@ -2217,7 +2286,11 @@ function Medicines({
         genericName: getImportValue(row, ['generic name', 'generic']),
         form: getImportValue(row, ['form', 'dosage form', 'formulation']) || 'Tablet',
         strength: getImportValue(row, ['strength']),
-        unit: getImportValue(row, ['unit', 'unit of measure', 'uom']) || 'Unit',
+        unit: getImportValue(row, ['unit', 'container unit', 'pack unit', 'unit of measure', 'uom']) || 'Pack',
+        packSize: Number(getImportValue(row, ['pack size', 'units per pack', 'units per container', 'quantity per pack'])) || 1,
+        sellableUnit: getImportValue(row, ['sellable unit', 'least sellable unit', 'retail unit']) || 'Unit',
+        costPrice: Number(getImportValue(row, ['cost price', 'cost', 'unit cost'])) || 0,
+        sellingPrice: Number(getImportValue(row, ['selling price', 'sale price', 'retail price'])) || 0,
         category: getImportValue(row, ['category', 'class', 'therapeutic class']),
         manufacturer: getImportValue(row, ['manufacturer', 'maker']),
         nafdacNumber: getImportValue(row, ['nafdac number', 'nafdac no', 'nafdac registration number']),
@@ -2242,6 +2315,10 @@ function Medicines({
       flash('SKU, brand name, and generic name are required for every row')
       return
     }
+    if (records.some((record) => record.sellingPrice > 0 && record.sellingPrice < record.costPrice)) {
+      flash('Selling price must be equal to or greater than cost price')
+      return
+    }
     const rowBarcodes = new Map<string, string>()
     for (const record of records) {
       for (const barcode of record.barcodes) {
@@ -2263,15 +2340,20 @@ function Medicines({
   }
 
   function updateSellingPrice(medicine: Medicine, value: string) {
-    if (!activeBranch || !canWrite) return
+    if (!activeBranch || !canManagePrices) return
     const sellingPrice = Number(value)
     if (!Number.isFinite(sellingPrice) || sellingPrice < 0) {
       flash('Enter a valid selling price')
       return
     }
+    if (sellingPrice > 0 && sellingPrice < medicine.costPrice) {
+      flash('Selling price must be equal to or greater than cost price')
+      return
+    }
     void executeAction('updateSellingPrice', {
       medicineId: medicine.id,
       branchId: activeBranch.id,
+      costPrice: medicine.costPrice,
       sellingPrice,
     }, `${medicine.brandName} selling price updated`)
   }
@@ -2308,6 +2390,7 @@ function Medicines({
                 <th>NAFDAC</th>
                 <th>Barcode</th>
                 <th>Stock</th>
+                <th>Cost price</th>
                 <th>Selling price</th>
                 <th>Cost value</th>
                 <th>Status</th>
@@ -2325,15 +2408,19 @@ function Medicines({
                     <td>{medicine.sku}</td>
                     <td>{medicine.nafdacNumber || '-'}</td>
                     <td>{medicine.barcodes[0] ?? '-'}</td>
-                    <td>{number.format(stockTotals.get(medicine.id) ?? 0)}</td>
+                    <td>
+                      <strong>{number.format(stockTotals.get(medicine.id) ?? 0)}</strong>
+                      <span className="table-subtext">{sellableUnitLabel(medicine)}</span>
+                    </td>
+                    <td>{money.format(medicine.costPrice || 0)}</td>
                     <td>
                       <input
                         className="table-price-input"
                         type="number"
                         min="0"
-                        defaultValue={getMedicineSellingPrice(stockRows, medicine.id)}
+                        defaultValue={medicine.sellingPrice || getMedicineSellingPrice(stockRows, medicine.id)}
                         onBlur={(event) => updateSellingPrice(medicine, event.currentTarget.value)}
-                        disabled={!canWrite || !activeBranch || (stockTotals.get(medicine.id) ?? 0) <= 0}
+                        disabled={!canManagePrices || !activeBranch}
                         aria-label={`Selling price for ${medicine.brandName}`}
                       />
                     </td>
@@ -2352,7 +2439,7 @@ function Medicines({
                   </tr>
                 ))
               ) : (
-                <tr><td colSpan={10}>No medicine records yet. Add the pharmacy catalog before receiving stock.</td></tr>
+                <tr><td colSpan={11}>No medicine records yet. Add the pharmacy catalog before receiving stock.</td></tr>
               )}
             </tbody>
           </table>
@@ -2394,7 +2481,11 @@ function Medicines({
                   <label>NAFDAC number<input value={draft.nafdacNumber} onChange={(event) => updateDraft(draft.rowId, { nafdacNumber: event.target.value })} disabled={!canWrite} /></label>
                   <label>Form<input value={draft.form} onChange={(event) => updateDraft(draft.rowId, { form: event.target.value })} disabled={!canWrite} /></label>
                   <label>Strength<input value={draft.strength} onChange={(event) => updateDraft(draft.rowId, { strength: event.target.value })} disabled={!canWrite} /></label>
-                  <label>Unit<input value={draft.unit} onChange={(event) => updateDraft(draft.rowId, { unit: event.target.value })} disabled={!canWrite} /></label>
+                  <label>Container unit<input value={draft.unit} onChange={(event) => updateDraft(draft.rowId, { unit: event.target.value })} placeholder="Pack, bottle, sachet" disabled={!canWrite} /></label>
+                  <label>Units per container<input type="number" min="1" value={draft.packSize} onChange={(event) => updateDraft(draft.rowId, { packSize: Number(event.target.value) })} disabled={!canWrite} /></label>
+                  <label>Least sellable unit<input value={draft.sellableUnit} onChange={(event) => updateDraft(draft.rowId, { sellableUnit: event.target.value })} placeholder="Tablet, bottle, capsule" disabled={!canWrite} /></label>
+                  <label>Cost price<input type="number" min="0" value={draft.costPrice} onChange={(event) => updateDraft(draft.rowId, { costPrice: Number(event.target.value) })} disabled={!canWrite || !canManagePrices} /></label>
+                  <label>Selling price<input type="number" min="0" value={draft.sellingPrice} onChange={(event) => updateDraft(draft.rowId, { sellingPrice: Number(event.target.value) })} disabled={!canWrite || !canManagePrices} /></label>
                   <label>Category<input value={draft.category} onChange={(event) => updateDraft(draft.rowId, { category: event.target.value })} disabled={!canWrite} /></label>
                   <label>Manufacturer<input value={draft.manufacturer} onChange={(event) => updateDraft(draft.rowId, { manufacturer: event.target.value })} disabled={!canWrite} /></label>
                   <label>Reorder level<input type="number" min="0" value={draft.reorderLevel} onChange={(event) => updateDraft(draft.rowId, { reorderLevel: Number(event.target.value) })} disabled={!canWrite} /></label>
@@ -2835,8 +2926,157 @@ function IssueStock({
   )
 }
 
+function ProductsView({ db, canWrite, executeAction, flash }: { db: Database; canWrite: boolean; executeAction: ExecuteAction; flash: (message: string) => void }) {
+  type ProductDraft = Omit<Product, 'barcodes'> & {
+    barcodes: string
+  }
+  const createBlank = (): ProductDraft => ({
+    id: '',
+    sku: '',
+    name: '',
+    category: 'General retail',
+    unit: 'Unit',
+    costPrice: 0,
+    sellingPrice: 0,
+    quantity: 0,
+    barcodes: '',
+    supplierId: '',
+    active: true,
+    createdAt: new Date().toISOString(),
+  })
+  const [form, setForm] = useState<ProductDraft>(createBlank)
+  const [query, setQuery] = useState('')
+  const visible = db.products
+    .filter((product) => {
+      const text = `${product.sku} ${product.name} ${product.category} ${product.unit} ${product.barcodes.join(' ')}`.toLowerCase()
+      return text.includes(query.toLowerCase())
+    })
+    .sort((a, b) => a.name.localeCompare(b.name))
+
+  function edit(product: Product) {
+    setForm({ ...product, barcodes: product.barcodes.join(', ') })
+  }
+
+  function reset() {
+    setForm(createBlank())
+  }
+
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    if (!canWrite) return
+    const record: Product = {
+      ...form,
+      id: form.id || id('prd'),
+      sku: form.sku.trim(),
+      name: form.name.trim(),
+      category: form.category.trim() || 'General retail',
+      unit: form.unit.trim() || 'Unit',
+      costPrice: Math.max(0, Number(form.costPrice) || 0),
+      sellingPrice: Math.max(0, Number(form.sellingPrice) || 0),
+      quantity: Math.max(0, Number(form.quantity) || 0),
+      barcodes: form.barcodes.split(',').map((item) => item.trim()).filter(Boolean),
+      supplierId: form.supplierId,
+      createdAt: form.createdAt || new Date().toISOString(),
+    }
+    if (!record.sku || !record.name) {
+      flash('SKU and product name are required')
+      return
+    }
+    if (record.sellingPrice > 0 && record.sellingPrice < record.costPrice) {
+      flash('Selling price must be equal to or greater than cost price')
+      return
+    }
+    void executeAction('upsertProduct', { record }, `${record.name} saved`)
+    reset()
+  }
+
+  return (
+    <div className="two-column">
+      <section className="content-section">
+        <div className="section-heading">
+          <div>
+            <h2>Retail Products</h2>
+            <p>Non-medicinal items available for POS sale.</p>
+          </div>
+          <label className="search-box">
+            <Search size={16} />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search products" />
+          </label>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Category</th>
+                <th>SKU</th>
+                <th>Stock</th>
+                <th>Cost</th>
+                <th>Selling</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.length ? visible.map((product) => (
+                <tr key={product.id}>
+                  <td>
+                    <strong>{product.name}</strong>
+                    <span className="table-subtext">{product.unit}</span>
+                  </td>
+                  <td>{product.category || '-'}</td>
+                  <td>{product.sku}</td>
+                  <td>{number.format(product.quantity)}</td>
+                  <td>{money.format(product.costPrice)}</td>
+                  <td>{money.format(product.sellingPrice)}</td>
+                  <td><span className={product.active ? 'pill good' : 'pill muted'}>{product.active ? 'Active' : 'Inactive'}</span></td>
+                  <td>
+                    <button className="icon-button" type="button" onClick={() => edit(product)} disabled={!canWrite} title="Edit product">
+                      <ClipboardList size={16} />
+                    </button>
+                  </td>
+                </tr>
+              )) : <tr><td colSpan={8}>No retail products yet. Add soaps, condoms, drinks, or other counter items here.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="content-section">
+        <div className="section-heading">
+          <div>
+            <h2>{form.id ? 'Edit Product' : 'Add Product'}</h2>
+            <p>Cost, selling price, and quantity feed directly into POS.</p>
+          </div>
+        </div>
+        {!canWrite && <div className="form-error">You need pricing access to create or edit retail products.</div>}
+        <form className="form-grid" onSubmit={submit}>
+          <label className="full">Product name<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} disabled={!canWrite} /></label>
+          <label>SKU<input required value={form.sku} onChange={(event) => setForm({ ...form, sku: event.target.value })} disabled={!canWrite} /></label>
+          <label>Category<input value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} disabled={!canWrite} /></label>
+          <label>Unit<input value={form.unit} onChange={(event) => setForm({ ...form, unit: event.target.value })} disabled={!canWrite} /></label>
+          <label>Quantity<input type="number" min="0" value={form.quantity} onChange={(event) => setForm({ ...form, quantity: Number(event.target.value) })} disabled={!canWrite} /></label>
+          <label>Cost price<input type="number" min="0" value={form.costPrice} onChange={(event) => setForm({ ...form, costPrice: Number(event.target.value) })} disabled={!canWrite} /></label>
+          <label>Selling price<input type="number" min="0" value={form.sellingPrice} onChange={(event) => setForm({ ...form, sellingPrice: Number(event.target.value) })} disabled={!canWrite} /></label>
+          <label>Supplier<select value={form.supplierId} onChange={(event) => setForm({ ...form, supplierId: event.target.value })} disabled={!canWrite}><option value="">No supplier</option>{db.suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label>
+          <label className="full">Barcodes<input value={form.barcodes} onChange={(event) => setForm({ ...form, barcodes: event.target.value })} disabled={!canWrite} placeholder="Comma-separated barcodes" /></label>
+          <label className="checkbox-row full"><input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} disabled={!canWrite} /> Active product</label>
+          <div className="form-actions full">
+            <button className="ghost-button" type="button" onClick={reset}>Clear</button>
+            <button className="primary-button" type="submit" disabled={!canWrite}>
+              <Boxes size={17} />
+              Save product
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  )
+}
+
 function POSView({
   db,
+  currentUser,
   activeBranch,
   stockRows,
   canSell,
@@ -2844,6 +3084,7 @@ function POSView({
   flash,
 }: {
   db: Database
+  currentUser: User
   activeBranch: Branch
   stockRows: StockRow[]
   canSell: boolean
@@ -2852,82 +3093,183 @@ function POSView({
 }) {
   type CartItem = {
     rowId: string
-    medicineId: string
+    itemType: 'medicine' | 'product'
+    itemId: string
     quantity: number
-    unitPrice: number
   }
+  type SaleOption = {
+    itemType: 'medicine' | 'product'
+    itemId: string
+    title: string
+    meta: string
+    available: number
+    unitPrice: number
+    scanCodes: string[]
+  }
+  const currentDraft = db.posDrafts.find((draft) => draft.userId === currentUser.id && draft.branchId === activeBranch.id && draft.expiresAt > new Date().toISOString())
   const [query, setQuery] = useState('')
   const [scan, setScan] = useState('')
-  const [cart, setCart] = useState<CartItem[]>([])
-  const [customerName, setCustomerName] = useState('')
-  const [customerPhone, setCustomerPhone] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState<Sale['paymentMethod']>('cash')
-  const [reference, setReference] = useState('')
-  const [note, setNote] = useState('')
+  const [cart, setCart] = useState<CartItem[]>(() => currentDraft?.items.map((item) => ({
+    rowId: id('pos'),
+    itemType: item.itemType,
+    itemId: item.itemId,
+    quantity: item.quantity,
+  })) ?? [])
+  const [customerName, setCustomerName] = useState(currentDraft?.customerName ?? '')
+  const [customerPhone, setCustomerPhone] = useState(currentDraft?.customerPhone ?? '')
+  const [paymentMethod, setPaymentMethod] = useState<Sale['paymentMethod']>(currentDraft?.paymentMethod ?? 'cash')
+  const [discount, setDiscount] = useState(currentDraft?.discount ?? 0)
+  const [note, setNote] = useState(currentDraft?.note ?? '')
 
   const stockByMedicine = useMemo(() => aggregateMedicineStock(stockRows.filter((row) => row.quantity > 0 && row.daysToExpiry >= 0)), [stockRows])
-  const saleOptions = db.medicines
-    .filter((medicine) => medicine.active && (stockByMedicine.get(medicine.id) ?? 0) > 0)
+  const saleOptions: SaleOption[] = [
+    ...db.medicines
+      .filter((medicine) => medicine.active && (stockByMedicine.get(medicine.id) ?? 0) > 0)
+      .map((medicine) => ({
+        itemType: 'medicine' as const,
+        itemId: medicine.id,
+        title: medicine.brandName,
+        meta: `${medicineMeta(medicine)} / ${sellableUnitLabel(medicine)}`,
+        available: stockByMedicine.get(medicine.id) ?? 0,
+        unitPrice: medicine.sellingPrice || defaultMedicinePrice(medicine.id),
+        scanCodes: [medicine.sku, medicine.nafdacNumber, ...medicine.barcodes].filter(Boolean),
+      })),
+    ...db.products
+      .filter((product) => product.active && product.quantity > 0)
+      .map((product) => ({
+        itemType: 'product' as const,
+        itemId: product.id,
+        title: product.name,
+        meta: `${product.category || 'Retail product'} / ${product.unit}`,
+        available: product.quantity,
+        unitPrice: product.sellingPrice,
+        scanCodes: [product.sku, ...product.barcodes].filter(Boolean),
+      })),
+  ]
     .filter((medicine) => {
-      const text = `${medicine.sku} ${medicine.brandName} ${medicine.genericName} ${medicine.form} ${medicine.strength} ${medicine.barcodes.join(' ')}`.toLowerCase()
+      const text = `${medicine.title} ${medicine.meta} ${medicine.scanCodes.join(' ')}`.toLowerCase()
       return text.includes(query.toLowerCase())
     })
-    .slice(0, 12)
+    .slice(0, 16)
   const cartRows = cart.map((item) => {
-    const medicine = db.medicines.find((entry) => entry.id === item.medicineId)
-    const available = stockByMedicine.get(item.medicineId) ?? 0
-    return { ...item, medicine, available, lineTotal: item.quantity * item.unitPrice }
+    const option = saleOptions.find((entry) => entry.itemType === item.itemType && entry.itemId === item.itemId)
+      ?? makeSaleOption(item.itemType, item.itemId)
+    const available = option?.available ?? 0
+    const unitPrice = option?.unitPrice ?? 0
+    return { ...item, option, available, unitPrice, lineTotal: item.quantity * unitPrice }
   })
   const subtotal = cartRows.reduce((sum, item) => sum + item.lineTotal, 0)
+  const safeDiscount = Math.min(Math.max(0, Number(discount) || 0), subtotal)
+  const total = Math.max(0, subtotal - safeDiscount)
   const branchSales = db.sales
     .filter((sale) => sale.branchId === activeBranch.id)
     .sort((a, b) => b.soldAt.localeCompare(a.soldAt))
-    .slice(0, 8)
+    .slice(0, 12)
 
-  function defaultPrice(medicineId: string) {
+  function defaultMedicinePrice(medicineId: string) {
     return stockRows
       .filter((row) => row.medicine.id === medicineId && row.quantity > 0 && row.daysToExpiry >= 0)
       .sort((a, b) => a.batch.expiryDate.localeCompare(b.batch.expiryDate))[0]?.batch.sellingPrice ?? 0
   }
 
-  function addMedicine(medicineId: string) {
-    const medicine = db.medicines.find((item) => item.id === medicineId)
-    if (!medicine) return
-    setCart((current) => {
-      const existing = current.find((item) => item.medicineId === medicineId)
-      if (existing) {
-        return current.map((item) => item.medicineId === medicineId ? { ...item, quantity: Math.min(item.quantity + 1, stockByMedicine.get(medicineId) ?? item.quantity + 1) } : item)
+  function makeSaleOption(itemType: CartItem['itemType'], itemId: string): SaleOption | undefined {
+    if (itemType === 'product') {
+      const product = db.products.find((item) => item.id === itemId)
+      if (!product) return undefined
+      return {
+        itemType: 'product',
+        itemId: product.id,
+        title: product.name,
+        meta: `${product.category || 'Retail product'} / ${product.unit}`,
+        available: product.quantity,
+        unitPrice: product.sellingPrice,
+        scanCodes: [product.sku, ...product.barcodes].filter(Boolean),
       }
-      return [...current, { rowId: id('pos'), medicineId, quantity: 1, unitPrice: defaultPrice(medicineId) }]
+    }
+    const medicine = db.medicines.find((item) => item.id === itemId)
+    if (!medicine) return undefined
+    return {
+      itemType: 'medicine',
+      itemId: medicine.id,
+      title: medicine.brandName,
+      meta: `${medicineMeta(medicine)} / ${sellableUnitLabel(medicine)}`,
+      available: stockByMedicine.get(medicine.id) ?? 0,
+      unitPrice: medicine.sellingPrice || defaultMedicinePrice(medicine.id),
+      scanCodes: [medicine.sku, medicine.nafdacNumber, ...medicine.barcodes].filter(Boolean),
+    }
+  }
+
+  function addItem(itemType: CartItem['itemType'], itemId: string) {
+    const option = makeSaleOption(itemType, itemId)
+    if (!option) return
+    setCart((current) => {
+      const existing = current.find((item) => item.itemType === itemType && item.itemId === itemId)
+      if (existing) {
+        return current.map((item) => item.rowId === existing.rowId ? { ...item, quantity: Math.min(item.quantity + 1, option.available || item.quantity + 1) } : item)
+      }
+      return [...current, { rowId: id('pos'), itemType, itemId, quantity: 1 }]
     })
-    flash(`${medicine.brandName} added to POS cart`)
+    flash(`${option.title} added to POS cart`)
   }
 
   function applyScan() {
-    const medicine = findMedicineByScan(db, scan)
-    if (!medicine) {
-      flash('No medicine found for scanned code')
+    const needle = scan.trim().toLowerCase()
+    const option = saleOptions.find((item) => item.scanCodes.some((code) => code.toLowerCase() === needle))
+    if (!option) {
+      const medicine = findMedicineByScan(db, scan)
+      if (medicine && (stockByMedicine.get(medicine.id) ?? 0) <= 0) {
+        flash(`${medicine.brandName} has no non-expired stock in ${activeBranch.name}`)
+        return
+      }
+      flash('No stocked medicine or product found for scanned code')
       return
     }
-    if ((stockByMedicine.get(medicine.id) ?? 0) <= 0) {
-      flash(`${medicine.brandName} has no non-expired stock in ${activeBranch.name}`)
+    if (option.available <= 0) {
+      flash(`${option.title} is out of stock`)
       return
     }
-    addMedicine(medicine.id)
+    addItem(option.itemType, option.itemId)
     setScan('')
   }
 
   function updateCart(rowId: string, updates: Partial<CartItem>) {
     setCart((current) => current.map((item) => {
       if (item.rowId !== rowId) return item
-      const available = stockByMedicine.get(item.medicineId) ?? 0
+      const option = makeSaleOption(item.itemType, item.itemId)
+      const available = option?.available ?? 0
       return {
         ...item,
         ...updates,
         quantity: Math.max(1, Math.min(Number(updates.quantity ?? item.quantity) || 1, available || 1)),
-        unitPrice: Math.max(0, Number(updates.unitPrice ?? item.unitPrice) || 0),
       }
     }))
+  }
+
+  function salePayload() {
+    return {
+      branchId: activeBranch.id,
+      customerName,
+      customerPhone,
+      paymentMethod,
+      discount: safeDiscount,
+      note,
+      items: cart.map((item) => ({ itemType: item.itemType, itemId: item.itemId, quantity: item.quantity })),
+    }
+  }
+
+  function saveDraft() {
+    if (!canSell || !cart.length) return
+    void executeAction('savePosDraft', salePayload(), 'POS cart saved with a temporary booking code')
+  }
+
+  function clearDraft() {
+    void executeAction('clearPosDraft', { branchId: activeBranch.id }, 'POS cart cleared')
+    setCart([])
+    setCustomerName('')
+    setCustomerPhone('')
+    setDiscount(0)
+    setNote('')
+    setScan('')
   }
 
   function submit(event: FormEvent) {
@@ -2937,23 +3279,15 @@ function POSView({
       flash('Sale blocked: one or more quantities exceed available stock')
       return
     }
-    if (cartRows.some((item) => item.unitPrice <= 0)) {
-      flash('Every POS item needs a selling price')
+    if (cartRows.some((item) => !item.option || item.unitPrice <= 0)) {
+      flash('Every POS item needs a saved selling price')
       return
     }
-    void executeAction('recordSale', {
-      branchId: activeBranch.id,
-      customerName,
-      customerPhone,
-      paymentMethod,
-      reference,
-      note,
-      items: cart.map((item) => ({ medicineId: item.medicineId, quantity: item.quantity, unitPrice: item.unitPrice })),
-    }, 'Sale completed and inventory deducted')
+    void executeAction('recordSale', salePayload(), 'Sale completed and inventory deducted')
     setCart([])
     setCustomerName('')
     setCustomerPhone('')
-    setReference('')
+    setDiscount(0)
     setNote('')
     setScan('')
   }
@@ -2964,22 +3298,28 @@ function POSView({
         <div className="section-heading">
           <div>
             <h2>Point of Sale</h2>
-            <p>Selling from {activeBranch.name}. FEFO batches are deducted automatically.</p>
+            <p>Selling from {activeBranch.name}. Saved prices are used and medicine batches are deducted by FEFO.</p>
           </div>
-          <span className="pill active">{money.format(subtotal)}</span>
+          <span className="pill active">{money.format(total)}</span>
         </div>
-        {!canSell && <div className="form-error">You need cashier, pharmacist, or admin access in {activeBranch.name} to sell medicines.</div>}
+        {!canSell && <div className="form-error">You need cashier, pharmacist, branch manager, or admin access in {activeBranch.name} to use POS.</div>}
+        {currentDraft && (
+          <div className="booking-strip">
+            <strong>Draft {currentDraft.bookingCode}</strong>
+            <span>Expires {new Date(currentDraft.expiresAt).toLocaleTimeString()}</span>
+          </div>
+        )}
         <label className="scan-field full">Scan barcode or SKU<div><Barcode size={17} /><input value={scan} onChange={(event) => setScan(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); applyScan() } }} placeholder="Scan, then press Enter" disabled={!canSell} /><button className="ghost-button" type="button" onClick={applyScan} disabled={!canSell}><Search size={16} />Add</button></div></label>
-        <label className="search-box full"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search medicines for sale" disabled={!canSell} /></label>
+        <label className="search-box full"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search medicines and products for sale" disabled={!canSell} /></label>
         <div className="pos-product-grid">
-          {saleOptions.map((medicine) => (
-            <button className="pos-product" type="button" key={medicine.id} onClick={() => addMedicine(medicine.id)} disabled={!canSell}>
-              <strong>{medicine.brandName}</strong>
-              <span>{medicineMeta(medicine)}</span>
-              <b>{number.format(stockByMedicine.get(medicine.id) ?? 0)} available</b>
+          {saleOptions.map((option) => (
+            <button className="pos-product" type="button" key={`${option.itemType}-${option.itemId}`} onClick={() => addItem(option.itemType, option.itemId)} disabled={!canSell || option.unitPrice <= 0}>
+              <strong>{option.title}</strong>
+              <span>{option.meta}</span>
+              <b>{number.format(option.available)} available / {money.format(option.unitPrice)}</b>
             </button>
           ))}
-          {!saleOptions.length && <div className="empty-state">No stocked medicines match this search.</div>}
+          {!saleOptions.length && <div className="empty-state">No stocked medicines or retail products match this search.</div>}
         </div>
       </section>
 
@@ -2995,11 +3335,10 @@ function POSView({
             {cartRows.map((item) => (
               <div className="cart-item" key={item.rowId}>
                 <div>
-                  <strong>{item.medicine?.brandName ?? 'Unknown medicine'}</strong>
-                  <span>{number.format(item.available)} available / {money.format(item.lineTotal)}</span>
+                  <strong>{item.option?.title ?? 'Unknown item'}</strong>
+                  <span>{number.format(item.available)} available / {money.format(item.unitPrice)} each / {money.format(item.lineTotal)}</span>
                 </div>
                 <input aria-label="Quantity" type="number" min="1" max={item.available} value={item.quantity} onChange={(event) => updateCart(item.rowId, { quantity: Number(event.target.value) })} disabled={!canSell} />
-                <input aria-label="Unit price" type="number" min="0" value={item.unitPrice} onChange={(event) => updateCart(item.rowId, { unitPrice: Number(event.target.value) })} disabled={!canSell} />
                 <button className="icon-button" type="button" onClick={() => setCart((current) => current.filter((cartItem) => cartItem.rowId !== item.rowId))} title="Remove item">
                   <Trash2 size={16} />
                 </button>
@@ -3011,26 +3350,45 @@ function POSView({
             <label>Customer name<input value={customerName} onChange={(event) => setCustomerName(event.target.value)} disabled={!canSell} /></label>
             <label>Customer phone<input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} disabled={!canSell} /></label>
             <label>Payment<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as Sale['paymentMethod'])} disabled={!canSell}><option value="cash">Cash</option><option value="card">Card</option><option value="transfer">Transfer</option><option value="mixed">Mixed</option></select></label>
-            <label>Receipt reference<input value={reference} onChange={(event) => setReference(event.target.value)} disabled={!canSell} /></label>
+            <label>Discount<input type="number" min="0" max={subtotal} value={discount} onChange={(event) => setDiscount(Number(event.target.value))} disabled={!canSell} /></label>
             <label className="full">Note<input value={note} onChange={(event) => setNote(event.target.value)} disabled={!canSell} /></label>
           </div>
           <div className="sale-total">
-            <span>Total</span>
-            <strong>{money.format(subtotal)}</strong>
+            <span>Subtotal {money.format(subtotal)} / Discount {money.format(safeDiscount)}</span>
+            <strong>{money.format(total)}</strong>
           </div>
-          <button className="primary-button" type="submit" disabled={!canSell || !cartRows.length || subtotal <= 0}>
-            <ShoppingCart size={17} />
-            Complete sale
-          </button>
+          <div className="form-actions">
+            <button className="ghost-button" type="button" onClick={saveDraft} disabled={!canSell || !cartRows.length || subtotal <= 0}>
+              <FileText size={17} />
+              Save draft
+            </button>
+            <button className="ghost-button" type="button" onClick={clearDraft} disabled={!canSell || (!cartRows.length && !currentDraft)}>
+              <XCircle size={17} />
+              Clear
+            </button>
+            <button className="primary-button" type="submit" disabled={!canSell || !cartRows.length || total <= 0}>
+              <ShoppingCart size={17} />
+              Complete sale
+            </button>
+          </div>
         </form>
 
         <div className="recent-sales">
-          <h3>Recent sales</h3>
+          <h3>Sales history</h3>
           {branchSales.map((sale) => (
-            <div className="audit-item" key={sale.id}>
-              <strong>{money.format(sale.subtotal)} / {sale.paymentMethod}</strong>
-              <span>{new Date(sale.soldAt).toLocaleString()} / {sale.items.length} line{sale.items.length === 1 ? '' : 's'}</span>
-            </div>
+            <article className="sale-history-item" key={sale.id}>
+              <div>
+                <strong>{money.format(sale.total ?? sale.subtotal)} / {sale.paymentMethod}</strong>
+                <span>{new Date(sale.soldAt).toLocaleString()} / Ref {sale.reference}{sale.bookingCode ? ` / Draft ${sale.bookingCode}` : ''}</span>
+              </div>
+              <span>{sale.customerName || 'Walk-in customer'}{sale.customerPhone ? ` / ${sale.customerPhone}` : ''}</span>
+              <ul>
+                {sale.items.map((item, index) => (
+                  <li key={`${sale.id}-${index}`}>{item.itemName || item.medicineId || item.productId}: {number.format(item.quantity)} x {money.format(item.unitPrice)} = {money.format(item.lineTotal)}</li>
+                ))}
+              </ul>
+              {sale.discount > 0 && <small>Discount: {money.format(sale.discount)}</small>}
+            </article>
           ))}
           {!branchSales.length && <div className="empty-state">No sales recorded for this branch yet.</div>}
         </div>

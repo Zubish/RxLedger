@@ -32,12 +32,31 @@ export type Medicine = {
   form: string
   strength: string
   unit: string
+  packSize: number
+  sellableUnit: string
+  costPrice: number
+  sellingPrice: number
   category: string
   manufacturer: string
   nafdacNumber: string
   barcodes: string[]
   reorderLevel: number
   active: boolean
+}
+
+export type Product = {
+  id: string
+  sku: string
+  name: string
+  category: string
+  unit: string
+  costPrice: number
+  sellingPrice: number
+  quantity: number
+  barcodes: string[]
+  supplierId: string
+  active: boolean
+  createdAt: string
 }
 
 export type Supplier = {
@@ -113,13 +132,39 @@ export type Sale = {
   note: string
   soldAt: string
   subtotal: number
+  discount: number
+  total: number
+  bookingCode?: string
   items: Array<{
+    itemType: 'medicine' | 'product'
     medicineId: string
-    batchId: string
+    productId?: string
+    batchId?: string
+    itemName?: string
     quantity: number
     unitPrice: number
     lineTotal: number
   }>
+}
+
+export type PosDraft = {
+  id: string
+  userId: string
+  branchId: string
+  bookingCode: string
+  customerName: string
+  customerPhone: string
+  paymentMethod: Sale['paymentMethod']
+  discount: number
+  note: string
+  items: Array<{
+    itemType: 'medicine' | 'product'
+    itemId: string
+    quantity: number
+  }>
+  createdAt: string
+  updatedAt: string
+  expiresAt: string
 }
 
 export type AuditLog = {
@@ -221,12 +266,14 @@ export type AppSettings = {
 export type Database = {
   users: User[]
   medicines: Medicine[]
+  products: Product[]
   suppliers: Supplier[]
   branches: Branch[]
   batches: Batch[]
   ledger: LedgerEntry[]
   receipts: Receipt[]
   sales: Sale[]
+  posDrafts: PosDraft[]
   chatMessages: ChatMessage[]
   auditLogs: AuditLog[]
   passwordResetRequests: PasswordResetRequest[]

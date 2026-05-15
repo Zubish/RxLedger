@@ -39,12 +39,31 @@ type Medicine = {
   form: string
   strength: string
   unit: string
+  packSize: number
+  sellableUnit: string
+  costPrice: number
+  sellingPrice: number
   category: string
   manufacturer: string
   nafdacNumber: string
   barcodes: string[]
   reorderLevel: number
   active: boolean
+}
+
+type Product = {
+  id: string
+  sku: string
+  name: string
+  category: string
+  unit: string
+  costPrice: number
+  sellingPrice: number
+  quantity: number
+  barcodes: string[]
+  supplierId: string
+  active: boolean
+  createdAt: string
 }
 
 type Supplier = {
@@ -164,13 +183,39 @@ type Sale = {
   note: string
   soldAt: string
   subtotal: number
+  discount: number
+  total: number
+  bookingCode?: string
   items: Array<{
+    itemType: 'medicine' | 'product'
     medicineId: string
-    batchId: string
+    productId?: string
+    batchId?: string
+    itemName?: string
     quantity: number
     unitPrice: number
     lineTotal: number
   }>
+}
+
+type PosDraft = {
+  id: string
+  userId: string
+  branchId: string
+  bookingCode: string
+  customerName: string
+  customerPhone: string
+  paymentMethod: Sale['paymentMethod']
+  discount: number
+  note: string
+  items: Array<{
+    itemType: 'medicine' | 'product'
+    itemId: string
+    quantity: number
+  }>
+  createdAt: string
+  updatedAt: string
+  expiresAt: string
 }
 
 type TenantRecord = {
@@ -208,6 +253,7 @@ type BranchAccessRequest = {
 type Database = {
   users: User[]
   medicines: Medicine[]
+  products: Product[]
   suppliers: Supplier[]
   branches: Branch[]
   batches: Batch[]
@@ -221,6 +267,7 @@ type Database = {
     items: Array<{ medicineId: string; batchId: string; quantity: number; unitCost: number }>
   }>
   sales: Sale[]
+  posDrafts: PosDraft[]
   chatMessages: ChatMessage[]
   passwordResetRequests: PasswordResetRequest[]
   securityEvents: SecurityEvent[]
@@ -272,6 +319,7 @@ export function createEmptyDatabase(): Database {
   return {
     users: [],
     medicines: [],
+    products: [],
     suppliers: [],
     branches: [{
       id: 'main',
@@ -288,6 +336,7 @@ export function createEmptyDatabase(): Database {
     ledger: [],
     receipts: [],
     sales: [],
+    posDrafts: [],
     chatMessages: [],
     passwordResetRequests: [],
     securityEvents: [],
@@ -310,7 +359,7 @@ export function createEmptyDatabase(): Database {
   }
 }
 
-export type { Branch, BranchAccessRequest, BranchAccessRequestStatus, ChatMessage, Database, HandlerRequest, HandlerResponse, LedgerType, Medicine, PasswordResetRequest, Requisition, RequisitionItem, Role, Sale, SecurityEvent, SecurityEventType, Supplier, TenantRecord, User }
+export type { Branch, BranchAccessRequest, BranchAccessRequestStatus, ChatMessage, Database, HandlerRequest, HandlerResponse, LedgerType, Medicine, PasswordResetRequest, PosDraft, Product, Requisition, RequisitionItem, Role, Sale, SecurityEvent, SecurityEventType, Supplier, TenantRecord, User }
 
 export function id(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${randomBytes(4).toString('hex')}`
@@ -578,17 +627,53 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
       branchAccessExpiresAt: user.branchAccessExpiresAt ?? {},
     }
   })
+  const medicines = (raw.medicines ?? empty.medicines).map((medicine) => ({
+    ...medicine,
+    packSize: Number(medicine.packSize) > 0 ? Number(medicine.packSize) : 1,
+    sellableUnit: medicine.sellableUnit || medicine.unit || 'Unit',
+    costPrice: Number(medicine.costPrice) || 0,
+    sellingPrice: Number(medicine.sellingPrice) || 0,
+  }))
+  const sales = (raw.sales ?? empty.sales).map((sale) => {
+    const subtotal = Number(sale.subtotal) || sale.items?.reduce((sum, item) => sum + Number(item.lineTotal || 0), 0) || 0
+    const discount = Number(sale.discount) || 0
+    return {
+      ...sale,
+      subtotal,
+      discount,
+      total: Number(sale.total) || Math.max(0, subtotal - discount),
+      items: (sale.items ?? []).map((item) => ({
+        itemType: item.itemType || 'medicine',
+        medicineId: item.medicineId || '',
+        productId: item.productId,
+        batchId: item.batchId,
+        itemName: item.itemName,
+        quantity: Number(item.quantity) || 0,
+        unitPrice: Number(item.unitPrice) || 0,
+        lineTotal: Number(item.lineTotal) || 0,
+      })),
+    }
+  })
   return {
     ...empty,
     ...raw,
     users,
-    medicines: raw.medicines ?? empty.medicines,
+    medicines,
+    products: (raw.products ?? empty.products).map((product) => ({
+      ...product,
+      costPrice: Number(product.costPrice) || 0,
+      sellingPrice: Number(product.sellingPrice) || 0,
+      quantity: Number(product.quantity) || 0,
+      barcodes: product.barcodes ?? [],
+      createdAt: product.createdAt || nowIso(),
+    })),
     suppliers: raw.suppliers ?? empty.suppliers,
     branches,
     batches: raw.batches ?? empty.batches,
     ledger: raw.ledger ?? empty.ledger,
     receipts: raw.receipts ?? empty.receipts,
-    sales: raw.sales ?? empty.sales,
+    sales,
+    posDrafts: (raw.posDrafts ?? empty.posDrafts).filter((draft) => draft.expiresAt > nowIso()),
     chatMessages: raw.chatMessages ?? empty.chatMessages,
     passwordResetRequests: (raw.passwordResetRequests ?? empty.passwordResetRequests).map((request) => {
       const status = String(request.status)
