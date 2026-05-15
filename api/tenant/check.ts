@@ -14,6 +14,6 @@ export default async function handler(req: HandlerRequest & { query?: Record<str
       claimedBy: owner ? owner.name : '',
     })
   } catch (error) {
-    fail(res, 500, error instanceof Error ? error.message : 'Unable to check company URL')
+    fail(res, 500, error instanceof Error ? error.message : 'Unable to check workspace name')
   }
 }

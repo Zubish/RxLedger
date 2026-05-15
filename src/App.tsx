@@ -56,6 +56,7 @@ import {
   completePasswordReset as apiCompletePasswordReset,
   registerUser as apiRegisterUser,
   requestPasswordReset as apiRequestPasswordReset,
+  resolveCompany,
   runAction,
   setupWorkspace,
   storeCompanySlug,
@@ -466,7 +467,7 @@ function slugifyCompany(value: string) {
     .slice(0, 48)
 }
 
-function getPortalSlugFromLocation() {
+function getWorkspaceSlugFromLocation() {
   if (typeof window === 'undefined') return ''
   const [segment = ''] = window.location.pathname.split('/').filter(Boolean)
   if (!segment || segment === 'api') return ''
@@ -872,8 +873,7 @@ function App() {
   const [connectionError, setConnectionError] = useState('')
   const [hasUsers, setHasUsers] = useState(false)
   const [tenantExists, setTenantExists] = useState(false)
-  const [companySlug, setCompanySlug] = useState(() => getPortalSlugFromLocation() || getStoredCompanySlug())
-  const [availableTenants, setAvailableTenants] = useState<Array<{ name: string; slug: string; code: string }>>([])
+  const [companySlug, setCompanySlug] = useState(() => getWorkspaceSlugFromLocation() || getStoredCompanySlug())
   const [authIntent, setAuthIntent] = useState<'landing' | 'setup' | 'signin'>('landing')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
@@ -912,10 +912,10 @@ function App() {
     async function load() {
       try {
         setConnectionError('')
-        const portalSlug = getPortalSlugFromLocation() || getStoredCompanySlug()
-        if (portalSlug) {
-          storeCompanySlug(portalSlug)
-          setCompanySlug(portalSlug)
+        const workspaceSlug = getWorkspaceSlugFromLocation() || getStoredCompanySlug()
+        if (workspaceSlug) {
+          storeCompanySlug(workspaceSlug)
+          setCompanySlug(workspaceSlug)
         }
         const boot = await bootstrap()
         if (!boot.settings) {
@@ -923,7 +923,6 @@ function App() {
         }
         setHasUsers(boot.hasUsers)
         setTenantExists(boot.tenantExists)
-        setAvailableTenants(boot.tenants ?? [])
         if (boot.settings.companySlug) {
           storeCompanySlug(boot.settings.companySlug)
           setCompanySlug(boot.settings.companySlug)
@@ -990,7 +989,7 @@ function App() {
       setTenantExists(true)
       setCompanySlug(result.db.settings.companySlug)
       storeCompanySlug(result.db.settings.companySlug)
-      if (result.db.settings.companySlug && getPortalSlugFromLocation() !== result.db.settings.companySlug) {
+      if (result.db.settings.companySlug && getWorkspaceSlugFromLocation() !== result.db.settings.companySlug) {
         window.history.replaceState(null, '', `/${result.db.settings.companySlug}`)
       }
       setActiveBranchId(getUserHomeBranch(result.db, result.currentUser)?.id ?? result.db.branches.find((branch) => branch.active)?.id ?? 'main')
@@ -1140,13 +1139,11 @@ function App() {
   if (loading || signingIn) return <LoadingScreen />
 
   if (!currentUser) {
-    const isPortalRoute = Boolean(getPortalSlugFromLocation())
-    if (!isPortalRoute && authIntent === 'landing') {
+    const isWorkspaceRoute = Boolean(getWorkspaceSlugFromLocation())
+    if (!isWorkspaceRoute && authIntent === 'landing') {
       return (
         <LandingPage
-          tenants={availableTenants}
           startSignup={() => setAuthIntent('setup')}
-          startSignin={() => setAuthIntent('signin')}
           chooseTenant={(slug) => {
             storeCompanySlug(slug)
             window.location.assign(`/${slug}`)
@@ -1156,23 +1153,17 @@ function App() {
     }
     return (
       <AuthScreen
-        hasUsers={authIntent === 'setup' && !isPortalRoute ? false : hasUsers}
-        tenantExists={authIntent === 'setup' && !isPortalRoute ? false : tenantExists}
-        companySlug={authIntent === 'setup' && !isPortalRoute ? '' : companySlug}
-        availableTenants={availableTenants}
-        pharmacyName={db.settings.pharmacyName}
+        hasUsers={authIntent === 'setup' && !isWorkspaceRoute ? false : hasUsers}
+        tenantExists={authIntent === 'setup' && !isWorkspaceRoute ? false : tenantExists}
+        companySlug={authIntent === 'setup' && !isWorkspaceRoute ? '' : companySlug}
+        settings={db.settings}
         connectionError={connectionError}
         createFirstAdmin={createFirstAdmin}
         login={signIn}
         registerUser={registerUser}
         requestPasswordReset={requestPasswordReset}
         completePasswordReset={completePasswordReset}
-        setCompanySlug={(slug) => {
-          const clean = slugifyCompany(slug)
-          setCompanySlug(clean)
-          storeCompanySlug(clean)
-        }}
-        backToLanding={!isPortalRoute ? () => setAuthIntent('landing') : undefined}
+        backToLanding={!isWorkspaceRoute ? () => setAuthIntent('landing') : undefined}
       />
     )
   }
@@ -1364,13 +1355,19 @@ type PasswordResetCompleteInput = {
   password: string
 }
 
+function RxLedgerLogo({ size = 'normal' }: { size?: 'normal' | 'large' }) {
+  return (
+    <span className={size === 'large' ? 'rxledger-logo large' : 'rxledger-logo'}>
+      <img src="/favicon.svg" alt="RxLedger logo" />
+    </span>
+  )
+}
+
 function LoadingScreen() {
   return (
     <main className="login-screen">
       <section className="login-panel auth-panel">
-        <div className="brand-mark large">
-          <Pill size={30} />
-        </div>
+        <RxLedgerLogo size="large" />
         <div>
           <span className="eyebrow">Connecting</span>
           <h1>Loading pharmacy workspace</h1>
@@ -1382,86 +1379,146 @@ function LoadingScreen() {
 }
 
 function LandingPage({
-  tenants,
   startSignup,
-  startSignin,
   chooseTenant,
 }: {
-  tenants: Array<{ name: string; slug: string; code: string }>
   startSignup: () => void
-  startSignin: () => void
   chooseTenant: (slug: string) => void
 }) {
   const [companyCode, setCompanyCode] = useState('')
   const [notice, setNotice] = useState('')
+  const accessInputRef = useRef<HTMLInputElement>(null)
 
-  function submitCode(event: FormEvent) {
+  async function submitCode(event: FormEvent) {
     event.preventDefault()
-    const needle = companyCode.trim().toLowerCase()
-    const tenant = tenants.find((item) => item.code.toLowerCase() === needle || item.slug.toLowerCase() === slugifyCompany(needle))
-    if (!tenant) {
-      setNotice('No workspace matched that company code or URL.')
+    if (!companyCode.trim()) {
+      setNotice('Enter the access code from your pharmacy admin.')
       return
     }
-    chooseTenant(tenant.slug)
+    try {
+      const result = await resolveCompany(companyCode)
+      chooseTenant(result.slug)
+    } catch {
+      setNotice('No company matched that access code. Ask your pharmacy admin to confirm it.')
+    }
+  }
+
+  function focusStaffAccess() {
+    accessInputRef.current?.focus()
+    accessInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
   return (
     <main className="landing-page">
       <header className="landing-nav">
         <div className="brand-block">
-          <div className="brand-mark"><Pill size={22} /></div>
+          <RxLedgerLogo />
           <div>
             <strong>RxLedger</strong>
-            <span>Pharmacy inventory and POS workspaces</span>
+            <span>Inventory, POS, and pharmacy operations</span>
           </div>
         </div>
-        <div className="button-row">
-          <button className="ghost-button" type="button" onClick={startSignin}>Sign in</button>
-          <button className="primary-button" type="button" onClick={startSignup}>Register pharmacy</button>
-        </div>
+        <button className="ghost-button nav-signin" type="button" onClick={focusStaffAccess}>Sign in</button>
       </header>
 
       <section className="landing-hero">
-        <div>
-          <span className="eyebrow">Multi-branch pharmacy operations</span>
-          <h1>Run stock, staff access, branch inventory, and POS sales in one pharmacy workspace.</h1>
-          <p>RxLedger gives each pharmacy a private portal with its own URL, users, branches, inventory ledger, sales checkout, reports, and audit trail.</p>
+        <div className="landing-hero-copy">
+          <span className="eyebrow">Built for pharmacy teams that move fast</span>
+          <h1>Know what is in stock, what sold today, and who touched every record.</h1>
+          <p>RxLedger gives pharmacies a branded operations workspace for inventory, branches, staff access, POS checkout, audit trails, and day-end reconciliation.</p>
           <div className="button-row">
             <button className="primary-button" type="button" onClick={startSignup}>
               <Building2 size={17} />
               Create pharmacy workspace
             </button>
-            <button className="ghost-button" type="button" onClick={startSignin}>
-              <Lock size={17} />
-              Sign in to workspace
-            </button>
+          </div>
+          <div className="landing-proof-row" aria-label="Product highlights">
+            <span><strong>FEFO</strong> batch deduction</span>
+            <span><strong>POS</strong> with saved prices</span>
+            <span><strong>Audit</strong> ready records</span>
           </div>
         </div>
+        <div className="landing-visual" aria-label="RxLedger pharmacy operations preview">
+          <img src="https://images.unsplash.com/photo-1587854692152-cbe660dbde88?auto=format&fit=crop&w=1200&q=80" alt="Pharmacy shelves and medicine inventory" />
+          <div className="landing-dashboard-card">
+            <span>Today at a glance</span>
+            <strong>₦1.84M</strong>
+            <small>sales reconciled across 3 branches</small>
+          </div>
+        </div>
+      </section>
+
+      <section className="landing-code-section" id="staff-signin">
+        <div>
+          <span className="eyebrow">Staff access</span>
+          <h2>Sign in to the right company workspace.</h2>
+          <p>Enter the access code supplied by your pharmacy admin. Company lists stay private.</p>
+        </div>
         <form className="landing-code-panel" onSubmit={submitCode}>
-          <strong>Find your company portal</strong>
-          <span>Enter a workspace URL or company code from your pharmacy admin.</span>
-          <input value={companyCode} onChange={(event) => setCompanyCode(event.target.value)} placeholder="totalenergies-pharmacy or TPI-1895" />
-          <button className="primary-button" type="submit">Open workspace</button>
+          <strong>Find your company</strong>
+          <span>Your company name and logo will confirm you are in the right place before sign in.</span>
+          <input ref={accessInputRef} value={companyCode} onChange={(event) => setCompanyCode(event.target.value)} placeholder="Company access code" />
+          <button className="primary-button" type="submit">Continue</button>
           {notice && <div className="form-error">{notice}</div>}
-          {tenants.length > 0 && (
-            <div className="known-workspaces">
-              {tenants.slice(0, 3).map((tenant) => (
-                <button type="button" key={tenant.slug} onClick={() => chooseTenant(tenant.slug)}>
-                  <span>{tenant.name}</span>
-                  <b>/{tenant.slug}</b>
-                </button>
-              ))}
-            </div>
-          )}
         </form>
       </section>
 
-      <section className="landing-feature-grid">
-        <article><Building2 size={20} /><strong>Tenant portals</strong><span>Every pharmacy claims a unique URL and manages its own users, branches, and brand.</span></article>
-        <article><Boxes size={20} /><strong>Inventory ledger</strong><span>Track batches, expiry, receiving, stock issue, transfers, returns, and audit logs.</span></article>
-        <article><Calculator size={20} /><strong>POS checkout</strong><span>Cashiers and pharmacists sell medicines while FEFO inventory deductions happen automatically.</span></article>
+      <section className="landing-feature-grid" aria-label="RxLedger features">
+        <article><Building2 size={20} /><strong>Multi-branch control</strong><span>Give each branch the right staff, stock, permissions, and operating view.</span></article>
+        <article><Boxes size={20} /><strong>Inventory ledger</strong><span>Track batches, expiry, receiving, issues, transfers, returns, and reorder risk.</span></article>
+        <article><Calculator size={20} /><strong>POS checkout</strong><span>Sell medicines and retail products with saved prices, discounts, and receipts.</span></article>
+        <article><ShieldCheck size={20} /><strong>Audit trail</strong><span>See who changed prices, moved stock, approved access, or completed a sale.</span></article>
+        <article><Archive size={20} /><strong>Expiry discipline</strong><span>Keep FEFO workflows visible so near-expiry batches are handled before loss.</span></article>
+        <article><Users size={20} /><strong>Role-based access</strong><span>Cashiers, pharmacists, managers, and admins see the tools meant for them.</span></article>
       </section>
+
+      <section className="landing-story">
+        <div>
+          <span className="eyebrow">About us</span>
+          <h2>RxLedger exists for pharmacy teams that cannot afford guesswork.</h2>
+          <p>We are building a practical operating system for community pharmacies, hospital dispensaries, and multi-branch medicine retailers. The goal is simple: clearer stock, safer dispensing, cleaner sales records, and better accountability at the end of every day.</p>
+        </div>
+        <div className="story-card">
+          <strong>Our story</strong>
+          <p>RxLedger started from a familiar pharmacy problem: stock sits in different branches, prices change at the counter, staff need different access, and reconciliation becomes stressful. We turned those daily pressures into one calm workspace.</p>
+        </div>
+      </section>
+
+      <section className="landing-mission-grid">
+        <article>
+          <span className="eyebrow">Mission</span>
+          <h3>Make pharmacy operations traceable, fast, and financially clear.</h3>
+        </article>
+        <article>
+          <span className="eyebrow">Vision</span>
+          <h3>A pharmacy network where every branch knows its stock position in real time.</h3>
+        </article>
+      </section>
+
+      <section className="landing-contact">
+        <div>
+          <span className="eyebrow">Contact</span>
+          <h2>Bring RxLedger into your pharmacy workflow.</h2>
+          <p>For onboarding, support, demos, and integration conversations, reach the RxLedger team through any official support channel.</p>
+        </div>
+        <div className="contact-grid">
+          <a href="mailto:support@rxledger.com">support@rxledger.com</a>
+          <a href="tel:+2340000000000">+234 000 000 0000</a>
+          <a href="https://x.com/rxledger" target="_blank" rel="noreferrer">@rxledger</a>
+          <a href="https://linkedin.com/company/rxledger" target="_blank" rel="noreferrer">LinkedIn</a>
+        </div>
+      </section>
+
+      <footer className="landing-footer">
+        <div className="brand-block">
+          <RxLedgerLogo />
+          <div>
+            <strong>RxLedger</strong>
+            <span>Support channel: support@rxledger.com</span>
+          </div>
+        </div>
+        <span>Inventory, POS, and pharmacy workspace software.</span>
+      </footer>
     </main>
   )
 }
@@ -1508,56 +1565,61 @@ function AuthScreen({
   hasUsers,
   tenantExists,
   companySlug,
-  availableTenants,
-  pharmacyName,
+  settings,
   connectionError,
   createFirstAdmin,
   login,
   registerUser,
   requestPasswordReset,
   completePasswordReset,
-  setCompanySlug,
   backToLanding,
 }: {
   hasUsers: boolean
   tenantExists: boolean
   companySlug: string
-  availableTenants: Array<{ name: string; slug: string; code: string }>
-  pharmacyName: string
+  settings: AppSettings
   connectionError: string
   createFirstAdmin: (input: SetupInput) => Promise<void>
   login: (email: string, password: string) => Promise<void>
   registerUser: (input: RegisterInput) => Promise<void>
   requestPasswordReset: (input: PasswordResetInput) => Promise<{ ok: boolean; emailConfigured: boolean }>
   completePasswordReset: (input: PasswordResetCompleteInput) => Promise<void>
-  setCompanySlug: (slug: string) => void
   backToLanding?: () => void
 }) {
   const [mode, setMode] = useState<AuthMode>(hasUsers ? 'login' : 'setup')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const activeMode: AuthMode = tenantExists && hasUsers ? mode : 'setup'
+  const companyName = settings.accountName || settings.pharmacyName || 'Your pharmacy'
+  const authTitle = activeMode === 'setup'
+    ? 'Create your pharmacy workspace'
+    : activeMode === 'register'
+      ? `Request access to ${companyName}`
+      : activeMode === 'reset'
+        ? 'Reset your password'
+        : `Sign in to ${companyName}`
+  const authCopy = activeMode === 'setup'
+    ? 'Create the company workspace, first branch, and permanent administrator.'
+    : activeMode === 'register'
+      ? 'Submit your staff details for admin review.'
+      : activeMode === 'reset'
+        ? 'Confirm your staff email and phone number before changing your password.'
+        : 'Use your approved staff credentials to continue.'
 
   return (
     <main className="login-screen">
       <section className="login-panel auth-panel">
-        <div className="brand-mark large">
-          <Pill size={30} />
-        </div>
+        {activeMode === 'setup' ? <RxLedgerLogo size="large" /> : <BrandMark settings={settings} size="large" />}
         <div>
-          <span className="eyebrow">{activeMode === 'setup' ? 'RxLedger setup' : pharmacyName}</span>
-          <h1>{activeMode === 'setup' ? 'Create your pharmacy account' : 'Sign in to RxLedger'}</h1>
-          <p>{activeMode === 'setup' ? 'Create the company account, claim its URL, first branch, and permanent administrator.' : `Use the ${companySlug ? `/${companySlug}` : 'company'} portal. New staff can request access for admin review.`}</p>
+          <span className="eyebrow">{activeMode === 'setup' ? 'RxLedger' : companyName}</span>
+          <h1>{authTitle}</h1>
+          <p>{authCopy}</p>
         </div>
         {backToLanding && (
           <button className="ghost-button" type="button" onClick={backToLanding}>
             <ChevronLeft size={16} />
             Back to RxLedger
           </button>
-        )}
-
-        {activeMode !== 'setup' && availableTenants.length > 0 && (
-          <CompanyPortalSelector companySlug={companySlug} tenants={availableTenants} setCompanySlug={setCompanySlug} />
         )}
 
         {activeMode !== 'setup' && (
@@ -1578,30 +1640,6 @@ function AuthScreen({
         {success && <div className="form-success">{success}</div>}
       </section>
     </main>
-  )
-}
-
-function CompanyPortalSelector({
-  companySlug,
-  tenants,
-  setCompanySlug,
-}: {
-  companySlug: string
-  tenants: Array<{ name: string; slug: string; code: string }>
-  setCompanySlug: (slug: string) => void
-}) {
-  return (
-    <div className="company-selector">
-      <label>
-        Company portal
-        <select value={companySlug} onChange={(event) => { setCompanySlug(event.target.value); window.location.assign(`/${event.target.value}`) }}>
-          {tenants.map((tenant) => (
-            <option value={tenant.slug} key={tenant.slug}>{tenant.name} / rxledger.com/{tenant.slug}</option>
-          ))}
-        </select>
-      </label>
-      {companySlug && <span className="form-note">Portal URL: rxledger.com/{companySlug}</span>}
-    </div>
   )
 }
 
@@ -1636,14 +1674,14 @@ function SetupForm({
         setSlugStatus({ state: 'idle', message: '' })
         return
       }
-      setSlugStatus({ state: 'checking', message: 'Checking company URL...' })
+      setSlugStatus({ state: 'checking', message: 'Checking workspace name...' })
       void checkCompanySlug(slug)
         .then((result) => {
           setSlugStatus(result.available
-            ? { state: 'available', message: `rxledger.com/${result.slug} is available` }
-            : { state: 'taken', message: `rxledger.com/${result.slug} has already been claimed${result.claimedBy ? ` by ${result.claimedBy}` : ''}` })
+            ? { state: 'available', message: 'This workspace name is available' }
+            : { state: 'taken', message: `This workspace name has already been claimed${result.claimedBy ? ` by ${result.claimedBy}` : ''}` })
         })
-        .catch((error) => setSlugStatus({ state: 'taken', message: error instanceof Error ? error.message : 'Unable to check company URL' }))
+        .catch((error) => setSlugStatus({ state: 'taken', message: error instanceof Error ? error.message : 'Unable to check workspace name' }))
     }, 350)
     return () => window.clearTimeout(timeoutId)
   }, [form.companySlug, form.pharmacyName])
@@ -1661,7 +1699,7 @@ function SetupForm({
     }
     const companySlug = slugifyCompany(form.companySlug || form.pharmacyName)
     if (!companySlug) {
-      setError('Choose a company URL.')
+      setError('Enter a pharmacy/company name.')
       return
     }
     if (slugStatus.state === 'taken') {
@@ -1674,7 +1712,6 @@ function SetupForm({
   return (
     <form className="form-grid" onSubmit={submit}>
       <label className="full">Pharmacy/company name<input required value={form.pharmacyName} onChange={(event) => setForm({ ...form, pharmacyName: event.target.value, companySlug: form.companySlug || slugifyCompany(event.target.value) })} placeholder="Totalenergies EP" autoFocus /></label>
-      <label className="full">Preferred company URL<input required value={form.companySlug} onChange={(event) => setForm({ ...form, companySlug: slugifyCompany(event.target.value) })} placeholder="tep-ng" /></label>
       {slugStatus.message && <div className={`form-note full slug-${slugStatus.state}`}>{slugStatus.message}</div>}
       <label className="full">Business registration/licence details<input required value={form.businessLicense} onChange={(event) => setForm({ ...form, businessLicense: event.target.value })} placeholder="PCN, CAC, or internal licence reference" /></label>
       <label className="full">Main branch address<input required value={form.mainBranchAddress} onChange={(event) => setForm({ ...form, mainBranchAddress: event.target.value })} placeholder="Address of the main branch, warehouse, or dispensary" /></label>
@@ -4119,8 +4156,6 @@ function SettingsView({ db, canAdmin, executeAction }: { db: Database; canAdmin:
         </div>
         <label>Software name<input value={form.softwareName} onChange={(event) => setForm({ ...form, softwareName: event.target.value })} disabled={!canAdmin} /></label>
         <label>Account/company name<input value={form.accountName} onChange={(event) => setForm({ ...form, accountName: event.target.value, pharmacyName: event.target.value })} disabled={!canAdmin} /></label>
-        <label>Company URL<input value={`rxledger.com/${form.companySlug}`} disabled /></label>
-        <label>Company code<input value={form.companyCode} disabled /></label>
         <label className="full">Business registration/licence<input value={form.businessLicense} onChange={(event) => setForm({ ...form, businessLicense: event.target.value })} disabled={!canAdmin} /></label>
         <label className="full">Main branch address<input value={form.mainBranchAddress} onChange={(event) => setForm({ ...form, mainBranchAddress: event.target.value })} disabled={!canAdmin} /></label>
         <label>Default branch name<input value={form.branchName} onChange={(event) => setForm({ ...form, branchName: event.target.value })} disabled={!canAdmin} /></label>

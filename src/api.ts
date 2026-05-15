@@ -53,7 +53,7 @@ async function request<T>(path: string, options: RequestInit = {}) {
 }
 
 export async function bootstrap() {
-  return request<{ hasUsers: boolean; tenantExists: boolean; requestedSlug: string; tenants: Array<{ name: string; slug: string; code: string }>; settings: Database['settings'] }>('/api/bootstrap')
+  return request<{ hasUsers: boolean; tenantExists: boolean; requestedSlug: string; settings: Database['settings'] }>('/api/bootstrap')
 }
 
 export async function loadState() {
@@ -72,6 +72,10 @@ export async function setupWorkspace(input: SetupInput) {
 
 export async function checkCompanySlug(slug: string) {
   return request<{ slug: string; available: boolean; claimedBy: string }>(`/api/tenant/check?slug=${encodeURIComponent(slug)}`)
+}
+
+export async function resolveCompany(value: string) {
+  return request<{ slug: string }>(`/api/tenant/resolve?q=${encodeURIComponent(value)}`)
 }
 
 export async function login(email: string, password: string) {

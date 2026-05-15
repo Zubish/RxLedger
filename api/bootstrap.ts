@@ -13,7 +13,6 @@ export default async function handler(req: HandlerRequest, res: HandlerResponse)
       hasUsers: Boolean(db && db.users.length > 0),
       tenantExists: Boolean(tenant),
       requestedSlug,
-      tenants: root.tenants.map((item) => ({ name: item.name, slug: item.slug, code: item.code })),
       settings: db ? sanitizeDatabase(db).settings : {
         softwareName: 'RxLedger',
         accountName: 'Pharmacy Account',
