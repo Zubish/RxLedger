@@ -164,3 +164,11 @@
     color: var(--color-foreground);
   }
 }
+
+@layer components {
+  .rxledger-landing button:not(:disabled),
+  .rxledger-landing a[href],
+  .rxledger-landing summary {
+    cursor: pointer;
+  }
+}

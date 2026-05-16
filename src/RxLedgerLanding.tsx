@@ -28,7 +28,7 @@ type LandingProps = {
 
 export default function RxLedgerLanding({ onCreateWorkspace, onSignIn }: LandingProps) {
   return (
-    <div className="min-h-screen bg-background font-sans text-ink antialiased">
+    <div className="rxledger-landing min-h-screen bg-background font-sans text-ink antialiased">
       <Nav onCreateWorkspace={onCreateWorkspace} onSignIn={onSignIn} />
       <Hero onCreateWorkspace={onCreateWorkspace} />
       <TrustStrip />
@@ -60,10 +60,10 @@ function Nav({ onCreateWorkspace, onSignIn }: LandingProps) {
           <a href="#faq" className="transition-colors hover:text-ink">FAQ</a>
         </nav>
         <div className="flex items-center gap-2">
-          <button className="hidden h-9 rounded-md px-3 text-sm font-medium text-ink-soft transition-colors hover:text-ink sm:inline-flex" type="button" onClick={onSignIn}>
+          <button className="hidden h-9 items-center justify-center rounded-md px-3 text-sm font-medium text-ink-soft transition-colors hover:text-ink sm:inline-flex" type="button" onClick={onSignIn}>
             Sign in
           </button>
-          <button className="inline-flex h-9 items-center gap-1.5 rounded-md bg-brand px-3.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:bg-brand/90" type="button" onClick={onCreateWorkspace}>
+          <button className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-brand px-3.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:bg-brand/90" type="button" onClick={onCreateWorkspace}>
             Create workspace
             <ArrowRight className="size-3.5" />
           </button>
@@ -75,11 +75,8 @@ function Nav({ onCreateWorkspace, onSignIn }: LandingProps) {
 
 function Logo() {
   return (
-    <div className="grid size-8 place-items-center rounded-md bg-brand text-primary-foreground shadow-sm">
-      <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M4 4h8a4 4 0 0 1 0 8H4z" />
-        <path d="M4 12l6 8" />
-      </svg>
+    <div className="grid size-8 place-items-center rounded-md bg-white shadow-sm ring-1 ring-border">
+      <img src="/favicon.svg" alt="RxLedger logo" className="size-6 object-contain" />
     </div>
   );
 }
@@ -229,7 +226,7 @@ function KpiTile({
 
 function BatchRow({ item, batch, expiry, qty, status }: { item: string; batch: string; expiry: string; qty: string; status: "dispense" | "low" | "stable" }) {
   const chip =
-    status === "dispense" ? <span className="inline-flex rounded bg-danger px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-primary-foreground">Dispense first</span> :
+    status === "dispense" ? <span className="inline-flex rounded bg-danger px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-white">Dispense first</span> :
     status === "low" ? <span className="inline-flex rounded bg-warn/20 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-warn">Low</span> :
     <span className="inline-flex rounded bg-success/10 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-success">Stable</span>;
   const expiryCls = status === "dispense" ? "text-danger" : status === "low" ? "text-warn" : "text-ink-soft";
@@ -414,6 +411,7 @@ function Roles() {
     { name: "Admin", sees: "Workspace, branches, billing, audit logs, every record." },
     { name: "Manager", sees: "Branch dashboards, stock health, staff performance, reports." },
     { name: "Pharmacist", sees: "Dispense queue, FEFO alerts, controlled-drug register." },
+    { name: "Inventory Officer", sees: "Stock receiving, batch records, reorder alerts, and inventory movement logs." },
     { name: "Cashier", sees: "POS, saved prices, receipts, end-of-shift cash count." },
   ];
   return (
@@ -427,7 +425,7 @@ function Roles() {
           Company lists stay private. Each role sees the tools meant for them — nothing more, nothing less.
         </p>
       </div>
-      <div className="mt-12 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-12 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {roles.map((r, i) => (
           <div key={r.name} className="group rounded-xl border border-border bg-card p-5 transition-colors hover:border-brand">
             <div className="flex items-center justify-between">

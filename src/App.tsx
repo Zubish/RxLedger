@@ -56,6 +56,7 @@ import {
   completePasswordReset as apiCompletePasswordReset,
   registerUser as apiRegisterUser,
   requestPasswordReset as apiRequestPasswordReset,
+  resolveCompany,
   runAction,
   setupWorkspace,
   storeCompanySlug,
@@ -923,7 +924,7 @@ function App() {
         }
         setHasUsers(boot.hasUsers)
         setTenantExists(boot.tenantExists)
-        if (boot.settings.companySlug) {
+        if (workspaceSlug && boot.settings.companySlug) {
           storeCompanySlug(boot.settings.companySlug)
           setCompanySlug(boot.settings.companySlug)
         }
@@ -1028,6 +1029,19 @@ function App() {
     } finally {
       setSigningIn(false)
     }
+  }
+
+  async function selectWorkspace(value: string) {
+    const result = await resolveCompany(value)
+    storeCompanySlug(result.slug)
+    setCompanySlug(result.slug)
+    window.history.replaceState(null, '', `/${result.slug}`)
+    const boot = await bootstrap()
+    setHasUsers(boot.hasUsers)
+    setTenantExists(boot.tenantExists)
+    setDb((previous) => ({ ...previous, settings: boot.settings }))
+    setConnectionError('')
+    setAuthIntent('signin')
   }
 
   async function signOut() {
@@ -1160,6 +1174,7 @@ function App() {
         registerUser={registerUser}
         requestPasswordReset={requestPasswordReset}
         completePasswordReset={completePasswordReset}
+        selectWorkspace={selectWorkspace}
         backToLanding={!isWorkspaceRoute ? () => setAuthIntent('landing') : undefined}
       />
     )
@@ -1424,6 +1439,7 @@ function AuthScreen({
   registerUser,
   requestPasswordReset,
   completePasswordReset,
+  selectWorkspace,
   backToLanding,
 }: {
   hasUsers: boolean
@@ -1436,34 +1452,36 @@ function AuthScreen({
   registerUser: (input: RegisterInput) => Promise<void>
   requestPasswordReset: (input: PasswordResetInput) => Promise<{ ok: boolean; emailConfigured: boolean }>
   completePasswordReset: (input: PasswordResetCompleteInput) => Promise<void>
+  selectWorkspace: (value: string) => Promise<void>
   backToLanding?: () => void
 }) {
   const [mode, setMode] = useState<AuthMode>(hasUsers ? 'login' : 'setup')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const workspaceSelected = Boolean(companySlug && tenantExists)
   const activeMode: AuthMode = tenantExists && hasUsers ? mode : 'setup'
   const companyName = settings.accountName || settings.pharmacyName || 'Your pharmacy'
   const authTitle = activeMode === 'setup'
     ? 'Create your pharmacy workspace'
     : activeMode === 'register'
-      ? `Request access to ${companyName}`
+      ? workspaceSelected ? `Request access to ${companyName}` : 'Request workspace access'
       : activeMode === 'reset'
         ? 'Reset your password'
-        : `Sign in to ${companyName}`
+        : workspaceSelected ? `Sign in to ${companyName}` : 'Sign in to RxLedger'
   const authCopy = activeMode === 'setup'
     ? 'Create the company workspace, first branch, and permanent administrator.'
     : activeMode === 'register'
-      ? 'Submit your staff details for admin review.'
+      ? workspaceSelected ? 'Submit your staff details for admin review.' : 'Find your company workspace before requesting access.'
       : activeMode === 'reset'
-        ? 'Confirm your staff email and phone number before changing your password.'
-        : 'Use your approved staff credentials to continue.'
+        ? workspaceSelected ? 'Confirm your staff email and phone number before changing your password.' : 'Find your company workspace before resetting your password.'
+        : workspaceSelected ? 'Use your approved staff credentials to continue.' : 'Find your company workspace before entering your staff credentials.'
 
   return (
     <main className="login-screen">
       <section className="login-panel auth-panel">
-        {activeMode === 'setup' ? <RxLedgerLogo size="large" /> : <BrandMark settings={settings} size="large" />}
+        {activeMode === 'setup' || !workspaceSelected ? <RxLedgerLogo size="large" /> : <BrandMark settings={settings} size="large" />}
         <div>
-          <span className="eyebrow">{activeMode === 'setup' ? 'RxLedger' : companyName}</span>
+          <span className="eyebrow">{activeMode === 'setup' || !workspaceSelected ? 'RxLedger' : companyName}</span>
           <h1>{authTitle}</h1>
           <p>{authCopy}</p>
         </div>
@@ -1483,15 +1501,96 @@ function AuthScreen({
         )}
 
         {activeMode === 'setup' && <SetupForm createFirstAdmin={createFirstAdmin} setError={setError} initialSlug={companySlug} />}
-        {activeMode === 'login' && <LoginForm login={login} setError={setError} setSuccess={setSuccess} />}
-        {activeMode === 'register' && <RegisterForm registerUser={registerUser} setError={setError} setSuccess={setSuccess} />}
-        {activeMode === 'reset' && <PasswordResetForm requestPasswordReset={requestPasswordReset} completePasswordReset={completePasswordReset} setError={setError} setSuccess={setSuccess} />}
+        {activeMode !== 'setup' && (
+          <WorkspaceFinder
+            companySlug={companySlug}
+            settings={settings}
+            workspaceSelected={workspaceSelected}
+            selectWorkspace={selectWorkspace}
+            setError={setError}
+            setSuccess={setSuccess}
+          />
+        )}
+        {activeMode === 'login' && workspaceSelected && <LoginForm login={login} setError={setError} setSuccess={setSuccess} />}
+        {activeMode === 'register' && workspaceSelected && <RegisterForm registerUser={registerUser} setError={setError} setSuccess={setSuccess} />}
+        {activeMode === 'reset' && workspaceSelected && <PasswordResetForm requestPasswordReset={requestPasswordReset} completePasswordReset={completePasswordReset} setError={setError} setSuccess={setSuccess} />}
 
         {connectionError && <div className="form-error">{connectionError}</div>}
         {error && <div className="form-error">{error}</div>}
         {success && <div className="form-success">{success}</div>}
       </section>
     </main>
+  )
+}
+
+function WorkspaceFinder({
+  companySlug,
+  settings,
+  workspaceSelected,
+  selectWorkspace,
+  setError,
+  setSuccess,
+}: {
+  companySlug: string
+  settings: AppSettings
+  workspaceSelected: boolean
+  selectWorkspace: (value: string) => Promise<void>
+  setError: (message: string) => void
+  setSuccess: (message: string) => void
+}) {
+  const [workspaceQuery, setWorkspaceQuery] = useState(() => settings.companyCode || companySlug)
+  const [checking, setChecking] = useState(false)
+  const companyName = settings.accountName || settings.pharmacyName || 'Your pharmacy'
+
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    const value = workspaceQuery.trim()
+    setError('')
+    setSuccess('')
+    if (!value) {
+      setError('Enter your company access code or unique URL.')
+      return
+    }
+    setChecking(true)
+    try {
+      await selectWorkspace(value)
+      setSuccess('Workspace found. Enter your login details to continue.')
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Unable to find that company workspace.')
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  return (
+    <section className="workspace-finder" aria-label="Find your company">
+      <form className="workspace-finder-form" onSubmit={submit}>
+        <h2>Find your company</h2>
+        <p>Enter your company's unique url or code, provided by your admin to find your company's workspace.</p>
+        <label className="sr-only" htmlFor="workspace-access-code">Company access code</label>
+        <input
+          id="workspace-access-code"
+          required
+          value={workspaceQuery}
+          onChange={(event) => setWorkspaceQuery(event.target.value)}
+          placeholder="Company access code"
+          autoComplete="organization"
+        />
+        <button className="primary-button" type="submit" disabled={checking}>
+          {checking ? 'Checking...' : 'Continue'}
+        </button>
+      </form>
+      {workspaceSelected && (
+        <div className="workspace-confirmation" aria-live="polite">
+          <BrandMark settings={settings} />
+          <div>
+            <span>Workspace confirmed</span>
+            <strong>{companyName}</strong>
+            <small>{settings.companyCode ? `Code: ${settings.companyCode}` : `URL: /${companySlug}`}</small>
+          </div>
+        </div>
+      )}
+    </section>
   )
 }
 
