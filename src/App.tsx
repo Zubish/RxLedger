@@ -56,11 +56,11 @@ import {
   completePasswordReset as apiCompletePasswordReset,
   registerUser as apiRegisterUser,
   requestPasswordReset as apiRequestPasswordReset,
-  resolveCompany,
   runAction,
   setupWorkspace,
   storeCompanySlug,
 } from './api'
+import RxLedgerLanding from './RxLedgerLanding'
 import './App.css'
 
 const SIDEBAR_WIDTH = 280
@@ -1142,12 +1142,9 @@ function App() {
     const isWorkspaceRoute = Boolean(getWorkspaceSlugFromLocation())
     if (!isWorkspaceRoute && authIntent === 'landing') {
       return (
-        <LandingPage
-          startSignup={() => setAuthIntent('setup')}
-          chooseTenant={(slug) => {
-            storeCompanySlug(slug)
-            window.location.assign(`/${slug}`)
-          }}
+        <RxLedgerLanding
+          onCreateWorkspace={() => setAuthIntent('setup')}
+          onSignIn={() => setAuthIntent('signin')}
         />
       )
     }
@@ -1374,151 +1371,6 @@ function LoadingScreen() {
           <p>Connecting to the shared inventory database.</p>
         </div>
       </section>
-    </main>
-  )
-}
-
-function LandingPage({
-  startSignup,
-  chooseTenant,
-}: {
-  startSignup: () => void
-  chooseTenant: (slug: string) => void
-}) {
-  const [companyCode, setCompanyCode] = useState('')
-  const [notice, setNotice] = useState('')
-  const accessInputRef = useRef<HTMLInputElement>(null)
-
-  async function submitCode(event: FormEvent) {
-    event.preventDefault()
-    if (!companyCode.trim()) {
-      setNotice('Enter the access code from your pharmacy admin.')
-      return
-    }
-    try {
-      const result = await resolveCompany(companyCode)
-      chooseTenant(result.slug)
-    } catch {
-      setNotice('No company matched that access code. Ask your pharmacy admin to confirm it.')
-    }
-  }
-
-  function focusStaffAccess() {
-    accessInputRef.current?.focus()
-    accessInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }
-
-  return (
-    <main className="landing-page">
-      <header className="landing-nav">
-        <div className="brand-block">
-          <RxLedgerLogo />
-          <div>
-            <strong>RxLedger</strong>
-            <span>Inventory, POS, and pharmacy operations</span>
-          </div>
-        </div>
-        <button className="ghost-button nav-signin" type="button" onClick={focusStaffAccess}>Sign in</button>
-      </header>
-
-      <section className="landing-hero">
-        <div className="landing-hero-copy">
-          <span className="eyebrow">Built for pharmacy teams that move fast</span>
-          <h1>Know what is in stock, what sold today, and who touched every record.</h1>
-          <p>RxLedger gives pharmacies a branded operations workspace for inventory, branches, staff access, POS checkout, audit trails, and day-end reconciliation.</p>
-          <div className="button-row">
-            <button className="primary-button" type="button" onClick={startSignup}>
-              <Building2 size={17} />
-              Create pharmacy workspace
-            </button>
-          </div>
-          <div className="landing-proof-row" aria-label="Product highlights">
-            <span><strong>FEFO</strong> batch deduction</span>
-            <span><strong>POS</strong> with saved prices</span>
-            <span><strong>Audit</strong> ready records</span>
-          </div>
-        </div>
-        <div className="landing-visual" aria-label="RxLedger pharmacy operations preview">
-          <img src="https://images.unsplash.com/photo-1587854692152-cbe660dbde88?auto=format&fit=crop&w=1200&q=80" alt="Pharmacy shelves and medicine inventory" />
-          <div className="landing-dashboard-card">
-            <span>Today at a glance</span>
-            <strong>₦1.84M</strong>
-            <small>sales reconciled across 3 branches</small>
-          </div>
-        </div>
-      </section>
-
-      <section className="landing-code-section" id="staff-signin">
-        <div>
-          <span className="eyebrow">Staff access</span>
-          <h2>Sign in to the right company workspace.</h2>
-          <p>Enter the access code supplied by your pharmacy admin. Company lists stay private.</p>
-        </div>
-        <form className="landing-code-panel" onSubmit={submitCode}>
-          <strong>Find your company</strong>
-          <span>Your company name and logo will confirm you are in the right place before sign in.</span>
-          <input ref={accessInputRef} value={companyCode} onChange={(event) => setCompanyCode(event.target.value)} placeholder="Company access code" />
-          <button className="primary-button" type="submit">Continue</button>
-          {notice && <div className="form-error">{notice}</div>}
-        </form>
-      </section>
-
-      <section className="landing-feature-grid" aria-label="RxLedger features">
-        <article><Building2 size={20} /><strong>Multi-branch control</strong><span>Give each branch the right staff, stock, permissions, and operating view.</span></article>
-        <article><Boxes size={20} /><strong>Inventory ledger</strong><span>Track batches, expiry, receiving, issues, transfers, returns, and reorder risk.</span></article>
-        <article><Calculator size={20} /><strong>POS checkout</strong><span>Sell medicines and retail products with saved prices, discounts, and receipts.</span></article>
-        <article><ShieldCheck size={20} /><strong>Audit trail</strong><span>See who changed prices, moved stock, approved access, or completed a sale.</span></article>
-        <article><Archive size={20} /><strong>Expiry discipline</strong><span>Keep FEFO workflows visible so near-expiry batches are handled before loss.</span></article>
-        <article><Users size={20} /><strong>Role-based access</strong><span>Cashiers, pharmacists, managers, and admins see the tools meant for them.</span></article>
-      </section>
-
-      <section className="landing-story">
-        <div>
-          <span className="eyebrow">About us</span>
-          <h2>RxLedger exists for pharmacy teams that cannot afford guesswork.</h2>
-          <p>We are building a practical operating system for community pharmacies, hospital dispensaries, and multi-branch medicine retailers. The goal is simple: clearer stock, safer dispensing, cleaner sales records, and better accountability at the end of every day.</p>
-        </div>
-        <div className="story-card">
-          <strong>Our story</strong>
-          <p>RxLedger started from a familiar pharmacy problem: stock sits in different branches, prices change at the counter, staff need different access, and reconciliation becomes stressful. We turned those daily pressures into one calm workspace.</p>
-        </div>
-      </section>
-
-      <section className="landing-mission-grid">
-        <article>
-          <span className="eyebrow">Mission</span>
-          <h3>Make pharmacy operations traceable, fast, and financially clear.</h3>
-        </article>
-        <article>
-          <span className="eyebrow">Vision</span>
-          <h3>A pharmacy network where every branch knows its stock position in real time.</h3>
-        </article>
-      </section>
-
-      <section className="landing-contact">
-        <div>
-          <span className="eyebrow">Contact</span>
-          <h2>Bring RxLedger into your pharmacy workflow.</h2>
-          <p>For onboarding, support, demos, and integration conversations, reach the RxLedger team through any official support channel.</p>
-        </div>
-        <div className="contact-grid">
-          <a href="mailto:support@rxledger.com">support@rxledger.com</a>
-          <a href="tel:+2340000000000">+234 000 000 0000</a>
-          <a href="https://x.com/rxledger" target="_blank" rel="noreferrer">@rxledger</a>
-          <a href="https://linkedin.com/company/rxledger" target="_blank" rel="noreferrer">LinkedIn</a>
-        </div>
-      </section>
-
-      <footer className="landing-footer">
-        <div className="brand-block">
-          <RxLedgerLogo />
-          <div>
-            <strong>RxLedger</strong>
-            <span>Support channel: support@rxledger.com</span>
-          </div>
-        </div>
-        <span>Inventory, POS, and pharmacy workspace software.</span>
-      </footer>
     </main>
   )
 }
