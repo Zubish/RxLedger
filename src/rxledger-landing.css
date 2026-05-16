@@ -171,4 +171,8 @@
   .rxledger-landing summary {
     cursor: pointer;
   }
+
+  .rxledger-landing .landing-status-danger {
+    color: #ffffff !important;
+  }
 }

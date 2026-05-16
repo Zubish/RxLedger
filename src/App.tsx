@@ -1538,7 +1538,7 @@ function WorkspaceFinder({
   setError: (message: string) => void
   setSuccess: (message: string) => void
 }) {
-  const [workspaceQuery, setWorkspaceQuery] = useState(() => settings.companyCode || companySlug)
+  const [workspaceQuery, setWorkspaceQuery] = useState('')
   const [checking, setChecking] = useState(false)
   const companyName = settings.accountName || settings.pharmacyName || 'Your pharmacy'
 

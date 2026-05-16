@@ -226,7 +226,7 @@ function KpiTile({
 
 function BatchRow({ item, batch, expiry, qty, status }: { item: string; batch: string; expiry: string; qty: string; status: "dispense" | "low" | "stable" }) {
   const chip =
-    status === "dispense" ? <span className="inline-flex rounded bg-danger px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-white">Dispense first</span> :
+    status === "dispense" ? <span className="landing-status-danger inline-flex rounded bg-danger px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider">Dispense first</span> :
     status === "low" ? <span className="inline-flex rounded bg-warn/20 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-warn">Low</span> :
     <span className="inline-flex rounded bg-success/10 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-success">Stable</span>;
   const expiryCls = status === "dispense" ? "text-danger" : status === "low" ? "text-warn" : "text-ink-soft";
