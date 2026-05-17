@@ -1933,6 +1933,50 @@ button:disabled {
   width: min(560px, 100%);
 }
 
+.workspace-loading-panel {
+  gap: 18px;
+}
+
+.workspace-loading-rxledger {
+  align-items: center;
+  color: #68777e;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 8px;
+}
+
+.workspace-loading-rxledger .rxledger-logo {
+  box-shadow: 0 6px 14px rgba(72, 39, 146, 0.12);
+  height: 30px;
+  width: 30px;
+}
+
+.workspace-loading-company {
+  align-items: center;
+  border: 1px solid #d5e5e1;
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(71, 191, 255, 0.06), rgba(134, 59, 255, 0.045)),
+    #f8fbfb;
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+}
+
+.workspace-loading-company .brand-mark.large {
+  height: 68px;
+  width: 68px;
+}
+
+.workspace-loading-company h1 {
+  margin-top: 4px;
+}
+
+.workspace-loading-company p {
+  margin-bottom: 0;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
