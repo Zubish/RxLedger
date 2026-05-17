@@ -5,6 +5,7 @@ import {
   Activity,
   AlertTriangle,
   Archive,
+  ArrowLeft,
   Barcode,
   Bell,
   Boxes,
@@ -23,6 +24,7 @@ import {
   LogOut,
   Menu,
   MessageSquare,
+  Minus,
   PackageCheck,
   PackageMinus,
   PackagePlus,
@@ -30,19 +32,29 @@ import {
   Plus,
   Printer,
   RotateCcw,
+  Save,
+  ScanLine,
   Search,
   Send,
   Settings,
   ShoppingCart,
   ShieldCheck,
+  Smartphone,
+  StickyNote,
   Trash2,
   Truck,
   Upload,
   UserCheck,
   UserPlus,
+  User2,
   Users,
+  Wallet,
   X,
   XCircle,
+  Percent,
+  Phone,
+  CreditCard,
+  Clock3,
 } from 'lucide-react'
 import {
   bootstrap,
@@ -3123,6 +3135,7 @@ function POSView({
     itemId: string
     title: string
     meta: string
+    category: string
     available: number
     unitPrice: number
     scanCodes: string[]
@@ -3130,6 +3143,7 @@ function POSView({
   const currentDraft = db.posDrafts.find((draft) => draft.userId === currentUser.id && draft.branchId === activeBranch.id && draft.expiresAt > new Date().toISOString())
   const [query, setQuery] = useState('')
   const [scan, setScan] = useState('')
+  const [category, setCategory] = useState('All')
   const [cart, setCart] = useState<CartItem[]>(() => currentDraft?.items.map((item) => ({
     rowId: id('pos'),
     itemType: item.itemType,
@@ -3143,7 +3157,7 @@ function POSView({
   const [note, setNote] = useState(currentDraft?.note ?? '')
 
   const stockByMedicine = useMemo(() => aggregateMedicineStock(stockRows.filter((row) => row.quantity > 0 && row.daysToExpiry >= 0)), [stockRows])
-  const saleOptions: SaleOption[] = [
+  const allSaleOptions: SaleOption[] = [
     ...db.medicines
       .filter((medicine) => medicine.active && (stockByMedicine.get(medicine.id) ?? 0) > 0)
       .map((medicine) => ({
@@ -3151,6 +3165,7 @@ function POSView({
         itemId: medicine.id,
         title: medicine.brandName,
         meta: `${medicineMeta(medicine)} / ${sellableUnitLabel(medicine)}`,
+        category: medicine.category || medicine.form || 'Medicines',
         available: stockByMedicine.get(medicine.id) ?? 0,
         unitPrice: medicine.sellingPrice || defaultMedicinePrice(medicine.id),
         scanCodes: [medicine.sku, medicine.nafdacNumber, ...medicine.barcodes].filter(Boolean),
@@ -3162,14 +3177,17 @@ function POSView({
         itemId: product.id,
         title: product.name,
         meta: `${product.category || 'Retail product'} / ${product.unit}`,
+        category: product.category || 'Retail products',
         available: product.quantity,
         unitPrice: product.sellingPrice,
         scanCodes: [product.sku, ...product.barcodes].filter(Boolean),
       })),
   ]
+  const categories = ['All', ...Array.from(new Set(allSaleOptions.map((option) => option.category).filter(Boolean)))].slice(0, 7)
+  const saleOptions = allSaleOptions
     .filter((medicine) => {
       const text = `${medicine.title} ${medicine.meta} ${medicine.scanCodes.join(' ')}`.toLowerCase()
-      return text.includes(query.toLowerCase())
+      return (category === 'All' || medicine.category === category) && text.includes(query.toLowerCase())
     })
     .slice(0, 16)
   const cartRows = cart.map((item) => {
@@ -3202,6 +3220,7 @@ function POSView({
         itemId: product.id,
         title: product.name,
         meta: `${product.category || 'Retail product'} / ${product.unit}`,
+        category: product.category || 'Retail products',
         available: product.quantity,
         unitPrice: product.sellingPrice,
         scanCodes: [product.sku, ...product.barcodes].filter(Boolean),
@@ -3214,6 +3233,7 @@ function POSView({
       itemId: medicine.id,
       title: medicine.brandName,
       meta: `${medicineMeta(medicine)} / ${sellableUnitLabel(medicine)}`,
+      category: medicine.category || medicine.form || 'Medicines',
       available: stockByMedicine.get(medicine.id) ?? 0,
       unitPrice: medicine.sellingPrice || defaultMedicinePrice(medicine.id),
       scanCodes: [medicine.sku, medicine.nafdacNumber, ...medicine.barcodes].filter(Boolean),
@@ -3235,7 +3255,7 @@ function POSView({
 
   function applyScan() {
     const needle = scan.trim().toLowerCase()
-    const option = saleOptions.find((item) => item.scanCodes.some((code) => code.toLowerCase() === needle))
+    const option = allSaleOptions.find((item) => item.scanCodes.some((code) => code.toLowerCase() === needle))
     if (!option) {
       const medicine = findMedicineByScan(db, scan)
       if (medicine && (stockByMedicine.get(medicine.id) ?? 0) <= 0) {
@@ -3252,6 +3272,32 @@ function POSView({
     addItem(option.itemType, option.itemId)
     setScan('')
   }
+
+  function optionTone(option: SaleOption) {
+    if (option.itemType === 'medicine') {
+      const medicine = db.medicines.find((item) => item.id === option.itemId)
+      const earliest = stockRows
+        .filter((row) => row.medicine.id === option.itemId && row.quantity > 0 && row.daysToExpiry >= 0)
+        .sort((a, b) => a.batch.expiryDate.localeCompare(b.batch.expiryDate))[0]
+      if (earliest && earliest.daysToExpiry <= db.settings.nearExpiryDays) return 'fefo'
+      if (medicine && option.available <= medicine.reorderLevel) return 'low'
+    }
+    return ''
+  }
+
+  function optionInitials(title: string) {
+    return title
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join('')
+      .toUpperCase() || 'Rx'
+  }
+
+  const tillTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const draftLabel = currentDraft ? `Draft #${currentDraft.bookingCode}` : 'Draft ready'
+  const vatIncluded = total > 0 ? total - (total / 1.075) : 0
 
   function updateCart(rowId: string, updates: Partial<CartItem>) {
     setCart((current) => current.map((item) => {
@@ -3314,105 +3360,243 @@ function POSView({
   }
 
   return (
-    <div className="two-column pos-layout">
-      <section className="content-section">
-        <div className="section-heading">
-          <div>
-            <h2>Point of Sale</h2>
-            <p>Selling from {activeBranch.name}. Saved prices are used and medicine batches are deducted by FEFO.</p>
+    <div className="pos-redesign">
+      <div className="pos-window">
+        <header className="pos-terminal-bar">
+          <div className="pos-window-dots" aria-hidden="true">
+            <span />
+            <span />
+            <span />
           </div>
-          <span className="pill active">{money.format(total)}</span>
-        </div>
-        {!canSell && <div className="form-error">You need cashier, pharmacist, branch manager, or admin access in {activeBranch.name} to use POS.</div>}
-        {currentDraft && (
-          <div className="booking-strip">
-            <strong>Draft {currentDraft.bookingCode}</strong>
-            <span>Expires {new Date(currentDraft.expiresAt).toLocaleTimeString()}</span>
-          </div>
-        )}
-        <label className="scan-field full">Scan barcode or SKU<div><Barcode size={17} /><input value={scan} onChange={(event) => setScan(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); applyScan() } }} placeholder="Scan, then press Enter" disabled={!canSell} /><button className="ghost-button" type="button" onClick={applyScan} disabled={!canSell}><Search size={16} />Add</button></div></label>
-        <label className="search-box full"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search medicines and products for sale" disabled={!canSell} /></label>
-        <div className="pos-product-grid">
-          {saleOptions.map((option) => (
-            <button className="pos-product" type="button" key={`${option.itemType}-${option.itemId}`} onClick={() => addItem(option.itemType, option.itemId)} disabled={!canSell || option.unitPrice <= 0}>
-              <strong>{option.title}</strong>
-              <span>{option.meta}</span>
-              <b>{number.format(option.available)} available / {money.format(option.unitPrice)}</b>
-            </button>
-          ))}
-          {!saleOptions.length && <div className="empty-state">No stocked medicines or retail products match this search.</div>}
-        </div>
-      </section>
+        </header>
 
-      <section className="content-section">
-        <div className="section-heading">
-          <div>
-            <h2>Sale Cart</h2>
-            <p>{cart.length} item{cart.length === 1 ? '' : 's'} ready for checkout.</p>
+        <div className="pos-appbar">
+          <div className="pos-appbar-left">
+            <button className="pos-back-button" type="button" onClick={() => window.location.assign('/')}>
+              <ArrowLeft size={15} />
+              Landing
+            </button>
+            <span className="pos-title-icon"><ShoppingCart size={15} /></span>
+            <strong>Point of Sale</strong>
+            <span className="pos-branch-meta">· {db.settings.accountName} / {activeBranch.name}</span>
+          </div>
+          <div className="pos-appbar-right">
+            <span className="pos-shift-pill"><span /> Shift open · {currentUser.name}</span>
+            <span className="pos-time-pill"><Clock3 size={13} /> {tillTime}</span>
           </div>
         </div>
-        <form className="stack" onSubmit={submit}>
-          <div className="cart-list">
-            {cartRows.map((item) => (
-              <div className="cart-item" key={item.rowId}>
-                <div>
-                  <strong>{item.option?.title ?? 'Unknown item'}</strong>
-                  <span>{number.format(item.available)} available / {money.format(item.unitPrice)} each / {money.format(item.lineTotal)}</span>
-                </div>
-                <input aria-label="Quantity" type="number" min="1" max={item.available} value={item.quantity} onChange={(event) => updateCart(item.rowId, { quantity: Number(event.target.value) })} disabled={!canSell} />
-                <button className="icon-button" type="button" onClick={() => setCart((current) => current.filter((cartItem) => cartItem.rowId !== item.rowId))} title="Remove item">
-                  <Trash2 size={16} />
+
+        {!canSell && <div className="form-error pos-access-error">You need cashier, pharmacist, branch manager, or admin access in {activeBranch.name} to use POS.</div>}
+
+        <form className="pos-terminal-grid" onSubmit={submit}>
+          <section className="pos-catalog-panel">
+            <div className="pos-search-row">
+              <label className="pos-search-control">
+                <Search size={18} />
+                <input
+                  value={query}
+                  onChange={(event) => {
+                    setQuery(event.target.value)
+                    setScan(event.target.value)
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && scan.trim()) {
+                      event.preventDefault()
+                      applyScan()
+                    }
+                  }}
+                  placeholder="Search product, batch or scan barcode..."
+                  disabled={!canSell}
+                />
+              </label>
+              <button className="pos-scan-button" type="button" onClick={applyScan} disabled={!canSell || !scan.trim()}>
+                <ScanLine size={17} />
+                Scan
+              </button>
+            </div>
+
+            <div className="pos-category-row">
+              {categories.map((item) => (
+                <button
+                  className={category === item ? 'active' : ''}
+                  key={item}
+                  type="button"
+                  onClick={() => setCategory(item)}
+                  disabled={!canSell}
+                >
+                  {item}
                 </button>
-              </div>
-            ))}
-            {!cartRows.length && <div className="empty-state">Add medicines to begin a sale.</div>}
-          </div>
-          <div className="form-grid">
-            <label>Customer name<input value={customerName} onChange={(event) => setCustomerName(event.target.value)} disabled={!canSell} /></label>
-            <label>Customer phone<input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} disabled={!canSell} /></label>
-            <label>Payment<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as Sale['paymentMethod'])} disabled={!canSell}><option value="cash">Cash</option><option value="card">Card</option><option value="transfer">Transfer</option><option value="mixed">Mixed</option></select></label>
-            <label>Discount<input type="number" min="0" max={subtotal} value={discount} onChange={(event) => setDiscount(Number(event.target.value))} disabled={!canSell} /></label>
-            <label className="full">Note<input value={note} onChange={(event) => setNote(event.target.value)} disabled={!canSell} /></label>
-          </div>
-          <div className="sale-total">
-            <span>Subtotal {money.format(subtotal)} / Discount {money.format(safeDiscount)}</span>
-            <strong>{money.format(total)}</strong>
-          </div>
-          <div className="form-actions">
-            <button className="ghost-button" type="button" onClick={saveDraft} disabled={!canSell || !cartRows.length || subtotal <= 0}>
-              <FileText size={17} />
-              Save draft
-            </button>
-            <button className="ghost-button" type="button" onClick={clearDraft} disabled={!canSell || (!cartRows.length && !currentDraft)}>
-              <XCircle size={17} />
-              Clear
-            </button>
-            <button className="primary-button" type="submit" disabled={!canSell || !cartRows.length || total <= 0}>
-              <ShoppingCart size={17} />
-              Complete sale
-            </button>
-          </div>
-        </form>
+              ))}
+            </div>
 
-        <div className="recent-sales">
-          <h3>Sales history</h3>
-          {branchSales.map((sale) => (
-            <article className="sale-history-item" key={sale.id}>
+            <div className="pos-catalog-grid">
+              {saleOptions.map((option) => {
+                const tone = optionTone(option)
+                return (
+                  <button className="pos-catalog-card" type="button" key={`${option.itemType}-${option.itemId}`} onClick={() => addItem(option.itemType, option.itemId)} disabled={!canSell || option.unitPrice <= 0}>
+                    <div>
+                      <strong>{option.title}</strong>
+                      {tone === 'fefo' && <span className="pos-card-tag danger"><AlertTriangle size={11} /> FEFO</span>}
+                      {tone === 'low' && <span className="pos-card-tag warn">Low</span>}
+                    </div>
+                    <small>{option.meta}</small>
+                    <footer>
+                      <span>{number.format(option.available)} in stock</span>
+                      <b>{money.format(option.unitPrice)}</b>
+                    </footer>
+                  </button>
+                )
+              })}
+              {!saleOptions.length && <div className="empty-state">No stocked medicines or retail products match this search.</div>}
+            </div>
+          </section>
+
+          <aside className="pos-sale-cart">
+            <div className="pos-cart-header">
               <div>
-                <strong>{money.format(sale.total ?? sale.subtotal)} / {sale.paymentMethod}</strong>
-                <span>{new Date(sale.soldAt).toLocaleString()} / Ref {sale.reference}{sale.bookingCode ? ` / Draft ${sale.bookingCode}` : ''}</span>
+                <h2>Sale cart</h2>
+                <p><strong>{cart.length} item{cart.length === 1 ? '' : 's'}</strong> ready · FEFO batch auto-selected</p>
               </div>
-              <span>{sale.customerName || 'Walk-in customer'}{sale.customerPhone ? ` / ${sale.customerPhone}` : ''}</span>
-              <ul>
-                {sale.items.map((item, index) => (
-                  <li key={`${sale.id}-${index}`}>{item.itemName || item.medicineId || item.productId}: {number.format(item.quantity)} x {money.format(item.unitPrice)} = {money.format(item.lineTotal)}</li>
-                ))}
-              </ul>
-              {sale.discount > 0 && <small>Discount: {money.format(sale.discount)}</small>}
-            </article>
-          ))}
-          {!branchSales.length && <div className="empty-state">No sales recorded for this branch yet.</div>}
-        </div>
+              <span className="pos-draft-pill"><FileText size={13} /> {draftLabel}</span>
+              <div className="pos-progress">
+                <span />
+              </div>
+              <div className="pos-progress-labels">
+                <b>Cart</b>
+                <span>Customer</span>
+                <span>Payment</span>
+              </div>
+            </div>
+
+            <div className="pos-cart-lines">
+              {cartRows.map((item) => (
+                <div className="pos-line-item" key={item.rowId}>
+                  <div className="pos-line-avatar">{optionInitials(item.option?.title ?? 'Rx')}</div>
+                  <div className="pos-line-main">
+                    <div className="pos-line-top">
+                      <div>
+                        <strong>{item.option?.title ?? 'Unknown item'}</strong>
+                        {item.itemType === 'medicine' && <span className="pos-fefo-chip">FEFO</span>}
+                        <small>{item.option?.meta ?? 'Unavailable item'} · {number.format(item.available)} avail.</small>
+                      </div>
+                      <button className="pos-line-remove" type="button" onClick={() => setCart((current) => current.filter((cartItem) => cartItem.rowId !== item.rowId))} title="Remove item" disabled={!canSell}>
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                    <div className="pos-line-bottom">
+                      <div className="pos-qty-stepper">
+                        <button type="button" onClick={() => updateCart(item.rowId, { quantity: item.quantity - 1 })} disabled={!canSell || item.quantity <= 1}><Minus size={14} /></button>
+                        <input aria-label="Quantity" type="number" min="1" max={item.available || 1} value={item.quantity} onChange={(event) => updateCart(item.rowId, { quantity: Number(event.target.value) })} disabled={!canSell} />
+                        <button type="button" onClick={() => updateCart(item.rowId, { quantity: item.quantity + 1 })} disabled={!canSell || item.quantity >= item.available}><Plus size={14} /></button>
+                      </div>
+                      <div>
+                        <small>{money.format(item.unitPrice)} · {number.format(item.available)} avail.</small>
+                        <strong>{money.format(item.lineTotal)}</strong>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {!cartRows.length && <div className="empty-state">Add medicines or products to begin a sale.</div>}
+            </div>
+
+            <div className="pos-customer-panel">
+              <label>
+                <span><User2 size={15} /> Customer</span>
+                <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Walk-in customer" disabled={!canSell} />
+              </label>
+              <label>
+                <span><Phone size={15} /> Phone</span>
+                <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="+234 ..." disabled={!canSell} />
+              </label>
+              <div className="pos-payment-block">
+                <span><Wallet size={15} /> Payment method</span>
+                <div>
+                  {[
+                    { value: 'cash' as const, label: 'Cash', icon: Wallet },
+                    { value: 'card' as const, label: 'Card', icon: CreditCard },
+                    { value: 'transfer' as const, label: 'Transfer', icon: Smartphone },
+                  ].map(({ value, label, icon: Icon }) => (
+                    <button className={paymentMethod === value ? 'active' : ''} key={value} type="button" onClick={() => setPaymentMethod(value)} disabled={!canSell}>
+                      <Icon size={14} />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <label>
+                <span><Percent size={15} /> Discount</span>
+                <div className="pos-discount-control">
+                  <input type="number" min="0" max={subtotal} value={discount} onChange={(event) => setDiscount(Number(event.target.value))} disabled={!canSell} />
+                  <b>₦</b>
+                  <em>%</em>
+                </div>
+              </label>
+              <label>
+                <span><StickyNote size={15} /> Note</span>
+                <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Optional" disabled={!canSell} />
+              </label>
+            </div>
+
+            <div className="pos-total-panel">
+              <div><span>Subtotal</span><strong>{money.format(subtotal)}</strong></div>
+              <div><span>Discount</span><strong>-{money.format(safeDiscount)}</strong></div>
+              <div><span>VAT (incl.)</span><strong>{money.format(vatIncluded)}</strong></div>
+              <hr />
+              <section>
+                <div>
+                  <span>Total due</span>
+                  <strong>{money.format(total)}</strong>
+                </div>
+                <div>
+                  <span>Change</span>
+                  <strong>{money.format(0)}</strong>
+                </div>
+              </section>
+            </div>
+
+            <div className="pos-action-row">
+              <button type="button" onClick={saveDraft} disabled={!canSell || !cartRows.length || subtotal <= 0}>
+                <Save size={16} />
+                Draft
+              </button>
+              <button type="button" onClick={clearDraft} disabled={!canSell || (!cartRows.length && !currentDraft)}>
+                <XCircle size={16} />
+                Clear
+              </button>
+              <button className="complete" type="submit" disabled={!canSell || !cartRows.length || total <= 0}>
+                <CheckCircle2 size={17} />
+                Complete sale
+                <span>⌘↵</span>
+              </button>
+            </div>
+
+            <footer className="pos-audit-footer">
+              <span><ShieldCheck size={14} /> Immutable audit trail</span>
+              <span><Building2 size={13} /> {activeBranch.name} · Till 02</span>
+            </footer>
+          </aside>
+        </form>
+      </div>
+
+      <section className="recent-sales pos-history-panel">
+        <h3>Sales history</h3>
+        {branchSales.map((sale) => (
+          <article className="sale-history-item" key={sale.id}>
+            <div>
+              <strong>{money.format(sale.total ?? sale.subtotal)} / {sale.paymentMethod}</strong>
+              <span>{new Date(sale.soldAt).toLocaleString()} / Ref {sale.reference}{sale.bookingCode ? ` / Draft ${sale.bookingCode}` : ''}</span>
+            </div>
+            <span>{sale.customerName || 'Walk-in customer'}{sale.customerPhone ? ` / ${sale.customerPhone}` : ''}</span>
+            <ul>
+              {sale.items.map((item, index) => (
+                <li key={`${sale.id}-${index}`}>{item.itemName || item.medicineId || item.productId}: {number.format(item.quantity)} x {money.format(item.unitPrice)} = {money.format(item.lineTotal)}</li>
+              ))}
+            </ul>
+            {sale.discount > 0 && <small>Discount: {money.format(sale.discount)}</small>}
+          </article>
+        ))}
+        {!branchSales.length && <div className="empty-state">No sales recorded for this branch yet.</div>}
       </section>
     </div>
   )
