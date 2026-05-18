@@ -529,56 +529,6 @@ function sellableUnitLabel(medicine: Medicine) {
   return packSize > 1 ? `${packSize} ${unit} per ${medicine.unit || 'pack'}` : unit
 }
 
-function pluralizeUnit(unit: string, quantity: number) {
-  const label = unit.trim() || 'unit'
-  return Math.abs(quantity) === 1 || label.endsWith('s') ? label : `${label}s`
-}
-
-function containerUnitLabel(medicine: Medicine) {
-  return medicine.unit || 'pack'
-}
-
-function leastSellableUnitLabel(medicine: Medicine) {
-  return medicine.sellableUnit || medicine.unit || 'unit'
-}
-
-function stockBreakdown(quantity: number, medicine: Medicine) {
-  const safeQuantity = Math.max(0, Math.trunc(Number(quantity) || 0))
-  const packSize = Math.max(1, Math.trunc(Number(medicine.packSize) || 1))
-  const containerUnit = containerUnitLabel(medicine)
-  const sellableUnit = leastSellableUnitLabel(medicine)
-  if (packSize <= 1) {
-    return [{ quantity: safeQuantity, unit: pluralizeUnit(sellableUnit, safeQuantity) }]
-  }
-  const containers = Math.floor(safeQuantity / packSize)
-  const remainder = safeQuantity % packSize
-  const parts = []
-  if (containers > 0 || remainder === 0) {
-    parts.push({ quantity: containers, unit: pluralizeUnit(containerUnit, containers) })
-  }
-  if (remainder > 0) {
-    parts.push({ quantity: remainder, unit: pluralizeUnit(sellableUnit, remainder) })
-  }
-  return parts
-}
-
-function stockBreakdownText(quantity: number, medicine: Medicine) {
-  return stockBreakdown(quantity, medicine).map((part) => `${number.format(part.quantity)} ${part.unit}`).join(', ')
-}
-
-function StockQuantity({ quantity, medicine }: { quantity: number; medicine: Medicine }) {
-  const parts = stockBreakdown(quantity, medicine)
-  const unit = leastSellableUnitLabel(medicine)
-  return (
-    <span className="stock-breakdown">
-      {parts.map((part) => (
-        <strong key={part.unit}>{number.format(part.quantity)} {part.unit}</strong>
-      ))}
-      <span className="table-subtext">{number.format(Math.max(0, quantity))} {pluralizeUnit(unit, quantity)} available</span>
-    </span>
-  )
-}
-
 function MedicineIdentity({ medicine }: { medicine: Medicine }) {
   return (
     <span className="medicine-identity">
@@ -648,7 +598,6 @@ function getStockRows(db: Database): StockRow[] {
       const quantity = db.ledger
         .filter((entry) => entry.batchId === batch.id)
         .reduce((sum, entry) => sum + entry.quantity, 0)
-      const unitCost = Number(batch.unitCost) || Number(medicine.costPrice) || 0
       const days = daysUntil(batch.expiryDate)
       return {
         batch,
@@ -656,7 +605,7 @@ function getStockRows(db: Database): StockRow[] {
         supplier: db.suppliers.find((supplier) => supplier.id === batch.supplierId),
         branch: db.branches.find((branch) => branch.id === batch.branchId),
         quantity,
-        costValue: quantity * unitCost,
+        costValue: quantity * batch.unitCost,
         daysToExpiry: days,
         status: days < 0 ? 'expired' : days <= db.settings.nearExpiryDays ? 'near-expiry' : 'ok',
       } satisfies StockRow
@@ -2059,13 +2008,13 @@ function Dashboard({
             <AlertItem tone="warning" title={`${pendingUsers} staff access request${pendingUsers > 1 ? 's' : ''} pending`} detail="An admin should approve users and assign the correct role before they can sign in." />
           )}
           {expired.map((row) => (
-            <AlertItem key={row.batch.id} tone="danger" title={<MedicineIdentity medicine={row.medicine} />} detail={`Expired batch ${row.batch.batchNumber} has ${stockBreakdownText(row.quantity, row.medicine)} in ${row.batch.location}`} />
+            <AlertItem key={row.batch.id} tone="danger" title={<MedicineIdentity medicine={row.medicine} />} detail={`Expired batch ${row.batch.batchNumber} has ${number.format(row.quantity)} ${row.medicine.unit} in ${row.batch.location}`} />
           ))}
           {nearExpiry.slice(0, 5).map((row) => (
-            <AlertItem key={row.batch.id} tone="warning" title={<MedicineIdentity medicine={row.medicine} />} detail={`Batch ${row.batch.batchNumber} expires in ${row.daysToExpiry} days. ${stockBreakdownText(row.quantity, row.medicine)} available`} />
+            <AlertItem key={row.batch.id} tone="warning" title={<MedicineIdentity medicine={row.medicine} />} detail={`Batch ${row.batch.batchNumber} expires in ${row.daysToExpiry} days. ${number.format(row.quantity)} ${row.medicine.unit} available`} />
           ))}
           {lowStock.map((medicine) => (
-            <AlertItem key={medicine.id} tone="info" title={<MedicineIdentity medicine={medicine} />} detail={`At or below reorder level. Available: ${stockBreakdownText(alertStockTotals.get(medicine.id) ?? 0, medicine)}. Reorder level: ${number.format(medicine.reorderLevel)} ${pluralizeUnit(leastSellableUnitLabel(medicine), medicine.reorderLevel)}`} />
+            <AlertItem key={medicine.id} tone="info" title={<MedicineIdentity medicine={medicine} />} detail={`At or below reorder level. Available: ${number.format(alertStockTotals.get(medicine.id) ?? 0)}. Reorder level: ${number.format(medicine.reorderLevel)}`} />
           ))}
           {!pendingUsers && !expired.length && !nearExpiry.length && !lowStock.length && (
             <AlertItem tone="good" title="No active inventory alerts" detail="Stock levels, expiry windows, and access approvals are currently clear." />
@@ -2498,12 +2447,10 @@ function Medicines({
                     <td>{medicine.nafdacNumber || '-'}</td>
                     <td>{medicine.barcodes[0] ?? '-'}</td>
                     <td>
-                      <StockQuantity quantity={stockTotals.get(medicine.id) ?? 0} medicine={medicine} />
+                      <strong>{number.format(stockTotals.get(medicine.id) ?? 0)}</strong>
+                      <span className="table-subtext">{sellableUnitLabel(medicine)}</span>
                     </td>
-                    <td>
-                      {money.format(medicine.costPrice || 0)}
-                      <span className="table-subtext">per {leastSellableUnitLabel(medicine)}</span>
-                    </td>
+                    <td>{money.format(medicine.costPrice || 0)}</td>
                     <td>
                       <input
                         className="table-price-input"
@@ -2575,8 +2522,8 @@ function Medicines({
                   <label>Container unit<input value={draft.unit} onChange={(event) => updateDraft(draft.rowId, { unit: event.target.value })} placeholder="Pack, bottle, sachet" disabled={!canWrite} /></label>
                   <label>Units per container<input type="number" min="1" value={numberInputValue(draft.packSize)} onChange={(event) => updateDraft(draft.rowId, { packSize: Number(event.target.value) })} disabled={!canWrite} /></label>
                   <label>Least sellable unit<input value={draft.sellableUnit} onChange={(event) => updateDraft(draft.rowId, { sellableUnit: event.target.value })} placeholder="Tablet, bottle, capsule" disabled={!canWrite} /></label>
-                  <label>Cost price per sellable unit<input type="number" min="0" value={numberInputValue(draft.costPrice)} onChange={(event) => updateDraft(draft.rowId, { costPrice: Number(event.target.value) })} disabled={!canWrite || !canManagePrices} /></label>
-                  <label>Selling price per sellable unit<input type="number" min="0" value={numberInputValue(draft.sellingPrice)} onChange={(event) => updateDraft(draft.rowId, { sellingPrice: Number(event.target.value) })} disabled={!canWrite || !canManagePrices} /></label>
+                  <label>Cost price<input type="number" min="0" value={numberInputValue(draft.costPrice)} onChange={(event) => updateDraft(draft.rowId, { costPrice: Number(event.target.value) })} disabled={!canWrite || !canManagePrices} /></label>
+                  <label>Selling price<input type="number" min="0" value={numberInputValue(draft.sellingPrice)} onChange={(event) => updateDraft(draft.rowId, { sellingPrice: Number(event.target.value) })} disabled={!canWrite || !canManagePrices} /></label>
                   <label>Category<input value={draft.category} onChange={(event) => updateDraft(draft.rowId, { category: event.target.value })} disabled={!canWrite} /></label>
                   <label>Manufacturer<input value={draft.manufacturer} onChange={(event) => updateDraft(draft.rowId, { manufacturer: event.target.value })} disabled={!canWrite} /></label>
                   <label>Reorder level<input type="number" min="0" value={numberInputValue(draft.reorderLevel)} onChange={(event) => updateDraft(draft.rowId, { reorderLevel: Number(event.target.value) })} disabled={!canWrite} /></label>
@@ -2610,9 +2557,9 @@ function Medicines({
             <div className="stack">
               <div className="availability">
                 <MedicineIdentity medicine={requestMedicine} />
-                <span>{requestBatch.batch.batchNumber} / expires {requestBatch.batch.expiryDate} / {stockBreakdownText(requestBatch.quantity, requestMedicine)} available</span>
+                <span>{requestBatch.batch.batchNumber} / expires {requestBatch.batch.expiryDate} / {number.format(requestBatch.quantity)} available</span>
               </div>
-              <label>Quantity requested ({pluralizeUnit(leastSellableUnitLabel(requestMedicine), 2)})<input type="number" min="1" max={requestBatch.quantity} value={numberInputValue(requestQuantity)} onChange={(event) => setRequestQuantity(Number(event.target.value))} /></label>
+              <label>Quantity requested<input type="number" min="1" max={requestBatch.quantity} value={numberInputValue(requestQuantity)} onChange={(event) => setRequestQuantity(Number(event.target.value))} /></label>
               <div className="form-actions">
                 <button className="ghost-button" type="button" onClick={closeRequestModal}>Cancel</button>
                 <button className="primary-button" type="button" onClick={addRequestItem}>
@@ -2643,9 +2590,9 @@ function Medicines({
                 {cartRows.length ? cartRows.map((item) => (
                   <article className="line-card" key={item.rowId}>
                     {item.medicine && <MedicineIdentity medicine={item.medicine} />}
-                    <span>{item.row?.batch.batchNumber ?? item.batchId} / {item.row && item.medicine ? `${stockBreakdownText(item.row.quantity, item.medicine)} available` : 'availability changed'}</span>
+                    <span>{item.row?.batch.batchNumber ?? item.batchId} / {item.row ? `${number.format(item.row.quantity)} available` : 'availability changed'}</span>
                     <div className="button-row">
-                      <label>Qty{item.medicine ? ` (${pluralizeUnit(leastSellableUnitLabel(item.medicine), 2)})` : ''}<input type="number" min="1" max={item.row?.quantity ?? undefined} value={numberInputValue(item.quantity)} onChange={(event) => updateCartItem(item.rowId, Number(event.target.value))} /></label>
+                      <label>Qty<input type="number" min="1" max={item.row?.quantity ?? undefined} value={numberInputValue(item.quantity)} onChange={(event) => updateCartItem(item.rowId, Number(event.target.value))} /></label>
                       <button className="icon-button" type="button" onClick={() => removeCartItem(item.rowId)} title="Remove item">
                         <Trash2 size={16} />
                       </button>
@@ -2669,7 +2616,7 @@ function Medicines({
                     {request.items.map((item) => {
                       const medicine = db.medicines.find((entry) => entry.id === item.medicineId)
                       const batch = db.batches.find((entry) => entry.id === item.batchId)
-                      return <span key={item.id}>{medicine?.brandName ?? item.medicineId} / {batch?.batchNumber ?? item.batchId} / Qty {medicine ? stockBreakdownText(item.quantity, medicine) : number.format(item.quantity)}</span>
+                      return <span key={item.id}>{medicine?.brandName ?? item.medicineId} / {batch?.batchNumber ?? item.batchId} / Qty {number.format(item.quantity)}</span>
                     })}
                     <div className="button-row">
                       <button className="primary-button" type="button" onClick={() => fulfillRequisition(request.id)} disabled={!canFulfillActiveBranch}>
@@ -2843,14 +2790,8 @@ function ReceiveStock({ db, activeBranch, canWrite, executeAction, flash }: { db
       flash('Receiving blocked: expiry date must be today or later')
       return
     }
-    if (items.some((line) => {
-      const medicine = db.medicines.find((item) => item.id === line.medicineId)
-      const packSize = Math.max(1, Number(medicine?.packSize) || 1)
-      const containerCost = Number(line.unitCost) || 0
-      const costPerSellableUnit = containerCost > 0 ? containerCost / packSize : Number(medicine?.costPrice) || 0
-      return Number(line.sellingPrice) > 0 && Number(line.sellingPrice) < costPerSellableUnit
-    })) {
-      flash('Receiving blocked: selling price cannot be lower than the cost per least sellable unit')
+    if (items.some((line) => Number(line.sellingPrice) > 0 && Number(line.sellingPrice) < Number(line.unitCost))) {
+      flash('Receiving blocked: selling price cannot be lower than unit cost')
       return
     }
     void executeAction('receiveStock', {
@@ -2885,12 +2826,6 @@ function ReceiveStock({ db, activeBranch, canWrite, executeAction, flash }: { db
         <div className="line-editor full">
           {lines.map((line, index) => {
             const selectedMedicineId = line.medicineId || db.medicines[0]?.id || ''
-            const selectedMedicine = db.medicines.find((medicine) => medicine.id === selectedMedicineId)
-            const containerUnit = selectedMedicine ? containerUnitLabel(selectedMedicine) : 'pack'
-            const sellableUnit = selectedMedicine ? leastSellableUnitLabel(selectedMedicine) : 'unit'
-            const packSize = Math.max(1, Number(selectedMedicine?.packSize) || 1)
-            const containerCost = Number(line.unitCost) || 0
-            const costPerSellableUnit = containerCost > 0 ? containerCost / packSize : Number(selectedMedicine?.costPrice) || 0
             return (
               <div className="line-card" key={line.rowId}>
                 <div className="line-card-heading">
@@ -2903,9 +2838,9 @@ function ReceiveStock({ db, activeBranch, canWrite, executeAction, flash }: { db
                   <label className="full">Medicine<select required value={selectedMedicineId} onChange={(event) => updateLine(line.rowId, { medicineId: event.target.value })} disabled={!canWrite || !db.medicines.length}><option value="">Select medicine</option>{db.medicines.map((medicine) => <option key={medicine.id} value={medicine.id}>{medicineOptionLabel(medicine)}</option>)}</select></label>
                   <label>Batch/Lot number<input required value={line.batchNumber} onChange={(event) => updateLine(line.rowId, { batchNumber: event.target.value })} disabled={!canWrite} /></label>
                   <label>Expiry date<input required type="date" value={line.expiryDate} onChange={(event) => updateLine(line.rowId, { expiryDate: event.target.value })} disabled={!canWrite} /></label>
-                  <label>Quantity ({pluralizeUnit(containerUnit, 2)})<input required type="number" min="1" value={numberInputValue(line.quantity)} onChange={(event) => updateLine(line.rowId, { quantity: Number(event.target.value) })} disabled={!canWrite} /></label>
-                  <label>Cost per {containerUnit}<input type="number" min="0" value={numberInputValue(line.unitCost)} onChange={(event) => updateLine(line.rowId, { unitCost: Number(event.target.value) })} disabled={!canWrite} />{packSize > 1 && <span className="field-hint">Equals {money.format(costPerSellableUnit)} per {sellableUnit}</span>}</label>
-                  <label>Selling price per {sellableUnit}<input type="number" min="0" value={numberInputValue(line.sellingPrice)} onChange={(event) => updateLine(line.rowId, { sellingPrice: Number(event.target.value) })} disabled={!canWrite} /></label>
+                  <label>Quantity<input required type="number" min="1" value={numberInputValue(line.quantity)} onChange={(event) => updateLine(line.rowId, { quantity: Number(event.target.value) })} disabled={!canWrite} /></label>
+                  <label>Unit cost<input type="number" min="0" value={numberInputValue(line.unitCost)} onChange={(event) => updateLine(line.rowId, { unitCost: Number(event.target.value) })} disabled={!canWrite} /></label>
+                  <label>Selling price<input type="number" min="0" value={numberInputValue(line.sellingPrice)} onChange={(event) => updateLine(line.rowId, { sellingPrice: Number(event.target.value) })} disabled={!canWrite} /></label>
                   <label>Stock location<input value={line.location} onChange={(event) => updateLine(line.rowId, { location: event.target.value })} disabled={!canWrite} /></label>
                 </div>
               </div>
@@ -2951,8 +2886,6 @@ function IssueStock({
   })
   const selectedBranchId = activeBranch.id
   const selectedMedicineId = form.medicineId || db.medicines[0]?.id || ''
-  const selectedMedicine = db.medicines.find((medicine) => medicine.id === selectedMedicineId)
-  const selectedSellableUnit = selectedMedicine ? leastSellableUnitLabel(selectedMedicine) : 'unit'
 
   const availableBatches = stockRows
     .filter((row) => row.batch.branchId === selectedBranchId && row.medicine.id === selectedMedicineId && row.quantity > 0 && row.daysToExpiry >= 0)
@@ -3002,12 +2935,12 @@ function IssueStock({
         <form className="form-grid" onSubmit={submit}>
           <label className="scan-field full">Scan barcode or SKU<div><Barcode size={17} /><input value={scan} onChange={(event) => setScan(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); applyScan() } }} placeholder="Scan, then press Enter" disabled={!canWrite || !db.medicines.length} /><button className="ghost-button" type="button" onClick={applyScan} disabled={!canWrite || !db.medicines.length}><Search size={16} />Lookup</button></div></label>
           <label className="full">Medicine<select required value={selectedMedicineId} onChange={(event) => setForm({ ...form, medicineId: event.target.value })} disabled={!canWrite || !db.medicines.length}><option value="">Select medicine</option>{db.medicines.map((medicine) => <option key={medicine.id} value={medicine.id}>{medicineOptionLabel(medicine)}</option>)}</select></label>
-          <label>Quantity ({pluralizeUnit(selectedSellableUnit, 2)})<input type="number" min="1" value={numberInputValue(form.quantity)} onChange={(event) => setForm({ ...form, quantity: Number(event.target.value) })} disabled={!canWrite} /></label>
+          <label>Quantity<input type="number" min="1" value={numberInputValue(form.quantity)} onChange={(event) => setForm({ ...form, quantity: Number(event.target.value) })} disabled={!canWrite} /></label>
           <label>Reason<select value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} disabled={!canWrite}><option>Dispense</option><option>Internal use</option><option>Donation</option><option>Damage</option><option>Other</option></select></label>
           <label className="full">Reference note<input value={form.reference} onChange={(event) => setForm({ ...form, reference: event.target.value })} placeholder="Receipt, request, or memo reference" disabled={!canWrite} /></label>
           <div className="availability full">
-            <strong>{selectedMedicine ? stockBreakdownText(totalAvailable, selectedMedicine) : number.format(totalAvailable)}</strong>
-            <span>{number.format(totalAvailable)} {pluralizeUnit(selectedSellableUnit, totalAvailable)} available from non-expired batches in {getBranchName(db, selectedBranchId)}</span>
+            <strong>{number.format(totalAvailable)}</strong>
+            <span>available from non-expired batches in {getBranchName(db, selectedBranchId)}</span>
           </div>
           <div className="form-actions full">
             <button className="primary-button" type="submit" disabled={!canWrite || !selectedMedicineId || Number(form.quantity) > totalAvailable || totalAvailable <= 0}>
@@ -3316,26 +3249,6 @@ function POSView({
     }
   }
 
-  function optionAvailableText(option: SaleOption | undefined) {
-    if (!option) return '0 available'
-    if (option.itemType === 'medicine') {
-      const medicine = db.medicines.find((item) => item.id === option.itemId)
-      return medicine ? stockBreakdownText(option.available, medicine) : `${number.format(option.available)} available`
-    }
-    const product = db.products.find((item) => item.id === option.itemId)
-    const unit = product?.unit || 'unit'
-    return `${number.format(option.available)} ${pluralizeUnit(unit, option.available)}`
-  }
-
-  function optionSellableUnit(option: SaleOption | undefined) {
-    if (!option) return 'unit'
-    if (option.itemType === 'medicine') {
-      const medicine = db.medicines.find((item) => item.id === option.itemId)
-      return medicine ? leastSellableUnitLabel(medicine) : 'unit'
-    }
-    return db.products.find((item) => item.id === option.itemId)?.unit || 'unit'
-  }
-
   function addItem(itemType: CartItem['itemType'], itemId: string) {
     const option = makeSaleOption(itemType, itemId)
     if (!option) return
@@ -3535,8 +3448,8 @@ function POSView({
                     </div>
                     <small>{option.meta}</small>
                     <footer>
-                      <span>{optionAvailableText(option)} in stock</span>
-                      <b>{money.format(option.unitPrice)} / {optionSellableUnit(option)}</b>
+                      <span>{number.format(option.available)} in stock</span>
+                      <b>{money.format(option.unitPrice)}</b>
                     </footer>
                   </button>
                 )
@@ -3563,7 +3476,7 @@ function POSView({
                       <div>
                         <strong>{item.option?.title ?? 'Unknown item'}</strong>
                         {item.itemType === 'medicine' && <span className="pos-fefo-chip">FEFO</span>}
-                        <small>{item.option?.meta ?? 'Unavailable item'} / {optionAvailableText(item.option)} avail.</small>
+                        <small>{item.option?.meta ?? 'Unavailable item'} / {number.format(item.available)} avail.</small>
                       </div>
                       <button className="pos-line-remove" type="button" onClick={() => setCart((current) => current.filter((cartItem) => cartItem.rowId !== item.rowId))} title="Remove item" disabled={!canSell}>
                         <Trash2 size={15} />
@@ -3576,7 +3489,7 @@ function POSView({
                         <button type="button" onClick={() => updateCart(item.rowId, { quantity: item.quantity + 1 })} disabled={!canSell || item.quantity >= item.available}><Plus size={14} /></button>
                       </div>
                       <div>
-                        <small>{money.format(item.unitPrice)} / {optionSellableUnit(item.option)}</small>
+                        <small>{money.format(item.unitPrice)} / {number.format(item.available)} avail.</small>
                         <strong>{money.format(item.lineTotal)}</strong>
                       </div>
                     </div>
@@ -4449,7 +4362,7 @@ function StockTable({ rows, compact = false }: { rows: StockRow[]; compact?: boo
                 </td>
                 <td>{row.batch.batchNumber}</td>
                 <td>{row.batch.expiryDate}</td>
-                <td><StockQuantity quantity={row.quantity} medicine={row.medicine} /></td>
+                <td>{number.format(row.quantity)}</td>
                 {!compact && <td>{row.branch?.name ?? row.batch.branchId}</td>}
                 <td>{row.batch.location}</td>
                 {!compact && <td><span className={`pill ${row.status}`}>{row.status.replace('-', ' ')}</span></td>}
