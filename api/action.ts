@@ -479,12 +479,16 @@ function receiveStock(db: Database, actorId: string, actorRole: Role, payload: R
     if (!medicine) throw new Error('Medicine not found')
     const packQuantity = requireNumber(input.quantity, 'Quantity')
     if (packQuantity <= 0) throw new Error('Quantity must be greater than zero')
-    const quantity = packQuantity * Math.max(1, Number(medicine.packSize) || 1)
+    const packSize = Math.max(1, Number(medicine.packSize) || 1)
+    const quantity = packQuantity * packSize
     const expiryDate = requireString(input.expiryDate, 'Expiry date')
     if (expiryDate < today()) throw new Error('Expiry date must be today or a future date')
-    const unitCost = Number(input.unitCost) || medicine.costPrice || 0
+    const containerCost = Number(input.unitCost) || 0
+    const unitCost = containerCost > 0 ? containerCost / packSize : medicine.costPrice || 0
     const sellingPrice = Number(input.sellingPrice) || medicine.sellingPrice || 0
-    if (sellingPrice > 0 && sellingPrice < unitCost) throw new Error('Selling price cannot be lower than unit cost')
+    if (sellingPrice > 0 && sellingPrice < unitCost) throw new Error('Selling price cannot be lower than the cost per least sellable unit')
+    if (unitCost > 0) medicine.costPrice = unitCost
+    if (sellingPrice > 0) medicine.sellingPrice = sellingPrice
     const batch = {
       id: id('bat'),
       medicineId,
