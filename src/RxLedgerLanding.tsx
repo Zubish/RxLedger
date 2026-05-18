@@ -48,7 +48,7 @@ export default function RxLedgerLanding({ onCreateWorkspace, onSignIn }: Landing
 function Nav({ onCreateWorkspace, onSignIn }: LandingProps) {
   return (
     <header className="sticky top-0 z-50 border-b border-border/70 bg-background/80 backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
+      <div className="landing-container flex h-16 items-center justify-between">
         <a href="/" className="flex items-center gap-2.5">
           <Logo />
           <span className="font-display text-lg font-extrabold tracking-tight">RxLedger</span>
@@ -93,18 +93,19 @@ function Hero({ onCreateWorkspace }: { onCreateWorkspace: () => void }) {
             "radial-gradient(900px 500px at 15% -10%, color-mix(in oklab, var(--brand) 14%, transparent), transparent 60%), radial-gradient(700px 400px at 95% 10%, color-mix(in oklab, var(--accent-2) 10%, transparent), transparent 60%)",
         }}
       />
-      <div className="mx-auto grid max-w-7xl items-center gap-14 px-6 pt-16 pb-20 lg:grid-cols-[1.05fr_1fr] lg:gap-10 lg:pt-24 lg:pb-28">
+      <div className="landing-container grid items-center gap-14 pt-16 pb-20 lg:grid-cols-[1fr_1.08fr] lg:gap-16 lg:pt-24 lg:pb-28 2xl:grid-cols-[0.95fr_1.15fr] 2xl:gap-24">
         <div>
           <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1 text-xs font-medium text-ink-soft shadow-sm backdrop-blur">
             <Sparkles className="size-3.5 text-brand" />
-            <span>Free 30-day trial — no card required</span>
-            <span className="mx-1 h-3 w-px bg-border" />
-            <span className="text-brand">Try the workspace →</span>
+            <span className="hidden sm:inline">Free 30-day trial - no card required</span>
+            <span className="sm:hidden">30-day trial - no card</span>
+            <span className="mx-1 hidden h-3 w-px bg-border sm:block" />
+            <span className="text-brand">Try workspace -&gt;</span>
           </div>
-          <h1 className="mt-6 font-display text-[44px] font-extrabold leading-[1.05] tracking-tight text-ink sm:text-5xl lg:text-[58px]">
+          <h1 className="mt-6 max-w-4xl font-display text-[44px] font-extrabold leading-[1.05] tracking-tight text-ink sm:text-5xl lg:text-[58px] 2xl:text-[76px]">
             Pharmacy operations, <span className="text-brand">audited by default.</span>
           </h1>
-          <p className="mt-5 max-w-xl text-lg leading-relaxed text-ink-soft">
+          <p className="mt-5 max-w-2xl text-lg leading-relaxed text-ink-soft 2xl:text-xl">
             RxLedger is the multi-tenant workspace for community pharmacies, hospital dispensaries, and
             multi-branch retailers — FEFO inventory, POS checkout, role-based access, and clean day-end
             reconciliation in one calm system.
@@ -253,7 +254,7 @@ function TrustStrip() {
   ];
   return (
     <section className="border-y border-border bg-surface/60">
-      <div className="mx-auto grid max-w-7xl grid-cols-2 gap-y-6 px-6 py-10 md:grid-cols-4">
+      <div className="landing-container grid grid-cols-2 gap-y-6 py-10 md:grid-cols-4">
         {items.map((it) => (
           <div key={it.label} className="flex flex-col items-start">
             <span className="font-display text-3xl font-extrabold tracking-tight text-ink">{it.value}</span>
@@ -268,7 +269,7 @@ function TrustStrip() {
 /* ---------------- Feature bento ---------------- */
 function FeatureBento() {
   return (
-    <section id="product" className="mx-auto max-w-7xl px-6 py-24">
+    <section id="product" className="landing-container py-24">
       <div className="max-w-2xl">
         <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-brand">The platform</span>
         <h2 className="mt-3 font-display text-3xl font-bold tracking-tight text-ink md:text-4xl">
@@ -378,7 +379,7 @@ function DayInLife() {
   ];
   return (
     <section id="why" className="bg-surface/60 py-24">
-      <div className="mx-auto max-w-7xl px-6">
+      <div className="landing-container">
         <div className="max-w-2xl">
           <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-brand">A day with RxLedger</span>
           <h2 className="mt-3 font-display text-3xl font-bold tracking-tight text-ink md:text-4xl">
@@ -415,7 +416,7 @@ function Roles() {
     { name: "Cashier", sees: "POS, saved prices, receipts, end-of-shift cash count." },
   ];
   return (
-    <section className="mx-auto max-w-7xl px-6 py-24">
+    <section className="landing-container py-24">
       <div className="mx-auto max-w-2xl text-center">
         <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-brand">Security model</span>
         <h2 className="mt-3 font-display text-3xl font-bold tracking-tight text-ink md:text-4xl">
@@ -445,7 +446,7 @@ function Roles() {
 function Testimonial() {
   return (
     <section className="bg-ink py-24 text-primary-foreground">
-      <div className="mx-auto max-w-4xl px-6">
+      <div className="landing-container">
         <Zap className="size-6 text-brand-soft" />
         <blockquote className="mt-6 font-display text-2xl font-medium leading-snug tracking-tight md:text-3xl">
           “Switching to RxLedger cut our expiry waste by <span className="text-brand-soft">42%</span> in one quarter.
@@ -472,7 +473,7 @@ function Pricing() {
     { name: "Enterprise", price: "Talk to us", per: "", features: ["Unlimited branches", "SLA + onboarding", "Custom integrations", "Dedicated success rep"], highlight: false },
   ];
   return (
-    <section id="pricing" className="mx-auto max-w-7xl px-6 py-24">
+    <section id="pricing" className="landing-container py-24">
       <div className="mx-auto max-w-2xl text-center">
         <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-brand">Pricing</span>
         <h2 className="mt-3 font-display text-3xl font-bold tracking-tight text-ink md:text-4xl">
@@ -525,7 +526,7 @@ function FAQ() {
   ];
   return (
     <section id="faq" className="bg-surface/60 py-24">
-      <div className="mx-auto grid max-w-7xl gap-12 px-6 lg:grid-cols-[1fr_1.4fr]">
+      <div className="landing-container grid gap-12 lg:grid-cols-[1fr_1.4fr]">
         <div>
           <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-brand">FAQ</span>
           <h2 className="mt-3 font-display text-3xl font-bold tracking-tight text-ink md:text-4xl">
@@ -554,7 +555,7 @@ function FAQ() {
 /* ---------------- Final CTA ---------------- */
 function FinalCTA({ onCreateWorkspace }: { onCreateWorkspace: () => void }) {
   return (
-    <section className="mx-auto max-w-7xl px-6 py-24">
+    <section className="landing-container py-24">
       <div
         className="relative overflow-hidden rounded-3xl bg-brand p-10 text-primary-foreground md:p-16"
       >
@@ -590,7 +591,7 @@ function FinalCTA({ onCreateWorkspace }: { onCreateWorkspace: () => void }) {
 function Footer() {
   return (
     <footer className="border-t border-border bg-background">
-      <div className="mx-auto grid max-w-7xl gap-12 px-6 py-16 md:grid-cols-5">
+      <div className="landing-container grid gap-12 py-16 md:grid-cols-5">
         <div className="md:col-span-2">
           <div className="flex items-center gap-2.5">
             <Logo />
@@ -606,7 +607,7 @@ function Footer() {
         <FooterCol title="Resources" links={["Help center", "Onboarding", "Status", "Changelog"]} />
       </div>
       <div className="border-t border-border">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-6 py-6 text-xs text-ink-soft md:flex-row">
+        <div className="landing-container flex flex-col items-center justify-between gap-3 py-6 text-xs text-ink-soft md:flex-row">
           <span className="font-mono uppercase tracking-widest">© 2026 RxLedger Technologies · Lagos, Nigeria</span>
           <div className="flex items-center gap-5">
             <a href="mailto:support@rxledger.com" className="hover:text-ink">support@rxledger.com</a>
