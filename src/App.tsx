@@ -414,8 +414,8 @@ type AppNotification = {
 
 const views: Array<{ id: View; label: string; icon: typeof LayoutDashboard; adminOnly?: boolean }> = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'medicines', label: 'Medicines', icon: Pill },
-  { id: 'products', label: 'Products', icon: Boxes },
+  { id: 'medicines', label: 'Pharmacy', icon: Pill },
+  { id: 'products', label: 'Mart', icon: Boxes },
   { id: 'suppliers', label: 'Suppliers', icon: Truck },
   { id: 'receive', label: 'Receive', icon: PackagePlus },
   { id: 'pos', label: 'POS', icon: Calculator },
