@@ -5,6 +5,9 @@
   --rx-cyan-soft: #e8f7ff;
   --rx-green: #2fa37d;
   --rx-green-deep: #1f7f63;
+  --rx-pos-green: #006b45;
+  --rx-pos-ink: #071114;
+  --rx-pos-surface: #f8fbfb;
   --rx-amber: #f2b94b;
   --rx-ink: #172024;
   --rx-muted: #68777e;
@@ -17,9 +20,11 @@
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
   background:
-    linear-gradient(135deg, rgba(134, 59, 255, 0.035), transparent 30%),
+    radial-gradient(circle at 6% 4%, rgba(71, 191, 255, 0.08), transparent 26%),
+    linear-gradient(135deg, rgba(0, 107, 69, 0.055), transparent 34%),
     #f5f7f8;
   color: var(--rx-ink);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   transition: grid-template-columns 180ms ease;
 }
 
@@ -1257,40 +1262,9 @@ td strong {
 .pos-window {
   background: #ffffff;
   border: 1px solid #d7e4e3;
-  border-radius: 8px;
-  box-shadow: 0 24px 60px rgba(18, 32, 37, 0.10);
+  border-radius: 12px;
+  box-shadow: 0 14px 32px rgba(18, 32, 37, 0.07);
   overflow: hidden;
-}
-
-.pos-terminal-bar {
-  align-items: center;
-  background: #e7e7e6;
-  display: flex;
-  height: 36px;
-  padding: 0 12px;
-}
-
-.pos-window-dots {
-  display: inline-flex;
-  gap: 7px;
-}
-
-.pos-window-dots span {
-  border-radius: 999px;
-  height: 13px;
-  width: 13px;
-}
-
-.pos-window-dots span:nth-child(1) {
-  background: #ff5f57;
-}
-
-.pos-window-dots span:nth-child(2) {
-  background: #ffbd2e;
-}
-
-.pos-window-dots span:nth-child(3) {
-  background: #28c840;
 }
 
 .pos-appbar {
@@ -1348,9 +1322,7 @@ td strong {
 
 .pos-branch-meta,
 .pos-shift-pill,
-.pos-time-pill,
-.pos-progress-labels,
-.pos-audit-footer {
+.pos-time-pill {
   color: #52636c;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 10px;
@@ -1614,25 +1586,6 @@ td strong {
   text-transform: uppercase;
 }
 
-.pos-progress {
-  background: #d7e4e3;
-  border-radius: 999px;
-  height: 4px;
-  overflow: hidden;
-}
-
-.pos-progress span {
-  background: linear-gradient(90deg, #006b45, #47bfff);
-  border-radius: inherit;
-  display: block;
-  height: 100%;
-  width: 33%;
-}
-
-.pos-progress-labels b {
-  color: #006b45;
-}
-
 .pos-cart-lines {
   max-height: 260px;
   min-height: 125px;
@@ -1782,7 +1735,7 @@ td strong {
   color: #52636c;
   cursor: pointer;
   display: inline-flex;
-  font-weight: 800;
+  font-weight: 600;
   gap: 6px;
   justify-content: center;
   min-height: 37px;
@@ -1792,6 +1745,7 @@ td strong {
   background: #006b45;
   border-color: #006b45;
   color: #ffffff;
+  font-weight: 650;
 }
 
 .pos-discount-control {
@@ -1808,19 +1762,20 @@ td strong {
   border-radius: 0;
 }
 
-.pos-discount-control b,
-.pos-discount-control em {
+.pos-discount-control button {
+  border: 0;
+  cursor: pointer;
   display: grid;
-  font-style: normal;
+  font-weight: 600;
   place-items: center;
 }
 
-.pos-discount-control b {
+.pos-discount-control button.active {
   background: #071114;
   color: #ffffff;
 }
 
-.pos-discount-control em {
+.pos-discount-control button:not(.active) {
   background: #ffffff;
   color: #52636c;
 }
@@ -1882,7 +1837,7 @@ td strong {
   color: #172024;
   cursor: pointer;
   display: inline-flex;
-  font-weight: 800;
+  font-weight: 650;
   gap: 7px;
   justify-content: center;
   min-height: 45px;
@@ -1909,25 +1864,6 @@ td strong {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 10px;
   opacity: 0.78;
-}
-
-.pos-audit-footer {
-  align-items: center;
-  background: #f2f7f6;
-  border-top: 1px solid #dce6e7;
-  display: flex;
-  justify-content: space-between;
-  padding: 10px 16px;
-}
-
-.pos-audit-footer span {
-  align-items: center;
-  display: inline-flex;
-  gap: 6px;
-}
-
-.pos-audit-footer svg:first-child {
-  color: #1f9d5a;
 }
 
 .pos-history-panel {
@@ -1980,11 +1916,11 @@ td strong {
 }
 
 label {
-  color: #54636a;
+  color: #52636c;
   display: grid;
   gap: 6px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 650;
 }
 
 input,
@@ -1992,7 +1928,7 @@ select,
 textarea {
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid #cbd7d8;
+  border: 1px solid #d1dddf;
   border-radius: 8px;
   color: #182126;
   background: white;
@@ -2000,6 +1936,55 @@ textarea {
   padding: 8px 10px;
   font: inherit;
   font-size: 14px;
+}
+
+.topbar,
+.content-section,
+.modal-panel,
+.login-panel,
+.line-card,
+.supplier-card,
+.branch-card,
+.alert-item,
+.sale-history-item,
+.workspace-finder,
+.history-panel,
+.chat-message {
+  border-color: #d7e4e3;
+}
+
+.content-section,
+.modal-panel,
+.login-panel,
+.line-card,
+.supplier-card,
+.branch-card,
+.sale-history-item,
+.workspace-finder,
+.history-panel {
+  border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(18, 32, 37, 0.055);
+}
+
+.content-section {
+  background:
+    linear-gradient(145deg, rgba(248, 251, 251, 0.82), rgba(255, 255, 255, 0.96)),
+    #ffffff;
+}
+
+.topbar {
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(16px);
+  border-radius: 12px;
+  box-shadow: 0 10px 24px rgba(18, 32, 37, 0.055);
+}
+
+th,
+.eyebrow,
+.table-subtext,
+.pos-branch-meta,
+.pill {
+  letter-spacing: 0.08em;
 }
 
 textarea {
@@ -2157,25 +2142,28 @@ button:disabled {
 }
 
 .primary-button {
-  background: linear-gradient(135deg, var(--rx-green-deep), var(--rx-green));
-  box-shadow: 0 10px 22px rgba(31, 127, 99, 0.18);
+  background: linear-gradient(135deg, var(--rx-pos-green), var(--rx-green));
+  box-shadow: 0 12px 24px rgba(0, 107, 69, 0.20);
   color: white;
   padding: 0 14px;
+  font-weight: 650;
 }
 
 .primary-button:hover {
-  background: linear-gradient(135deg, #176f55, var(--rx-purple-deep));
+  background: linear-gradient(135deg, #005a3c, var(--rx-green));
 }
 
 .ghost-button {
-  background: linear-gradient(135deg, #eef4f3, var(--rx-cyan-soft));
+  background: #ffffff;
+  border: 1px solid #d7e4e3;
   color: #24343a;
   padding: 0 12px;
+  font-weight: 600;
 }
 
 .ghost-button:hover {
-  background: #dfe9e8;
-  color: var(--rx-purple-deep);
+  background: #f3f8f7;
+  color: var(--rx-pos-green);
 }
 
 .mobile-menu-button {
@@ -3009,7 +2997,6 @@ button:disabled {
   .pos-line-item,
   .pos-line-bottom,
   .pos-total-panel section,
-  .pos-audit-footer,
   .pos-appbar-left,
   .pos-appbar-right {
     align-items: flex-start;

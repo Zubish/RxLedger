@@ -506,6 +506,11 @@ function compactMoney(value: number) {
   return `₦${compactNumber(value)}`
 }
 
+function numberInputValue(value: unknown) {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) && numeric !== 0 ? numeric : ''
+}
+
 function medicineMeta(medicine: Medicine) {
   return [medicine.genericName, medicine.form, medicine.strength].filter(Boolean).join(' / ') || 'No generic, form, or strength recorded'
 }
@@ -2451,7 +2456,7 @@ function Medicines({
                         className="table-price-input"
                         type="number"
                         min="0"
-                        defaultValue={medicine.sellingPrice || getMedicineSellingPrice(stockRows, medicine.id)}
+                        defaultValue={medicine.sellingPrice || getMedicineSellingPrice(stockRows, medicine.id) || ''}
                         onBlur={(event) => updateSellingPrice(medicine, event.currentTarget.value)}
                         disabled={!canManagePrices || !activeBranch}
                         aria-label={`Selling price for ${medicine.brandName}`}
@@ -2515,13 +2520,13 @@ function Medicines({
                   <label>Form<input value={draft.form} onChange={(event) => updateDraft(draft.rowId, { form: event.target.value })} disabled={!canWrite} /></label>
                   <label>Strength<input value={draft.strength} onChange={(event) => updateDraft(draft.rowId, { strength: event.target.value })} disabled={!canWrite} /></label>
                   <label>Container unit<input value={draft.unit} onChange={(event) => updateDraft(draft.rowId, { unit: event.target.value })} placeholder="Pack, bottle, sachet" disabled={!canWrite} /></label>
-                  <label>Units per container<input type="number" min="1" value={draft.packSize} onChange={(event) => updateDraft(draft.rowId, { packSize: Number(event.target.value) })} disabled={!canWrite} /></label>
+                  <label>Units per container<input type="number" min="1" value={numberInputValue(draft.packSize)} onChange={(event) => updateDraft(draft.rowId, { packSize: Number(event.target.value) })} disabled={!canWrite} /></label>
                   <label>Least sellable unit<input value={draft.sellableUnit} onChange={(event) => updateDraft(draft.rowId, { sellableUnit: event.target.value })} placeholder="Tablet, bottle, capsule" disabled={!canWrite} /></label>
-                  <label>Cost price<input type="number" min="0" value={draft.costPrice} onChange={(event) => updateDraft(draft.rowId, { costPrice: Number(event.target.value) })} disabled={!canWrite || !canManagePrices} /></label>
-                  <label>Selling price<input type="number" min="0" value={draft.sellingPrice} onChange={(event) => updateDraft(draft.rowId, { sellingPrice: Number(event.target.value) })} disabled={!canWrite || !canManagePrices} /></label>
+                  <label>Cost price<input type="number" min="0" value={numberInputValue(draft.costPrice)} onChange={(event) => updateDraft(draft.rowId, { costPrice: Number(event.target.value) })} disabled={!canWrite || !canManagePrices} /></label>
+                  <label>Selling price<input type="number" min="0" value={numberInputValue(draft.sellingPrice)} onChange={(event) => updateDraft(draft.rowId, { sellingPrice: Number(event.target.value) })} disabled={!canWrite || !canManagePrices} /></label>
                   <label>Category<input value={draft.category} onChange={(event) => updateDraft(draft.rowId, { category: event.target.value })} disabled={!canWrite} /></label>
                   <label>Manufacturer<input value={draft.manufacturer} onChange={(event) => updateDraft(draft.rowId, { manufacturer: event.target.value })} disabled={!canWrite} /></label>
-                  <label>Reorder level<input type="number" min="0" value={draft.reorderLevel} onChange={(event) => updateDraft(draft.rowId, { reorderLevel: Number(event.target.value) })} disabled={!canWrite} /></label>
+                  <label>Reorder level<input type="number" min="0" value={numberInputValue(draft.reorderLevel)} onChange={(event) => updateDraft(draft.rowId, { reorderLevel: Number(event.target.value) })} disabled={!canWrite} /></label>
                   <label className="full">Barcodes<input value={draft.barcodes} onChange={(event) => updateDraft(draft.rowId, { barcodes: event.target.value })} disabled={!canWrite} /></label>
                   <label className="checkbox-row full"><input type="checkbox" checked={draft.active} onChange={(event) => updateDraft(draft.rowId, { active: event.target.checked })} disabled={!canWrite} /> Active medicine</label>
                 </div>
@@ -2554,7 +2559,7 @@ function Medicines({
                 <MedicineIdentity medicine={requestMedicine} />
                 <span>{requestBatch.batch.batchNumber} / expires {requestBatch.batch.expiryDate} / {number.format(requestBatch.quantity)} available</span>
               </div>
-              <label>Quantity requested<input type="number" min="1" max={requestBatch.quantity} value={requestQuantity} onChange={(event) => setRequestQuantity(Number(event.target.value))} /></label>
+              <label>Quantity requested<input type="number" min="1" max={requestBatch.quantity} value={numberInputValue(requestQuantity)} onChange={(event) => setRequestQuantity(Number(event.target.value))} /></label>
               <div className="form-actions">
                 <button className="ghost-button" type="button" onClick={closeRequestModal}>Cancel</button>
                 <button className="primary-button" type="button" onClick={addRequestItem}>
@@ -2587,7 +2592,7 @@ function Medicines({
                     {item.medicine && <MedicineIdentity medicine={item.medicine} />}
                     <span>{item.row?.batch.batchNumber ?? item.batchId} / {item.row ? `${number.format(item.row.quantity)} available` : 'availability changed'}</span>
                     <div className="button-row">
-                      <label>Qty<input type="number" min="1" max={item.row?.quantity ?? undefined} value={item.quantity} onChange={(event) => updateCartItem(item.rowId, Number(event.target.value))} /></label>
+                      <label>Qty<input type="number" min="1" max={item.row?.quantity ?? undefined} value={numberInputValue(item.quantity)} onChange={(event) => updateCartItem(item.rowId, Number(event.target.value))} /></label>
                       <button className="icon-button" type="button" onClick={() => removeCartItem(item.rowId)} title="Remove item">
                         <Trash2 size={16} />
                       </button>
@@ -2833,9 +2838,9 @@ function ReceiveStock({ db, activeBranch, canWrite, executeAction, flash }: { db
                   <label className="full">Medicine<select required value={selectedMedicineId} onChange={(event) => updateLine(line.rowId, { medicineId: event.target.value })} disabled={!canWrite || !db.medicines.length}><option value="">Select medicine</option>{db.medicines.map((medicine) => <option key={medicine.id} value={medicine.id}>{medicineOptionLabel(medicine)}</option>)}</select></label>
                   <label>Batch/Lot number<input required value={line.batchNumber} onChange={(event) => updateLine(line.rowId, { batchNumber: event.target.value })} disabled={!canWrite} /></label>
                   <label>Expiry date<input required type="date" value={line.expiryDate} onChange={(event) => updateLine(line.rowId, { expiryDate: event.target.value })} disabled={!canWrite} /></label>
-                  <label>Quantity<input required type="number" min="1" value={line.quantity} onChange={(event) => updateLine(line.rowId, { quantity: Number(event.target.value) })} disabled={!canWrite} /></label>
-                  <label>Unit cost<input type="number" min="0" value={line.unitCost} onChange={(event) => updateLine(line.rowId, { unitCost: Number(event.target.value) })} disabled={!canWrite} /></label>
-                  <label>Selling price<input type="number" min="0" value={line.sellingPrice} onChange={(event) => updateLine(line.rowId, { sellingPrice: Number(event.target.value) })} disabled={!canWrite} /></label>
+                  <label>Quantity<input required type="number" min="1" value={numberInputValue(line.quantity)} onChange={(event) => updateLine(line.rowId, { quantity: Number(event.target.value) })} disabled={!canWrite} /></label>
+                  <label>Unit cost<input type="number" min="0" value={numberInputValue(line.unitCost)} onChange={(event) => updateLine(line.rowId, { unitCost: Number(event.target.value) })} disabled={!canWrite} /></label>
+                  <label>Selling price<input type="number" min="0" value={numberInputValue(line.sellingPrice)} onChange={(event) => updateLine(line.rowId, { sellingPrice: Number(event.target.value) })} disabled={!canWrite} /></label>
                   <label>Stock location<input value={line.location} onChange={(event) => updateLine(line.rowId, { location: event.target.value })} disabled={!canWrite} /></label>
                 </div>
               </div>
@@ -2930,7 +2935,7 @@ function IssueStock({
         <form className="form-grid" onSubmit={submit}>
           <label className="scan-field full">Scan barcode or SKU<div><Barcode size={17} /><input value={scan} onChange={(event) => setScan(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); applyScan() } }} placeholder="Scan, then press Enter" disabled={!canWrite || !db.medicines.length} /><button className="ghost-button" type="button" onClick={applyScan} disabled={!canWrite || !db.medicines.length}><Search size={16} />Lookup</button></div></label>
           <label className="full">Medicine<select required value={selectedMedicineId} onChange={(event) => setForm({ ...form, medicineId: event.target.value })} disabled={!canWrite || !db.medicines.length}><option value="">Select medicine</option>{db.medicines.map((medicine) => <option key={medicine.id} value={medicine.id}>{medicineOptionLabel(medicine)}</option>)}</select></label>
-          <label>Quantity<input type="number" min="1" value={form.quantity} onChange={(event) => setForm({ ...form, quantity: Number(event.target.value) })} disabled={!canWrite} /></label>
+          <label>Quantity<input type="number" min="1" value={numberInputValue(form.quantity)} onChange={(event) => setForm({ ...form, quantity: Number(event.target.value) })} disabled={!canWrite} /></label>
           <label>Reason<select value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} disabled={!canWrite}><option>Dispense</option><option>Internal use</option><option>Donation</option><option>Damage</option><option>Other</option></select></label>
           <label className="full">Reference note<input value={form.reference} onChange={(event) => setForm({ ...form, reference: event.target.value })} placeholder="Receipt, request, or memo reference" disabled={!canWrite} /></label>
           <div className="availability full">
@@ -3088,9 +3093,9 @@ function ProductsView({ db, canWrite, executeAction, flash }: { db: Database; ca
           <label>SKU<input required value={form.sku} onChange={(event) => setForm({ ...form, sku: event.target.value })} disabled={!canWrite} /></label>
           <label>Category<input value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} disabled={!canWrite} /></label>
           <label>Unit<input value={form.unit} onChange={(event) => setForm({ ...form, unit: event.target.value })} disabled={!canWrite} /></label>
-          <label>Quantity<input type="number" min="0" value={form.quantity} onChange={(event) => setForm({ ...form, quantity: Number(event.target.value) })} disabled={!canWrite} /></label>
-          <label>Cost price<input type="number" min="0" value={form.costPrice} onChange={(event) => setForm({ ...form, costPrice: Number(event.target.value) })} disabled={!canWrite} /></label>
-          <label>Selling price<input type="number" min="0" value={form.sellingPrice} onChange={(event) => setForm({ ...form, sellingPrice: Number(event.target.value) })} disabled={!canWrite} /></label>
+          <label>Quantity<input type="number" min="0" value={numberInputValue(form.quantity)} onChange={(event) => setForm({ ...form, quantity: Number(event.target.value) })} disabled={!canWrite} /></label>
+          <label>Cost price<input type="number" min="0" value={numberInputValue(form.costPrice)} onChange={(event) => setForm({ ...form, costPrice: Number(event.target.value) })} disabled={!canWrite} /></label>
+          <label>Selling price<input type="number" min="0" value={numberInputValue(form.sellingPrice)} onChange={(event) => setForm({ ...form, sellingPrice: Number(event.target.value) })} disabled={!canWrite} /></label>
           <label>Supplier<select value={form.supplierId} onChange={(event) => setForm({ ...form, supplierId: event.target.value })} disabled={!canWrite}><option value="">No supplier</option>{db.suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label>
           <label className="full">Barcodes<input value={form.barcodes} onChange={(event) => setForm({ ...form, barcodes: event.target.value })} disabled={!canWrite} placeholder="Comma-separated barcodes" /></label>
           <label className="checkbox-row full"><input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} disabled={!canWrite} /> Active product</label>
@@ -3154,6 +3159,8 @@ function POSView({
   const [customerPhone, setCustomerPhone] = useState(currentDraft?.customerPhone ?? '')
   const [paymentMethod, setPaymentMethod] = useState<Sale['paymentMethod']>(currentDraft?.paymentMethod ?? 'cash')
   const [discount, setDiscount] = useState(currentDraft?.discount ?? 0)
+  const [discountMode, setDiscountMode] = useState<'amount' | 'percent'>('amount')
+  const [cashPaid, setCashPaid] = useState(0)
   const [note, setNote] = useState(currentDraft?.note ?? '')
 
   const stockByMedicine = useMemo(() => aggregateMedicineStock(stockRows.filter((row) => row.quantity > 0 && row.daysToExpiry >= 0)), [stockRows])
@@ -3198,8 +3205,10 @@ function POSView({
     return { ...item, option, available, unitPrice, lineTotal: item.quantity * unitPrice }
   })
   const subtotal = cartRows.reduce((sum, item) => sum + item.lineTotal, 0)
-  const safeDiscount = Math.min(Math.max(0, Number(discount) || 0), subtotal)
+  const discountInput = Math.max(0, Number(discount) || 0)
+  const safeDiscount = discountMode === 'percent' ? Math.min(subtotal, subtotal * Math.min(discountInput, 100) / 100) : Math.min(discountInput, subtotal)
   const total = Math.max(0, subtotal - safeDiscount)
+  const changeDue = Math.max(0, (Number(cashPaid) || 0) - total)
   const branchSales = db.sales
     .filter((sale) => sale.branchId === activeBranch.id)
     .sort((a, b) => b.soldAt.localeCompare(a.soldAt))
@@ -3307,7 +3316,7 @@ function POSView({
       return {
         ...item,
         ...updates,
-        quantity: Math.max(1, Math.min(Number(updates.quantity ?? item.quantity) || 1, available || 1)),
+        quantity: Math.max(0, Math.min(Number(updates.quantity ?? item.quantity) || 0, available || 0)),
       }
     }))
   }
@@ -3335,6 +3344,7 @@ function POSView({
     setCustomerName('')
     setCustomerPhone('')
     setDiscount(0)
+    setCashPaid(0)
     setNote('')
     setScan('')
   }
@@ -3342,6 +3352,10 @@ function POSView({
   function submit(event: FormEvent) {
     event.preventDefault()
     if (!canSell || !cart.length) return
+    if (cartRows.some((item) => item.quantity < 1)) {
+      flash('Enter a quantity for every POS item')
+      return
+    }
     if (cartRows.some((item) => item.quantity > item.available)) {
       flash('Sale blocked: one or more quantities exceed available stock')
       return
@@ -3355,6 +3369,7 @@ function POSView({
     setCustomerName('')
     setCustomerPhone('')
     setDiscount(0)
+    setCashPaid(0)
     setNote('')
     setScan('')
   }
@@ -3362,14 +3377,6 @@ function POSView({
   return (
     <div className="pos-redesign">
       <div className="pos-window">
-        <header className="pos-terminal-bar">
-          <div className="pos-window-dots" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-          </div>
-        </header>
-
         <div className="pos-appbar">
           <div className="pos-appbar-left">
             <button className="pos-back-button" type="button" onClick={() => window.location.assign('/')}>
@@ -3455,17 +3462,9 @@ function POSView({
             <div className="pos-cart-header">
               <div>
                 <h2>Sale cart</h2>
-                <p><strong>{cart.length} item{cart.length === 1 ? '' : 's'}</strong> ready · FEFO batch auto-selected</p>
+                <p><strong>{cart.length} item{cart.length === 1 ? '' : 's'}</strong> ready / FEFO batch auto-selected</p>
               </div>
               <span className="pos-draft-pill"><FileText size={13} /> {draftLabel}</span>
-              <div className="pos-progress">
-                <span />
-              </div>
-              <div className="pos-progress-labels">
-                <b>Cart</b>
-                <span>Customer</span>
-                <span>Payment</span>
-              </div>
             </div>
 
             <div className="pos-cart-lines">
@@ -3477,7 +3476,7 @@ function POSView({
                       <div>
                         <strong>{item.option?.title ?? 'Unknown item'}</strong>
                         {item.itemType === 'medicine' && <span className="pos-fefo-chip">FEFO</span>}
-                        <small>{item.option?.meta ?? 'Unavailable item'} · {number.format(item.available)} avail.</small>
+                        <small>{item.option?.meta ?? 'Unavailable item'} / {number.format(item.available)} avail.</small>
                       </div>
                       <button className="pos-line-remove" type="button" onClick={() => setCart((current) => current.filter((cartItem) => cartItem.rowId !== item.rowId))} title="Remove item" disabled={!canSell}>
                         <Trash2 size={15} />
@@ -3486,11 +3485,11 @@ function POSView({
                     <div className="pos-line-bottom">
                       <div className="pos-qty-stepper">
                         <button type="button" onClick={() => updateCart(item.rowId, { quantity: item.quantity - 1 })} disabled={!canSell || item.quantity <= 1}><Minus size={14} /></button>
-                        <input aria-label="Quantity" type="number" min="1" max={item.available || 1} value={item.quantity} onChange={(event) => updateCart(item.rowId, { quantity: Number(event.target.value) })} disabled={!canSell} />
+                        <input aria-label="Quantity" type="number" min="1" max={item.available || 1} value={numberInputValue(item.quantity)} onChange={(event) => updateCart(item.rowId, { quantity: Number(event.target.value) })} disabled={!canSell} />
                         <button type="button" onClick={() => updateCart(item.rowId, { quantity: item.quantity + 1 })} disabled={!canSell || item.quantity >= item.available}><Plus size={14} /></button>
                       </div>
                       <div>
-                        <small>{money.format(item.unitPrice)} · {number.format(item.available)} avail.</small>
+                        <small>{money.format(item.unitPrice)} / {number.format(item.available)} avail.</small>
                         <strong>{money.format(item.lineTotal)}</strong>
                       </div>
                     </div>
@@ -3527,10 +3526,14 @@ function POSView({
               <label>
                 <span><Percent size={15} /> Discount</span>
                 <div className="pos-discount-control">
-                  <input type="number" min="0" max={subtotal} value={discount} onChange={(event) => setDiscount(Number(event.target.value))} disabled={!canSell} />
-                  <b>₦</b>
-                  <em>%</em>
+                  <input type="number" min="0" max={discountMode === 'percent' ? 100 : subtotal} value={numberInputValue(discount)} onChange={(event) => setDiscount(Number(event.target.value))} disabled={!canSell} />
+                  <button className={discountMode === 'amount' ? 'active' : ''} type="button" onClick={() => setDiscountMode('amount')} disabled={!canSell}>{String.fromCharCode(8358)}</button>
+                  <button className={discountMode === 'percent' ? 'active' : ''} type="button" onClick={() => setDiscountMode('percent')} disabled={!canSell}>%</button>
                 </div>
+              </label>
+              <label>
+                <span><Wallet size={15} /> Cash paid</span>
+                <input type="number" min="0" value={numberInputValue(cashPaid)} onChange={(event) => setCashPaid(Number(event.target.value))} placeholder="0.00" disabled={!canSell} />
               </label>
               <label>
                 <span><StickyNote size={15} /> Note</span>
@@ -3550,7 +3553,7 @@ function POSView({
                 </div>
                 <div>
                   <span>Change</span>
-                  <strong>{money.format(0)}</strong>
+                  <strong>{money.format(changeDue)}</strong>
                 </div>
               </section>
             </div>
@@ -3567,14 +3570,9 @@ function POSView({
               <button className="complete" type="submit" disabled={!canSell || !cartRows.length || total <= 0}>
                 <CheckCircle2 size={17} />
                 Complete sale
-                <span>⌘↵</span>
+                <span>Enter</span>
               </button>
             </div>
-
-            <footer className="pos-audit-footer">
-              <span><ShieldCheck size={14} /> Immutable audit trail</span>
-              <span><Building2 size={13} /> {activeBranch.name} · Till 02</span>
-            </footer>
           </aside>
         </form>
       </div>
@@ -3656,7 +3654,7 @@ function Adjustments({ activeBranch, stockRows, canAdjust, executeAction, flash 
       <form className="form-grid" onSubmit={submit}>
         <label className="full">Batch<select required value={selectedBatchId} onChange={(event) => setForm({ ...form, batchId: event.target.value })} disabled={!canAdjust || !positiveRows.length}><option value="">Select batch</option>{positiveRows.map((row) => <option key={row.batch.id} value={row.batch.id}>{medicineOptionLabel(row.medicine)} / {row.batch.batchNumber} / Qty {row.quantity}</option>)}</select></label>
         <label>Transaction type<select value={form.mode} onChange={(event) => setForm({ ...form, mode: event.target.value as LedgerType })} disabled={!canAdjust}><option value="write-off">Write-off</option><option value="supplier-return">Supplier return</option><option value="customer-return">Customer return</option><option value="adjustment">Positive adjustment</option></select></label>
-        <label>Quantity<input type="number" min="1" value={form.quantity} onChange={(event) => setForm({ ...form, quantity: Number(event.target.value) })} disabled={!canAdjust} /></label>
+        <label>Quantity<input type="number" min="1" value={numberInputValue(form.quantity)} onChange={(event) => setForm({ ...form, quantity: Number(event.target.value) })} disabled={!canAdjust} /></label>
         <label className="full">Reason<textarea required value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} disabled={!canAdjust} /></label>
         <label className="full">Reference<input value={form.reference} onChange={(event) => setForm({ ...form, reference: event.target.value })} disabled={!canAdjust} /></label>
         {selected && <div className="availability full"><MedicineIdentity medicine={selected.medicine} /><span>{selected.batch.batchNumber} / available {number.format(selected.quantity)} / expires {selected.batch.expiryDate}</span></div>}
@@ -4327,8 +4325,8 @@ function SettingsView({ db, canAdmin, executeAction }: { db: Database; canAdmin:
         <label className="full">Business registration/licence<input value={form.businessLicense} onChange={(event) => setForm({ ...form, businessLicense: event.target.value })} disabled={!canAdmin} /></label>
         <label className="full">Main branch address<input value={form.mainBranchAddress} onChange={(event) => setForm({ ...form, mainBranchAddress: event.target.value })} disabled={!canAdmin} /></label>
         <label>Default branch name<input value={form.branchName} onChange={(event) => setForm({ ...form, branchName: event.target.value })} disabled={!canAdmin} /></label>
-        <label>Near-expiry days<input type="number" min="1" value={form.nearExpiryDays} onChange={(event) => setForm({ ...form, nearExpiryDays: Number(event.target.value) })} disabled={!canAdmin} /></label>
-        <label>Approval threshold (NGN)<input type="number" min="0" value={form.approvalThreshold} onChange={(event) => setForm({ ...form, approvalThreshold: Number(event.target.value) })} disabled={!canAdmin} /></label>
+        <label>Near-expiry days<input type="number" min="1" value={numberInputValue(form.nearExpiryDays)} onChange={(event) => setForm({ ...form, nearExpiryDays: Number(event.target.value) })} disabled={!canAdmin} /></label>
+        <label>Approval threshold (NGN)<input type="number" min="0" value={numberInputValue(form.approvalThreshold)} onChange={(event) => setForm({ ...form, approvalThreshold: Number(event.target.value) })} disabled={!canAdmin} /></label>
         <div className="form-actions full">
           <button className="primary-button" type="submit" disabled={!canAdmin}>
             <Settings size={17} />
