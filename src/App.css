@@ -706,8 +706,14 @@ td span,
 
 .topbar {
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 20px;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 22px;
+  min-height: 76px;
+  overflow: visible;
+  padding: 14px 18px;
+  position: relative;
+  z-index: 80;
 }
 
 .topbar-title {
@@ -715,11 +721,18 @@ td span,
   align-items: center;
   gap: 12px;
   min-width: 0;
+  padding: 2px 0;
+}
+
+.topbar-title > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
 }
 
 .topbar h1,
 .login-panel h1 {
-  margin: 3px 0 0;
+  margin: 0;
   font-size: 28px;
   line-height: 1.15;
 }
@@ -727,6 +740,17 @@ td span,
 .section-heading h2,
 .topbar h1 {
   color: var(--rx-ink);
+}
+
+.topbar .eyebrow {
+  color: var(--rx-purple);
+  display: block;
+  font-size: 12px;
+  line-height: 1.1;
+  max-width: min(58vw, 640px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .section-heading h2::after {
@@ -745,6 +769,9 @@ td span,
   gap: 10px;
   flex-wrap: wrap;
   justify-content: flex-end;
+  min-width: 0;
+  position: relative;
+  z-index: 90;
 }
 
 .medicine-identity {
@@ -769,6 +796,7 @@ td span,
 
 .branch-switcher {
   position: relative;
+  z-index: 120;
 }
 
 .branch-switcher-trigger {
@@ -806,18 +834,18 @@ td span,
 .branch-menu {
   position: absolute;
   right: 0;
-  top: calc(100% + 6px);
-  z-index: 25;
-  width: min(280px, 80vw);
-  max-height: 200px;
+  top: calc(100% + 10px);
+  z-index: 500;
+  width: min(320px, 86vw);
+  max-height: min(360px, calc(100vh - 140px));
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
   border: 1px solid #cbd7d8;
   border-radius: 8px;
   background: white;
-  box-shadow: 0 14px 30px rgba(18, 32, 37, 0.16);
-  padding: 6px;
+  box-shadow: 0 20px 44px rgba(18, 32, 37, 0.2);
+  padding: 8px;
 }
 
 .branch-menu button {
@@ -2993,6 +3021,35 @@ button:disabled {
   .availability {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .topbar {
+    gap: 14px;
+    padding: 14px;
+  }
+
+  .topbar-title {
+    width: 100%;
+  }
+
+  .topbar .eyebrow {
+    max-width: 100%;
+  }
+
+  .branch-switcher,
+  .branch-switcher-trigger,
+  .topbar-actions {
+    width: 100%;
+  }
+
+  .branch-switcher-trigger {
+    justify-content: flex-start;
+  }
+
+  .branch-menu {
+    left: 0;
+    right: auto;
+    width: 100%;
   }
 
   .metric-grid,
