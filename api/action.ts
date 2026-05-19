@@ -486,7 +486,9 @@ function receiveStock(db: Database, actorId: string, actorRole: Role, payload: R
   const inputs = Array.isArray(payload?.items)
     ? (payload.items as Record<string, unknown>[])
     : [{
+        itemType: 'medicine',
         medicineId: payload?.medicineId,
+        itemId: payload?.medicineId,
         batchNumber: payload?.batchNumber,
         expiryDate: payload?.expiryDate,
         quantity: payload?.quantity,
@@ -502,12 +504,66 @@ function receiveStock(db: Database, actorId: string, actorRole: Role, payload: R
     invoiceRef: reference,
     receivedAt: nowIso(),
     userId: actorId,
-    items: [] as Array<{ medicineId: string; batchId: string; quantity: number; unitCost: number }>,
+    items: [] as Database['receipts'][number]['items'],
   }
   const batches = []
   const ledgerEntries = []
   for (const input of inputs) {
-    const medicineId = requireString(input.medicineId, 'Medicine')
+    const itemType = input.itemType === 'product' ? 'product' : 'medicine'
+    if (itemType === 'product') {
+      const productId = requireString(input.productId || input.itemId, 'Product')
+      const product = db.products.find((item) => item.id === productId && item.active)
+      if (!product) throw new Error('Active product not found')
+      const quantity = requireNumber(input.quantity, 'Quantity')
+      if (quantity <= 0) throw new Error('Quantity must be greater than zero')
+      const batchNumber = optionalString(input.batchNumber)
+      const expiryDate = optionalString(input.expiryDate)
+      if (expiryDate && expiryDate < today()) throw new Error('Expiry date must be today or a future date')
+      const unitCost = Number(input.unitCost) || product.costPrice || 0
+      const sellingPrice = Number(input.sellingPrice) || product.sellingPrice || 0
+      if (sellingPrice > 0 && sellingPrice < unitCost) throw new Error('Selling price cannot be lower than unit cost')
+      const beforeProduct = { ...product }
+      product.quantity += quantity
+      if (unitCost > 0) product.costPrice = unitCost
+      if (sellingPrice > 0) product.sellingPrice = sellingPrice
+      const location = optionalString(input.location) || 'Main Store'
+      const ledger = {
+        id: id('led'),
+        itemType: 'product' as const,
+        medicineId: '',
+        productId,
+        batchId: '',
+        batchNumber,
+        expiryDate,
+        unitCost,
+        sellingPrice,
+        location,
+        type: 'stock-in' as LedgerType,
+        quantity,
+        reason: 'Goods received',
+        reference,
+        userId: actorId,
+        createdAt: nowIso(),
+        toBranchId: branchId,
+      }
+      ledgerEntries.push(ledger)
+      receipt.items.push({
+        itemType: 'product',
+        medicineId: '',
+        productId,
+        batchId: '',
+        batchNumber,
+        expiryDate,
+        sellingPrice,
+        location,
+        branchId,
+        quantity,
+        unitCost,
+      })
+      addAudit(db, actorId, `Received product stock for ${product.name}`, 'product', productId, beforeProduct, { ...product, receivedQuantity: quantity, receipt: reference, batchNumber, expiryDate, location })
+      continue
+    }
+    const medicineId = requireString(input.medicineId || input.itemId, 'Medicine')
     const medicine = db.medicines.find((item) => item.id === medicineId)
     if (!medicine) throw new Error('Medicine not found')
     const packQuantity = requireNumber(input.quantity, 'Quantity')
@@ -535,6 +591,7 @@ function receiveStock(db: Database, actorId: string, actorRole: Role, payload: R
     }
     const ledger = {
       id: id('led'),
+      itemType: 'medicine' as const,
       medicineId,
       batchId: batch.id,
       type: 'stock-in' as LedgerType,
@@ -546,7 +603,7 @@ function receiveStock(db: Database, actorId: string, actorRole: Role, payload: R
     }
     batches.push(batch)
     ledgerEntries.push(ledger)
-    receipt.items.push({ medicineId, batchId: batch.id, quantity, unitCost: batch.unitCost })
+    receipt.items.push({ itemType: 'medicine', medicineId, batchId: batch.id, quantity, unitCost: batch.unitCost, sellingPrice, location: batch.location, batchNumber: batch.batchNumber, expiryDate: batch.expiryDate, branchId })
     if (unitCost > 0 || sellingPrice > 0) {
       addAudit(db, actorId, `Updated catalog pricing from receipt for ${medicine.brandName}`, 'medicine', medicineId, beforeMedicine, { costPrice: medicine.costPrice, sellingPrice: medicine.sellingPrice, receipt: reference })
     }
@@ -828,6 +885,22 @@ function recordSale(db: Database, actorId: string, actorRole: Role, payload: Rec
         unitPrice: product.sellingPrice,
         lineTotal: quantity * product.sellingPrice,
       })
+      ledgerEntries.push({
+        id: id('led'),
+        itemType: 'product' as const,
+        medicineId: '',
+        productId: product.id,
+        batchId: '',
+        unitCost: product.costPrice,
+        sellingPrice: product.sellingPrice,
+        type: 'stock-out' as LedgerType,
+        quantity: -quantity,
+        reason: 'POS sale',
+        reference: optionalString(payload?.reference) || 'POS sale',
+        userId: actorId,
+        createdAt: nowIso(),
+        fromBranchId: branchId,
+      })
       continue
     }
     const medicineId = input.itemId
@@ -862,6 +935,7 @@ function recordSale(db: Database, actorId: string, actorRole: Role, payload: Rec
       })
       ledgerEntries.push({
         id: id('led'),
+        itemType: 'medicine' as const,
         medicineId,
         batchId: row.batch.id,
         type: 'stock-out' as LedgerType,
@@ -877,6 +951,9 @@ function recordSale(db: Database, actorId: string, actorRole: Role, payload: Rec
   const subtotal = saleItems.reduce((sum, item) => sum + item.lineTotal, 0)
   const discount = Math.min(Math.max(0, Number(payload?.discount ?? draft?.discount) || 0), subtotal)
   const reference = receiptReference()
+  ledgerEntries.forEach((entry) => {
+    if (entry.reason === 'POS sale') entry.reference = reference
+  })
 
   const sale: Sale = {
     id: id('sale'),

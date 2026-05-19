@@ -198,8 +198,15 @@ type LedgerType =
 
 type LedgerEntry = {
   id: string
+  itemType?: 'medicine' | 'product'
   medicineId: string
+  productId?: string
   batchId: string
+  batchNumber?: string
+  expiryDate?: string
+  unitCost?: number
+  sellingPrice?: number
+  location?: string
   type: LedgerType
   quantity: number
   reason: string
@@ -217,8 +224,15 @@ type Receipt = {
   receivedAt: string
   userId: string
   items: Array<{
+    itemType?: 'medicine' | 'product'
     medicineId: string
+    productId?: string
     batchId: string
+    batchNumber?: string
+    expiryDate?: string
+    sellingPrice?: number
+    location?: string
+    branchId?: string
     quantity: number
     unitCost: number
   }>
@@ -713,6 +727,32 @@ function findMedicineByScan(db: Database, scan: string) {
       medicine.nafdacNumber.toLowerCase() === needle ||
       medicine.barcodes.some((barcode) => barcode.toLowerCase() === needle),
   )
+}
+
+function findReceivableItem(db: Database, query: string): { itemType: 'medicine' | 'product'; itemId: string; label: string } | undefined {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return undefined
+  const medicineMatches = db.medicines
+    .filter((medicine) => medicine.active)
+    .map((medicine) => ({
+      itemType: 'medicine' as const,
+      itemId: medicine.id,
+      label: medicineOptionLabel(medicine),
+      exact: [medicine.sku, medicine.nafdacNumber, ...medicine.barcodes].some((value) => value.toLowerCase() === needle),
+      text: `${medicine.sku} ${medicine.nafdacNumber} ${medicine.brandName} ${medicine.genericName} ${medicine.form} ${medicine.strength} ${medicine.category} ${medicine.barcodes.join(' ')}`.toLowerCase(),
+    }))
+  const productMatches = db.products
+    .filter((product) => product.active)
+    .map((product) => ({
+      itemType: 'product' as const,
+      itemId: product.id,
+      label: product.name,
+      exact: [product.sku, ...product.barcodes].some((value) => value.toLowerCase() === needle),
+      text: `${product.sku} ${product.name} ${product.category} ${product.unit} ${product.barcodes.join(' ')}`.toLowerCase(),
+    }))
+  return [...medicineMatches, ...productMatches]
+    .filter((item) => item.exact || item.text.includes(needle))
+    .sort((a, b) => Number(b.exact) - Number(a.exact) || a.label.localeCompare(b.label))[0]
 }
 
 function csvEscape(value: string | number) {
@@ -1352,7 +1392,7 @@ function App() {
           {activeView === 'pos' && activeBranch && <POSView key={`${currentUser.id}-${activeBranch.id}`} db={db} currentUser={currentUser} activeBranch={activeBranch} stockRows={activeBranchStockRows} canSell={Boolean(canSell)} executeAction={executeAction} flash={flash} />}
           {activeView === 'issue' && activeBranch && <IssueStock db={db} activeBranch={activeBranch} stockRows={activeBranchStockRows} canWrite={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
           {activeView === 'adjust' && activeBranch && <Adjustments activeBranch={activeBranch} stockRows={activeBranchStockRows} canAdjust={canAdjust && Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
-          {activeView === 'reports' && <Reports db={db} stockRows={dashboardStockRows} stockTotals={dashboardStockTotals} />}
+          {activeView === 'reports' && <Reports db={db} stockRows={dashboardStockRows} stockTotals={dashboardStockTotals} activeBranch={canAdmin ? undefined : activeBranch} />}
           {activeView === 'chat' && <ChatView db={db} currentUser={currentUser} executeAction={executeAction} />}
           {activeView === 'notifications' && <NotificationsView notifications={notifications} setActiveView={setActiveView} />}
           {activeView === 'audit' && <Audit db={db} />}
@@ -2741,7 +2781,8 @@ function Suppliers({ db, canWrite, executeAction }: { db: Database; canWrite: bo
 function ReceiveStock({ db, activeBranch, canWrite, executeAction, flash }: { db: Database; activeBranch: Branch; canWrite: boolean; executeAction: ExecuteAction; flash: (message: string) => void }) {
   type ReceiveLine = {
     rowId: string
-    medicineId: string
+    itemType: 'medicine' | 'product'
+    itemId: string
     batchNumber: string
     expiryDate: string
     quantity: number
@@ -2751,7 +2792,8 @@ function ReceiveStock({ db, activeBranch, canWrite, executeAction, flash }: { db
   }
   const createLine = (): ReceiveLine => ({
     rowId: id('line'),
-    medicineId: '',
+    itemType: 'medicine',
+    itemId: '',
     batchNumber: '',
     expiryDate: '',
     quantity: 1,
@@ -2766,9 +2808,28 @@ function ReceiveStock({ db, activeBranch, canWrite, executeAction, flash }: { db
   })
   const [lines, setLines] = useState<ReceiveLine[]>([createLine()])
   const selectedSupplierId = header.supplierId || db.suppliers[0]?.id || ''
+  const hasReceivableItems = db.medicines.some((medicine) => medicine.active) || db.products.some((product) => product.active)
 
   function updateLine(rowId: string, updates: Partial<ReceiveLine>) {
     setLines((current) => current.map((line) => (line.rowId === rowId ? { ...line, ...updates } : line)))
+  }
+
+  function itemPriceDefaults(itemType: ReceiveLine['itemType'], itemId: string) {
+    if (itemType === 'product') {
+      const product = db.products.find((item) => item.id === itemId)
+      return { unitCost: product?.costPrice || 0, sellingPrice: product?.sellingPrice || 0 }
+    }
+    const medicine = db.medicines.find((item) => item.id === itemId)
+    return { unitCost: medicine?.costPrice || 0, sellingPrice: medicine?.sellingPrice || 0 }
+  }
+
+  function selectItem(rowId: string, itemType: ReceiveLine['itemType'], itemId: string) {
+    const defaults = itemPriceDefaults(itemType, itemId)
+    setLines((current) => current.map((line) => (
+      line.rowId === rowId
+        ? { ...line, itemType, itemId, unitCost: line.unitCost || defaults.unitCost, sellingPrice: line.sellingPrice || defaults.sellingPrice }
+        : line
+    )))
   }
 
   function addLine() {
@@ -2780,28 +2841,45 @@ function ReceiveStock({ db, activeBranch, canWrite, executeAction, flash }: { db
   }
 
   function applyScan() {
-    const medicine = findMedicineByScan(db, scan)
-    if (!medicine) {
-      flash('No medicine found for scanned code')
+    const match = findReceivableItem(db, scan)
+    if (!match) {
+      flash('No medicine or mart product found for that name, SKU, or barcode')
       return
     }
-    setLines((current) => current.map((line, index) => index === current.length - 1 ? { ...line, medicineId: medicine.id } : line))
-    flash(`${medicineOptionLabel(medicine)} selected`)
+    setLines((current) => current.map((line, index) => {
+      if (index !== current.length - 1) return line
+      const defaults = itemPriceDefaults(match.itemType, match.itemId)
+      return { ...line, itemType: match.itemType, itemId: match.itemId, unitCost: line.unitCost || defaults.unitCost, sellingPrice: line.sellingPrice || defaults.sellingPrice }
+    }))
+    flash(`${match.label} selected`)
   }
 
   function submit(event: FormEvent) {
     event.preventDefault()
     if (!canWrite) return
-    if (!selectedSupplierId || !db.medicines.length || !activeBranch.id) {
-      flash('Add at least one medicine, supplier, and branch before receiving stock')
+    if (!selectedSupplierId || !hasReceivableItems || !activeBranch.id) {
+      flash('Add at least one Pharmacy or Mart item, supplier, and branch before receiving stock')
       return
     }
-    const items = lines.map((line) => ({ ...line, medicineId: line.medicineId || db.medicines[0]?.id || '' }))
-    if (items.some((line) => !line.medicineId || !line.batchNumber || !line.expiryDate || Number(line.quantity) <= 0)) {
-      flash('Medicine, batch number, expiry, and quantity are required for every line')
+    const items = lines.map((line) => {
+      const fallbackId = line.itemType === 'product' ? db.products.find((product) => product.active)?.id : db.medicines.find((medicine) => medicine.active)?.id
+      const itemId = line.itemId || fallbackId || ''
+      return {
+        ...line,
+        itemId,
+        medicineId: line.itemType === 'medicine' ? itemId : '',
+        productId: line.itemType === 'product' ? itemId : '',
+      }
+    })
+    if (items.some((line) => !line.itemId || Number(line.quantity) <= 0)) {
+      flash('Item and quantity are required for every line')
       return
     }
-    if (items.some((line) => line.expiryDate < today())) {
+    if (items.some((line) => line.itemType === 'medicine' && (!line.batchNumber || !line.expiryDate))) {
+      flash('Batch number and expiry date are required for medicines')
+      return
+    }
+    if (items.some((line) => line.expiryDate && line.expiryDate < today())) {
       flash('Receiving blocked: expiry date must be today or later')
       return
     }
@@ -2836,11 +2914,14 @@ function ReceiveStock({ db, activeBranch, canWrite, executeAction, flash }: { db
       <form className="form-grid" onSubmit={submit}>
         <label>Supplier<select required value={selectedSupplierId} onChange={(event) => setHeader({ ...header, supplierId: event.target.value })} disabled={!canWrite || !db.suppliers.length}><option value="">Select supplier</option>{db.suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label>
         <label>Invoice/reference<input value={header.invoiceRef} onChange={(event) => setHeader({ ...header, invoiceRef: event.target.value })} disabled={!canWrite} /></label>
-        <label className="scan-field full">Scan barcode or SKU<div><Barcode size={17} /><input value={scan} onChange={(event) => setScan(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); applyScan() } }} placeholder="Scan, then press Enter to set the last item line" disabled={!canWrite || !db.medicines.length} /><button className="ghost-button" type="button" onClick={applyScan} disabled={!canWrite || !db.medicines.length}><Search size={16} />Lookup</button></div></label>
+        <label className="scan-field full">Search or scan item<div><Barcode size={17} /><input value={scan} onChange={(event) => setScan(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); applyScan() } }} placeholder="Search by item name, SKU, or barcode, then press Enter" disabled={!canWrite || !hasReceivableItems} /><button className="ghost-button" type="button" onClick={applyScan} disabled={!canWrite || !hasReceivableItems}><Search size={16} />Lookup</button></div></label>
 
         <div className="line-editor full">
           {lines.map((line, index) => {
-            const selectedMedicineId = line.medicineId || db.medicines[0]?.id || ''
+            const medicineOptions = db.medicines.filter((medicine) => medicine.active)
+            const productOptions = db.products.filter((product) => product.active)
+            const selectedItemId = line.itemId || (line.itemType === 'product' ? productOptions[0]?.id : medicineOptions[0]?.id) || ''
+            const hasItemOptions = line.itemType === 'product' ? productOptions.length > 0 : medicineOptions.length > 0
             return (
               <div className="line-card" key={line.rowId}>
                 <div className="line-card-heading">
@@ -2850,9 +2931,10 @@ function ReceiveStock({ db, activeBranch, canWrite, executeAction, flash }: { db
                   </button>
                 </div>
                 <div className="form-grid">
-                  <label className="full">Medicine<select required value={selectedMedicineId} onChange={(event) => updateLine(line.rowId, { medicineId: event.target.value })} disabled={!canWrite || !db.medicines.length}><option value="">Select medicine</option>{db.medicines.map((medicine) => <option key={medicine.id} value={medicine.id}>{medicineOptionLabel(medicine)}</option>)}</select></label>
-                  <label>Batch/Lot number<input required value={line.batchNumber} onChange={(event) => updateLine(line.rowId, { batchNumber: event.target.value })} disabled={!canWrite} /></label>
-                  <label>Expiry date<input required type="date" value={line.expiryDate} onChange={(event) => updateLine(line.rowId, { expiryDate: event.target.value })} disabled={!canWrite} /></label>
+                  <label>Item class<select value={line.itemType} onChange={(event) => updateLine(line.rowId, { itemType: event.target.value as ReceiveLine['itemType'], itemId: '' })} disabled={!canWrite}><option value="medicine">Pharmacy</option><option value="product">Mart</option></select></label>
+                  <label className="full">Item<select required value={selectedItemId} onChange={(event) => selectItem(line.rowId, line.itemType, event.target.value)} disabled={!canWrite || !hasItemOptions}><option value="">Select item</option>{line.itemType === 'product' ? productOptions.map((product) => <option key={product.id} value={product.id}>{product.name} / {product.sku}</option>) : medicineOptions.map((medicine) => <option key={medicine.id} value={medicine.id}>{medicineOptionLabel(medicine)}</option>)}</select></label>
+                  <label>Batch/Lot number<input required={line.itemType === 'medicine'} value={line.batchNumber} onChange={(event) => updateLine(line.rowId, { batchNumber: event.target.value })} placeholder={line.itemType === 'product' ? 'Optional for Mart items' : ''} disabled={!canWrite} /></label>
+                  <label>Expiry date<input required={line.itemType === 'medicine'} type="date" value={line.expiryDate} onChange={(event) => updateLine(line.rowId, { expiryDate: event.target.value })} disabled={!canWrite} /></label>
                   <label>Quantity<input required type="number" min="1" value={numberInputValue(line.quantity)} onChange={(event) => updateLine(line.rowId, { quantity: Number(event.target.value) })} disabled={!canWrite} /></label>
                   <label>Unit cost<input type="number" min="0" value={numberInputValue(line.unitCost)} onChange={(event) => updateLine(line.rowId, { unitCost: Number(event.target.value) })} disabled={!canWrite} /></label>
                   <label>Selling price<input type="number" min="0" value={numberInputValue(line.sellingPrice)} onChange={(event) => updateLine(line.rowId, { sellingPrice: Number(event.target.value) })} disabled={!canWrite} /></label>
@@ -2867,7 +2949,7 @@ function ReceiveStock({ db, activeBranch, canWrite, executeAction, flash }: { db
             <Plus size={16} />
             Add another item
           </button>
-          <button className="primary-button" type="submit" disabled={!canWrite || !db.medicines.length || !db.suppliers.length}>
+          <button className="primary-button" type="submit" disabled={!canWrite || !hasReceivableItems || !db.suppliers.length}>
             <PackagePlus size={17} />
             Post {lines.length} item{lines.length > 1 ? 's' : ''}
           </button>
@@ -3684,7 +3766,7 @@ function Adjustments({ activeBranch, stockRows, canAdjust, executeAction, flash 
   )
 }
 
-function Reports({ db, stockRows, stockTotals }: { db: Database; stockRows: StockRow[]; stockTotals: Map<string, number> }) {
+function Reports({ db, stockRows, stockTotals, activeBranch }: { db: Database; stockRows: StockRow[]; stockTotals: Map<string, number>; activeBranch?: Branch }) {
   const [report, setReport] = useState<'stock' | 'movement' | 'supplier' | 'expiry' | 'reorder'>('stock')
   const [movementDate, setMovementDate] = useState('')
   const [movementType, setMovementType] = useState('')
@@ -3693,38 +3775,49 @@ function Reports({ db, stockRows, stockTotals }: { db: Database; stockRows: Stoc
   const [categoryFilter, setCategoryFilter] = useState('')
   const [supplierFilter, setSupplierFilter] = useState('')
   const [supplierDate, setSupplierDate] = useState('')
-  const categories = useMemo(() => Array.from(new Set(db.medicines.map((medicine) => medicine.category).filter(Boolean))).sort((a, b) => a.localeCompare(b)), [db.medicines])
+  const categories = useMemo(() => Array.from(new Set([...db.medicines.map((medicine) => medicine.category), ...db.products.map((product) => product.category)].filter(Boolean))).sort((a, b) => a.localeCompare(b)), [db.medicines, db.products])
 
   const rows: ReportRow[] = useMemo(() => {
     const scopedBatchIds = new Set(stockRows.map((row) => row.batch.id))
+    const scopedBranchIds = new Set(stockRows.map((row) => row.batch.branchId))
+    if (!scopedBranchIds.size) {
+      if (activeBranch) scopedBranchIds.add(activeBranch.id)
+      else db.branches.filter((branch) => branch.active).forEach((branch) => scopedBranchIds.add(branch.id))
+    }
     if (report === 'movement') {
       return db.ledger
-        .filter((entry) => scopedBatchIds.has(entry.batchId))
+        .filter((entry) => entry.itemType === 'product' ? scopedBranchIds.has(entry.toBranchId || entry.fromBranchId || '') : scopedBatchIds.has(entry.batchId))
         .filter((entry) => {
-          const medicine = db.medicines.find((item) => item.id === entry.medicineId)
+          const medicine = entry.itemType === 'product' ? undefined : db.medicines.find((item) => item.id === entry.medicineId)
+          const product = entry.itemType === 'product' ? db.products.find((item) => item.id === entry.productId) : undefined
+          const itemName = medicine?.brandName ?? product?.name ?? ''
+          const genericName = medicine?.genericName ?? ''
+          const category = medicine?.category || product?.category || ''
           return (!movementDate || entry.createdAt.slice(0, 10) === movementDate) &&
             (!movementType || entry.type === movementType) &&
-            (!medicineFilter || medicine?.brandName.toLowerCase().includes(medicineFilter.toLowerCase())) &&
-            (!genericFilter || medicine?.genericName.toLowerCase().includes(genericFilter.toLowerCase())) &&
-            (!categoryFilter || medicine?.category === categoryFilter)
+            (!medicineFilter || itemName.toLowerCase().includes(medicineFilter.toLowerCase())) &&
+            (!genericFilter || genericName.toLowerCase().includes(genericFilter.toLowerCase())) &&
+            (!categoryFilter || category === categoryFilter)
         })
         .map((entry) => {
-          const medicine = db.medicines.find((item) => item.id === entry.medicineId)
-          const batch = db.batches.find((item) => item.id === entry.batchId)
+          const product = entry.itemType === 'product' ? db.products.find((item) => item.id === entry.productId) : undefined
+          const medicine = entry.itemType === 'product' ? undefined : db.medicines.find((item) => item.id === entry.medicineId)
+          const batch = entry.itemType === 'product' ? undefined : db.batches.find((item) => item.id === entry.batchId)
           const user = db.users.find((item) => item.id === entry.userId)
           const supplier = batch ? db.suppliers.find((item) => item.id === batch.supplierId) : undefined
-          const branchName = getBranchName(db, batch?.branchId ?? 'main')
+          const branchName = getBranchName(db, batch?.branchId ?? entry.toBranchId ?? entry.fromBranchId ?? 'main')
           const from = entry.fromBranchId ? getBranchName(db, entry.fromBranchId) : entry.type === 'stock-in' ? supplier?.name ?? 'Supplier' : entry.type === 'customer-return' ? 'Customer' : branchName
           const to = entry.toBranchId ? getBranchName(db, entry.toBranchId) : entry.type === 'supplier-return' ? supplier?.name ?? 'Supplier' : entry.type === 'stock-out' ? entry.reason : entry.type === 'write-off' ? 'Write-off' : branchName
           return {
             Date: new Date(entry.createdAt).toLocaleString(),
             Type: movementLabels[entry.type],
-            Medicine: medicineReportName(medicine),
+            'Item type': entry.itemType === 'product' ? 'Mart' : 'Pharmacy',
+            Medicine: medicine ? medicineReportName(medicine) : product?.name ?? entry.productId ?? 'Unknown',
             Generic: medicine?.genericName ?? '-',
-            Form: medicine?.form ?? '-',
+            Form: medicine?.form ?? product?.unit ?? '-',
             Strength: medicine?.strength ?? '-',
-            Category: medicine?.category || '-',
-            Batch: batch?.batchNumber ?? '-',
+            Category: medicine?.category || product?.category || '-',
+            Batch: batch?.batchNumber ?? entry.batchNumber ?? '-',
             Branch: branchName,
             From: from,
             To: to,
@@ -3739,23 +3832,25 @@ function Reports({ db, stockRows, stockTotals }: { db: Database; stockRows: Stoc
       return db.receipts
         .filter((receipt) => (!supplierFilter || db.suppliers.find((supplier) => supplier.id === receipt.supplierId)?.name === supplierFilter) && (!supplierDate || receipt.receivedAt.slice(0, 10) === supplierDate))
         .flatMap((receipt) => receipt.items.map((item) => {
-          const batch = db.batches.find((entry) => entry.id === item.batchId)
-          const medicine = db.medicines.find((entry) => entry.id === item.medicineId)
+          const batch = item.itemType === 'product' ? undefined : db.batches.find((entry) => entry.id === item.batchId)
+          const medicine = item.itemType === 'product' ? undefined : db.medicines.find((entry) => entry.id === item.medicineId)
+          const product = item.itemType === 'product' ? db.products.find((entry) => entry.id === item.productId) : undefined
           const supplier = db.suppliers.find((entry) => entry.id === receipt.supplierId)
           return {
             Date: new Date(receipt.receivedAt).toLocaleString(),
             Supplier: supplier?.name ?? receipt.supplierId,
             Invoice: receipt.invoiceRef,
-            Medicine: medicine?.brandName ?? item.medicineId,
+            'Item type': item.itemType === 'product' ? 'Mart' : 'Pharmacy',
+            Medicine: medicine?.brandName ?? product?.name ?? item.medicineId ?? item.productId,
             Generic: medicine?.genericName ?? '-',
-            Form: medicine?.form ?? '-',
+            Form: medicine?.form ?? product?.unit ?? '-',
             Strength: medicine?.strength ?? '-',
-            Category: medicine?.category || '-',
-            Batch: batch?.batchNumber ?? item.batchId,
-            Expiry: batch?.expiryDate ?? '-',
+            Category: medicine?.category || product?.category || '-',
+            Batch: batch?.batchNumber ?? item.batchNumber ?? item.batchId,
+            Expiry: batch?.expiryDate ?? item.expiryDate ?? '-',
             Quantity: item.quantity,
             'Unit Cost': item.unitCost,
-            Branch: getBranchName(db, batch?.branchId ?? 'main'),
+            Branch: getBranchName(db, batch?.branchId ?? item.branchId ?? 'main'),
           }
         }))
     }
@@ -3809,7 +3904,7 @@ function Reports({ db, stockRows, stockTotals }: { db: Database; stockRows: Stoc
       Branch: row.branch?.name ?? row.batch.branchId,
       Location: row.batch.location,
     }))
-  }, [categoryFilter, db, genericFilter, medicineFilter, movementDate, movementType, report, stockRows, stockTotals, supplierDate, supplierFilter])
+  }, [activeBranch, categoryFilter, db, genericFilter, medicineFilter, movementDate, movementType, report, stockRows, stockTotals, supplierDate, supplierFilter])
   const movementQuantityTotal = report === 'movement' ? rows.reduce((sum, row) => sum + Number(row.Quantity ?? 0), 0) : 0
 
   return (
@@ -3841,7 +3936,7 @@ function Reports({ db, stockRows, stockTotals }: { db: Database; stockRows: Stoc
         <div className="report-filters">
           <label>Date<input type="date" value={movementDate} onChange={(event) => setMovementDate(event.target.value)} /></label>
           <label>Type<select value={movementType} onChange={(event) => setMovementType(event.target.value)}><option value="">All types</option>{Object.entries(movementLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-          <label>Medicine<input value={medicineFilter} onChange={(event) => setMedicineFilter(event.target.value)} placeholder="Brand name" /></label>
+          <label>Item<input value={medicineFilter} onChange={(event) => setMedicineFilter(event.target.value)} placeholder="Item name" /></label>
           <label>Generic<input value={genericFilter} onChange={(event) => setGenericFilter(event.target.value)} placeholder="Generic name" /></label>
           <label>Category<select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="">All categories</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
         </div>

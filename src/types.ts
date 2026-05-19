@@ -95,8 +95,15 @@ export type Batch = {
 
 export type LedgerEntry = {
   id: string
+  itemType?: 'medicine' | 'product'
   medicineId: string
+  productId?: string
   batchId: string
+  batchNumber?: string
+  expiryDate?: string
+  unitCost?: number
+  sellingPrice?: number
+  location?: string
   type: LedgerType
   quantity: number
   reason: string
@@ -114,8 +121,15 @@ export type Receipt = {
   receivedAt: string
   userId: string
   items: Array<{
+    itemType?: 'medicine' | 'product'
     medicineId: string
+    productId?: string
     batchId: string
+    batchNumber?: string
+    expiryDate?: string
+    sellingPrice?: number
+    location?: string
+    branchId?: string
     quantity: number
     unitCost: number
   }>

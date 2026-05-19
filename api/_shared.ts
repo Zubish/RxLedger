@@ -102,8 +102,15 @@ type Batch = {
 
 type LedgerEntry = {
   id: string
+  itemType?: 'medicine' | 'product'
   medicineId: string
+  productId?: string
   batchId: string
+  batchNumber?: string
+  expiryDate?: string
+  unitCost?: number
+  sellingPrice?: number
+  location?: string
   type: LedgerType
   quantity: number
   reason: string
@@ -264,7 +271,19 @@ type Database = {
     invoiceRef: string
     receivedAt: string
     userId: string
-    items: Array<{ medicineId: string; batchId: string; quantity: number; unitCost: number }>
+    items: Array<{
+      itemType?: 'medicine' | 'product'
+      medicineId: string
+      productId?: string
+      batchId: string
+      batchNumber?: string
+      expiryDate?: string
+      sellingPrice?: number
+      location?: string
+      branchId?: string
+      quantity: number
+      unitCost: number
+    }>
   }>
   sales: Sale[]
   posDrafts: PosDraft[]
@@ -691,8 +710,30 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
     suppliers: raw.suppliers ?? empty.suppliers,
     branches,
     batches: raw.batches ?? empty.batches,
-    ledger: raw.ledger ?? empty.ledger,
-    receipts: raw.receipts ?? empty.receipts,
+    ledger: (raw.ledger ?? empty.ledger).map((entry) => ({
+      ...entry,
+      itemType: entry.itemType === 'product' ? 'product' : 'medicine',
+      medicineId: entry.medicineId || '',
+      productId: entry.productId || '',
+      batchId: entry.batchId || '',
+      quantity: Number(entry.quantity) || 0,
+      unitCost: Number(entry.unitCost) || undefined,
+      sellingPrice: Number(entry.sellingPrice) || undefined,
+    })),
+    receipts: (raw.receipts ?? empty.receipts).map((receipt) => ({
+      ...receipt,
+      items: (receipt.items ?? []).map((item) => ({
+        ...item,
+        itemType: item.itemType === 'product' ? 'product' : 'medicine',
+        medicineId: item.medicineId || '',
+        productId: item.productId || '',
+        batchId: item.batchId || '',
+        branchId: item.branchId || '',
+        quantity: Number(item.quantity) || 0,
+        unitCost: Number(item.unitCost) || 0,
+        sellingPrice: Number(item.sellingPrice) || 0,
+      })),
+    })),
     sales,
     posDrafts: (raw.posDrafts ?? empty.posDrafts).filter((draft) => draft.expiresAt > nowIso()),
     chatMessages: raw.chatMessages ?? empty.chatMessages,
