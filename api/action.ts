@@ -278,7 +278,7 @@ function barcodeExists(db: Database, barcode: string, ownerId = '') {
 }
 
 function generateMedicineBarcode(db: Database, ownerId: string) {
-  let barcode = ''
+  let barcode: string
   do {
     barcode = `RXL${Math.floor(100000000000 + Math.random() * 900000000000)}`
   } while (barcodeExists(db, barcode, ownerId))
@@ -791,6 +791,10 @@ function canSellInBranch(db: Database, actor: User, branchId: string) {
   return canAdmin(actor, getPrimaryAdminId(db)) || canManageBranch(actor, branchId, getPrimaryAdminId(db)) || ((actor.role === 'pharmacist' || actor.role === 'cashier') && hasActiveBranchAssignment(actor, branchId))
 }
 
+function canCompleteSaleInBranch(actor: User, branchId: string) {
+  return actor.role === 'cashier' && hasActiveBranchAssignment(actor, branchId)
+}
+
 function receiptReference() {
   const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14)
   return `RXL-${stamp}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`
@@ -850,8 +854,13 @@ function savePosDraft(db: Database, actorId: string, actorRole: Role, payload: R
 
 function clearPosDraft(db: Database, actorId: string, payload: Record<string, unknown> | undefined) {
   const branchId = requireString(payload?.branchId, 'Branch')
-  const before = activeDraft(db, actorId, branchId)
-  db.posDrafts = db.posDrafts.filter((draft) => !(draft.userId === actorId && draft.branchId === branchId))
+  const draftId = optionalString(payload?.draftId)
+  const before = draftId
+    ? db.posDrafts.find((draft) => draft.id === draftId && draft.branchId === branchId)
+    : activeDraft(db, actorId, branchId)
+  db.posDrafts = draftId
+    ? db.posDrafts.filter((draft) => draft.id !== draftId)
+    : db.posDrafts.filter((draft) => !(draft.userId === actorId && draft.branchId === branchId))
   if (before) addAudit(db, actorId, 'Cleared POS draft cart', 'pos-draft', before.id, before, undefined)
 }
 
@@ -861,7 +870,11 @@ function recordSale(db: Database, actorId: string, actorRole: Role, payload: Rec
   const branchId = optionalString(payload?.branchId) || db.branches.find((branch) => branch.active)?.id || 'main'
   if (!db.branches.some((branch) => branch.id === branchId && branch.active)) throw new Error('Active branch not found')
   if (!canSellInBranch(db, { ...actor, role: actorRole }, branchId)) throw new Error('You do not have permission to sell in this branch')
-  const draft = activeDraft(db, actorId, branchId)
+  if (!canCompleteSaleInBranch({ ...actor, role: actorRole }, branchId)) throw new Error('Only cashiers can complete POS sales')
+  const requestedDraftId = optionalString(payload?.draftId)
+  const draft = requestedDraftId
+    ? db.posDrafts.find((item) => item.id === requestedDraftId && item.branchId === branchId && item.expiresAt > nowIso())
+    : activeDraft(db, actorId, branchId)
   const inputs = normalizeDraftItems(payload?.items ?? draft?.items)
   if (!inputs.length) throw new Error('Add at least one item to the POS cart')
 

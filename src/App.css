@@ -1412,6 +1412,24 @@ td strong {
   font-weight: 800;
 }
 
+.pos-icon-button {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #c7e5d8;
+  border-radius: 999px;
+  color: #006b45;
+  cursor: pointer;
+  display: inline-flex;
+  height: 31px;
+  justify-content: center;
+  width: 31px;
+}
+
+.pos-icon-button:hover {
+  background: #eaf9f2;
+  border-color: #2fa37d;
+}
+
 .pos-access-error {
   margin: 14px 22px 0;
 }
@@ -1625,15 +1643,32 @@ td strong {
   border: 1px solid #c7e5d8;
   border-radius: 999px;
   color: #006b45;
+  cursor: pointer;
   display: inline-flex;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 800;
   gap: 6px;
   justify-self: end;
   letter-spacing: 0.12em;
   padding: 6px 11px;
   text-transform: uppercase;
+}
+
+.pos-draft-pill:hover {
+  background: #eaf9f2;
+  border-color: #2fa37d;
+}
+
+.pos-draft-pill b {
+  background: #006b45;
+  border-radius: 999px;
+  color: #ffffff;
+  display: inline-grid;
+  font-size: 9px;
+  min-width: 17px;
+  padding: 2px 5px;
+  place-items: center;
 }
 
 .pos-cart-lines {
@@ -1916,23 +1951,150 @@ td strong {
   opacity: 0.78;
 }
 
-.pos-history-panel {
+.pos-cashier-note {
+  background: #fff8e1;
+  border-top: 1px solid #f3dfad;
+  color: #7a5600;
+  font-size: 12px;
+  padding: 10px 16px;
+}
+
+.pos-modal-backdrop {
+  align-items: center;
+  background: rgba(7, 17, 20, 0.48);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 80;
+}
+
+.pos-modal-panel {
   background: #ffffff;
-  border: 1px solid #dce6e7;
+  border: 1px solid #d7e4e3;
+  border-radius: 16px;
+  box-shadow: 0 24px 70px rgba(7, 17, 20, 0.22);
+  display: grid;
+  gap: 16px;
+  max-height: min(760px, calc(100vh - 48px));
+  overflow: hidden;
+  padding: 18px;
+  width: min(720px, 100%);
+}
+
+.pos-drafts-modal {
+  width: min(580px, 100%);
+}
+
+.pos-modal-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.pos-modal-header h3 {
+  font-size: 21px;
+  margin: 3px 0 0;
+}
+
+.pos-modal-header button {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #d7e4e3;
+  border-radius: 9px;
+  color: #52636c;
+  cursor: pointer;
+  display: inline-flex;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+
+.pos-modal-header button:hover {
+  background: #eef4f3;
+  color: #172024;
+}
+
+.pos-modal-kicker,
+.pos-modal-filter span {
+  color: #006b45;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.pos-modal-filter {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.pos-modal-filter input {
+  border: 1px solid #d7e4e3;
+  border-radius: 9px;
+  min-height: 38px;
+  width: 190px;
+}
+
+.pos-modal-list {
+  display: grid;
+  gap: 10px;
+  max-height: 560px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.pos-draft-item {
+  align-items: center;
+  border: 1px solid #dfe7e8;
+  border-radius: 12px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  padding: 13px;
+}
+
+.pos-draft-item div {
+  display: grid;
+  gap: 4px;
+}
+
+.pos-draft-item span,
+.pos-draft-item small {
+  color: #68777e;
+  font-size: 12px;
+}
+
+.pos-draft-item b {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+}
+
+.pos-draft-item footer {
+  display: inline-flex;
+  gap: 7px;
+}
+
+.pos-draft-item button {
+  background: #ffffff;
+  border: 1px solid #d7e4e3;
   border-radius: 8px;
-  margin-top: 0;
-  padding: 16px;
+  color: #172024;
+  cursor: pointer;
+  font-weight: 650;
+  min-height: 34px;
+  padding: 0 11px;
 }
 
-.recent-sales {
-  border-top: 1px solid #e1e8e9;
-  margin-top: 18px;
-  padding-top: 16px;
-}
-
-.recent-sales h3 {
-  font-size: 15px;
-  margin: 0;
+.pos-draft-item button:first-child {
+  background: #006b45;
+  border-color: #006b45;
+  color: #ffffff;
 }
 
 .sale-history-item {

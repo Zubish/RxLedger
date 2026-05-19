@@ -5,7 +5,6 @@ import {
   Activity,
   AlertTriangle,
   Archive,
-  ArrowLeft,
   Barcode,
   Bell,
   Boxes,
@@ -19,6 +18,7 @@ import {
   Eye,
   EyeOff,
   FileText,
+  History,
   LayoutDashboard,
   Lock,
   LogOut,
@@ -3259,6 +3259,10 @@ function POSView({
   const [discountMode, setDiscountMode] = useState<'amount' | 'percent'>('amount')
   const [cashPaid, setCashPaid] = useState(0)
   const [note, setNote] = useState(currentDraft?.note ?? '')
+  const [selectedDraftId, setSelectedDraftId] = useState(currentDraft?.id ?? '')
+  const [draftsOpen, setDraftsOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [historyDate, setHistoryDate] = useState('')
 
   const stockByMedicine = useMemo(() => aggregateMedicineStock(stockRows.filter((row) => row.quantity > 0 && row.daysToExpiry >= 0)), [stockRows])
   const allSaleOptions: SaleOption[] = [
@@ -3309,7 +3313,11 @@ function POSView({
   const branchSales = db.sales
     .filter((sale) => sale.branchId === activeBranch.id)
     .sort((a, b) => b.soldAt.localeCompare(a.soldAt))
-    .slice(0, 12)
+  const filteredSales = branchSales.filter((sale) => !historyDate || sale.soldAt.slice(0, 10) === historyDate)
+  const branchDrafts = db.posDrafts
+    .filter((draft) => draft.branchId === activeBranch.id && draft.expiresAt > new Date().toISOString())
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  const canCompleteSale = currentUser.role === 'cashier'
 
   function defaultMedicinePrice(medicineId: string) {
     return stockRows
@@ -3402,7 +3410,6 @@ function POSView({
   }
 
   const tillTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  const draftLabel = currentDraft ? `Draft #${currentDraft.bookingCode}` : 'Draft ready'
   const vatIncluded = total > 0 ? total - (total / 1.075) : 0
 
   function updateCart(rowId: string, updates: Partial<CartItem>) {
@@ -3421,6 +3428,7 @@ function POSView({
   function salePayload() {
     return {
       branchId: activeBranch.id,
+      draftId: selectedDraftId,
       customerName,
       customerPhone,
       paymentMethod,
@@ -3435,8 +3443,7 @@ function POSView({
     void executeAction('savePosDraft', salePayload(), 'POS cart saved with a temporary booking code')
   }
 
-  function clearDraft() {
-    void executeAction('clearPosDraft', { branchId: activeBranch.id }, 'POS cart cleared')
+  function resetSaleForm() {
     setCart([])
     setCustomerName('')
     setCustomerPhone('')
@@ -3444,11 +3451,31 @@ function POSView({
     setCashPaid(0)
     setNote('')
     setScan('')
+    setSelectedDraftId('')
+  }
+
+  function clearDraft(draftId = selectedDraftId) {
+    void executeAction('clearPosDraft', { branchId: activeBranch.id, draftId }, 'POS cart cleared')
+    if (!draftId || draftId === selectedDraftId) resetSaleForm()
+  }
+
+  function loadDraft(draft: PosDraft) {
+    setSelectedDraftId(draft.id)
+    setCart(draft.items.map((item) => ({ rowId: id('pos'), itemType: item.itemType, itemId: item.itemId, quantity: item.quantity })))
+    setCustomerName(draft.customerName)
+    setCustomerPhone(draft.customerPhone)
+    setPaymentMethod(draft.paymentMethod)
+    setDiscount(draft.discount)
+    setDiscountMode('amount')
+    setCashPaid(0)
+    setNote(draft.note)
+    setDraftsOpen(false)
+    flash(`Draft ${draft.bookingCode} loaded`)
   }
 
   function submit(event: FormEvent) {
     event.preventDefault()
-    if (!canSell || !cart.length) return
+    if (!canCompleteSale || !cart.length) return
     if (cartRows.some((item) => item.quantity < 1)) {
       flash('Enter a quantity for every POS item')
       return
@@ -3462,13 +3489,7 @@ function POSView({
       return
     }
     void executeAction('recordSale', salePayload(), 'Sale completed and inventory deducted')
-    setCart([])
-    setCustomerName('')
-    setCustomerPhone('')
-    setDiscount(0)
-    setCashPaid(0)
-    setNote('')
-    setScan('')
+    resetSaleForm()
   }
 
   return (
@@ -3476,10 +3497,6 @@ function POSView({
       <div className="pos-window">
         <div className="pos-appbar">
           <div className="pos-appbar-left">
-            <button className="pos-back-button" type="button" onClick={() => window.location.assign('/')}>
-              <ArrowLeft size={15} />
-              Landing
-            </button>
             <span className="pos-title-icon"><ShoppingCart size={15} /></span>
             <strong>Point of Sale</strong>
             <span className="pos-branch-meta">· {db.settings.accountName} / {activeBranch.name}</span>
@@ -3487,6 +3504,9 @@ function POSView({
           <div className="pos-appbar-right">
             <span className="pos-shift-pill"><span /> Shift open · {currentUser.name}</span>
             <span className="pos-time-pill"><Clock3 size={13} /> {tillTime}</span>
+            <button className="pos-icon-button" type="button" onClick={() => setHistoryOpen(true)} title="View sales history" aria-label="View sales history">
+              <History size={16} />
+            </button>
           </div>
         </div>
 
@@ -3561,7 +3581,11 @@ function POSView({
                 <h2>Sale cart</h2>
                 <p><strong>{cart.length} item{cart.length === 1 ? '' : 's'}</strong> ready / FEFO batch auto-selected</p>
               </div>
-              <span className="pos-draft-pill"><FileText size={13} /> {draftLabel}</span>
+              <button className="pos-draft-pill" type="button" onClick={() => setDraftsOpen(true)}>
+                <FileText size={13} />
+                Draft
+                {branchDrafts.length > 0 && <b>{branchDrafts.length}</b>}
+              </button>
             </div>
 
             <div className="pos-cart-lines">
@@ -3660,39 +3684,95 @@ function POSView({
                 <Save size={16} />
                 Draft
               </button>
-              <button type="button" onClick={clearDraft} disabled={!canSell || (!cartRows.length && !currentDraft)}>
+              <button type="button" onClick={() => clearDraft()} disabled={!canSell || (!cartRows.length && !selectedDraftId && !currentDraft)}>
                 <XCircle size={16} />
                 Clear
               </button>
-              <button className="complete" type="submit" disabled={!canSell || !cartRows.length || total <= 0}>
+              <button className="complete" type="submit" disabled={!canCompleteSale || !cartRows.length || total <= 0} title={canCompleteSale ? 'Complete sale' : 'Only cashiers can complete sales'}>
                 <CheckCircle2 size={17} />
                 Complete sale
                 <span>Enter</span>
               </button>
             </div>
+            {canSell && !canCompleteSale && (
+              <div className="pos-cashier-note">Only cashiers can complete sales. Save the cart as a draft for cashier checkout.</div>
+            )}
           </aside>
         </form>
       </div>
 
-      <section className="recent-sales pos-history-panel">
-        <h3>Sales history</h3>
-        {branchSales.map((sale) => (
-          <article className="sale-history-item" key={sale.id}>
-            <div>
-              <strong>{money.format(sale.total ?? sale.subtotal)} / {sale.paymentMethod}</strong>
-              <span>{new Date(sale.soldAt).toLocaleString()} / Ref {sale.reference}{sale.bookingCode ? ` / Draft ${sale.bookingCode}` : ''}</span>
-            </div>
-            <span>{sale.customerName || 'Walk-in customer'}{sale.customerPhone ? ` / ${sale.customerPhone}` : ''}</span>
-            <ul>
-              {sale.items.map((item, index) => (
-                <li key={`${sale.id}-${index}`}>{item.itemName || item.medicineId || item.productId}: {number.format(item.quantity)} x {money.format(item.unitPrice)} = {money.format(item.lineTotal)}</li>
+      {historyOpen && (
+        <div className="pos-modal-backdrop" role="presentation" onMouseDown={() => setHistoryOpen(false)}>
+          <section className="pos-modal-panel pos-history-modal" role="dialog" aria-modal="true" aria-labelledby="sales-history-title" onMouseDown={(event) => event.stopPropagation()}>
+            <header className="pos-modal-header">
+              <div>
+                <span className="pos-modal-kicker">POS audit</span>
+                <h3 id="sales-history-title">Sales history</h3>
+              </div>
+              <button type="button" onClick={() => setHistoryOpen(false)} aria-label="Close sales history"><X size={18} /></button>
+            </header>
+            <label className="pos-modal-filter">
+              <span>Filter by date</span>
+              <input type="date" value={historyDate} onChange={(event) => setHistoryDate(event.target.value)} />
+            </label>
+            <div className="pos-modal-list">
+              {filteredSales.map((sale) => (
+                <article className="sale-history-item" key={sale.id}>
+                  <div>
+                    <strong>{money.format(sale.total ?? sale.subtotal)} / {sale.paymentMethod}</strong>
+                    <span>{new Date(sale.soldAt).toLocaleString()} / Ref {sale.reference}{sale.bookingCode ? ` / Draft ${sale.bookingCode}` : ''}</span>
+                  </div>
+                  <span>{sale.customerName || 'Walk-in customer'}{sale.customerPhone ? ` / ${sale.customerPhone}` : ''}</span>
+                  <ul>
+                    {sale.items.map((item, index) => (
+                      <li key={`${sale.id}-${index}`}>{item.itemName || item.medicineId || item.productId}: {number.format(item.quantity)} x {money.format(item.unitPrice)} = {money.format(item.lineTotal)}</li>
+                    ))}
+                  </ul>
+                  {sale.discount > 0 && <small>Discount: {money.format(sale.discount)}</small>}
+                </article>
               ))}
-            </ul>
-            {sale.discount > 0 && <small>Discount: {money.format(sale.discount)}</small>}
-          </article>
-        ))}
-        {!branchSales.length && <div className="empty-state">No sales recorded for this branch yet.</div>}
-      </section>
+              {!filteredSales.length && <div className="empty-state">No sales recorded for this date.</div>}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {draftsOpen && (
+        <div className="pos-modal-backdrop" role="presentation" onMouseDown={() => setDraftsOpen(false)}>
+          <section className="pos-modal-panel pos-drafts-modal" role="dialog" aria-modal="true" aria-labelledby="pos-drafts-title" onMouseDown={(event) => event.stopPropagation()}>
+            <header className="pos-modal-header">
+              <div>
+                <span className="pos-modal-kicker">Temporary carts</span>
+                <h3 id="pos-drafts-title">Draft carts</h3>
+              </div>
+              <button type="button" onClick={() => setDraftsOpen(false)} aria-label="Close draft carts"><X size={18} /></button>
+            </header>
+            <div className="pos-modal-list">
+              {branchDrafts.map((draft) => {
+                const draftTotal = draft.items.reduce((sum, item) => {
+                  const option = makeSaleOption(item.itemType, item.itemId)
+                  return sum + ((option?.unitPrice ?? 0) * item.quantity)
+                }, 0)
+                return (
+                  <article className="pos-draft-item" key={draft.id}>
+                    <div>
+                      <strong>Draft {draft.bookingCode}</strong>
+                      <span>{draft.customerName || 'Walk-in customer'}{draft.customerPhone ? ` / ${draft.customerPhone}` : ''}</span>
+                      <small>{draft.items.length} item{draft.items.length === 1 ? '' : 's'} / expires {new Date(draft.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small>
+                    </div>
+                    <b>{money.format(draftTotal)}</b>
+                    <footer>
+                      <button type="button" onClick={() => loadDraft(draft)}>Load</button>
+                      <button type="button" onClick={() => clearDraft(draft.id)}>Clear</button>
+                    </footer>
+                  </article>
+                )
+              })}
+              {!branchDrafts.length && <div className="empty-state">No active POS drafts for this branch.</div>}
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   )
 }

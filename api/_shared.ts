@@ -385,7 +385,7 @@ export function id(prefix: string) {
 }
 
 function createMedicineBarcode(existing: Set<string>) {
-  let barcode = ''
+  let barcode: string
   do {
     barcode = `RXL${Math.floor(100000000000 + Math.random() * 900000000000)}`
   } while (existing.has(barcode.toLowerCase()))
