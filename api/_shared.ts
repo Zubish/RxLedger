@@ -365,6 +365,15 @@ export function id(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${randomBytes(4).toString('hex')}`
 }
 
+function createMedicineBarcode(existing: Set<string>) {
+  let barcode = ''
+  do {
+    barcode = `RXL${Math.floor(100000000000 + Math.random() * 900000000000)}`
+  } while (existing.has(barcode.toLowerCase()))
+  existing.add(barcode.toLowerCase())
+  return barcode
+}
+
 export function nowIso() {
   return new Date().toISOString()
 }
@@ -627,13 +636,25 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
       branchAccessExpiresAt: user.branchAccessExpiresAt ?? {},
     }
   })
-  const medicines = (raw.medicines ?? empty.medicines).map((medicine) => ({
-    ...medicine,
-    packSize: Number(medicine.packSize) > 0 ? Number(medicine.packSize) : 1,
-    sellableUnit: medicine.sellableUnit || medicine.unit || 'Unit',
-    costPrice: Number(medicine.costPrice) || 0,
-    sellingPrice: Number(medicine.sellingPrice) || 0,
-  }))
+  const existingMedicineBarcodes = new Set<string>()
+  for (const product of raw.products ?? empty.products) {
+    for (const barcode of product.barcodes ?? []) {
+      existingMedicineBarcodes.add(String(barcode).toLowerCase())
+    }
+  }
+  const medicines = (raw.medicines ?? empty.medicines).map((medicine) => {
+    const barcodes = (medicine.barcodes ?? []).map(String).map((item) => item.trim()).filter(Boolean)
+    if (!barcodes.length) barcodes.push(createMedicineBarcode(existingMedicineBarcodes))
+    barcodes.forEach((barcode) => existingMedicineBarcodes.add(barcode.toLowerCase()))
+    return {
+      ...medicine,
+      packSize: Number(medicine.packSize) > 0 ? Number(medicine.packSize) : 1,
+      sellableUnit: medicine.sellableUnit || medicine.unit || 'Unit',
+      costPrice: Number(medicine.costPrice) || 0,
+      sellingPrice: Number(medicine.sellingPrice) || 0,
+      barcodes,
+    }
+  })
   const sales = (raw.sales ?? empty.sales).map((sale) => {
     const subtotal = Number(sale.subtotal) || sale.items?.reduce((sum, item) => sum + Number(item.lineTotal || 0), 0) || 0
     const discount = Number(sale.discount) || 0

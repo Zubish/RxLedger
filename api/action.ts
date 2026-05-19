@@ -271,11 +271,33 @@ function requestBranchAccess(db: Database, actorId: string, payload: Record<stri
   addAudit(db, actorId, 'Requested branch access', 'branch-access-request', request.id, undefined, request)
 }
 
+function barcodeExists(db: Database, barcode: string, ownerId = '') {
+  const needle = barcode.toLowerCase()
+  return db.medicines.some((medicine) => medicine.id !== ownerId && medicine.barcodes.some((code) => code.toLowerCase() === needle))
+    || db.products.some((product) => product.barcodes.some((code) => code.toLowerCase() === needle))
+}
+
+function generateMedicineBarcode(db: Database, ownerId: string) {
+  let barcode = ''
+  do {
+    barcode = `RXL${Math.floor(100000000000 + Math.random() * 900000000000)}`
+  } while (barcodeExists(db, barcode, ownerId))
+  return barcode
+}
+
+function canManageMedicinePrices(db: Database, actor: User, actorRole: Role, branchId?: string) {
+  const primaryAdminId = getPrimaryAdminId(db)
+  if (canAdmin(actor, primaryAdminId)) return true
+  if (branchId && canManageBranch(actor, branchId, primaryAdminId)) return true
+  return actorRole === 'inventory' && branchId ? hasActiveBranchAssignment(actor, branchId) : false
+}
+
 function upsertMedicine(db: Database, actorId: string, actorRole: Role, payload: Record<string, unknown> | undefined) {
   const actor = db.users.find((user) => user.id === actorId)
   if (!actor || !canWrite({ ...actor, role: actorRole })) throw new Error('You do not have permission to save medicines')
   const record = normalizeMedicine((payload?.record ?? {}) as Partial<Medicine>)
-  saveMedicineRecord(db, actorId, record)
+  const branchId = optionalString(payload?.branchId)
+  saveMedicineRecord(db, actorId, actor, actorRole, branchId, record)
 }
 
 function upsertMedicines(db: Database, actorId: string, actorRole: Role, payload: Record<string, unknown> | undefined) {
@@ -287,12 +309,14 @@ function upsertMedicines(db: Database, actorId: string, actorRole: Role, payload
   const seenBarcodes = new Map<string, string>()
   for (const record of records) {
     for (const barcode of record.barcodes) {
-      const previous = seenBarcodes.get(barcode)
+      const normalizedBarcode = barcode.toLowerCase()
+      const previous = seenBarcodes.get(normalizedBarcode)
       if (previous && previous !== record.id) throw new Error(`Barcode ${barcode} appears more than once in this import`)
-      seenBarcodes.set(barcode, record.id)
+      seenBarcodes.set(normalizedBarcode, record.id)
     }
   }
-  records.forEach((record) => saveMedicineRecord(db, actorId, record))
+  const branchId = optionalString(payload?.branchId)
+  records.forEach((record) => saveMedicineRecord(db, actorId, actor, actorRole, branchId, record))
   addAudit(db, actorId, `Bulk saved ${records.length} medicine records`, 'medicine', 'bulk', undefined, records.map((record) => record.id))
 }
 
@@ -322,12 +346,21 @@ function normalizeMedicine(recordInput: Partial<Medicine>): Medicine {
   }
 }
 
-function saveMedicineRecord(db: Database, actorId: string, record: Medicine) {
-  const duplicateBarcode = db.medicines.find((medicine) => medicine.id !== record.id && medicine.barcodes.some((code) => record.barcodes.includes(code)))
+function saveMedicineRecord(db: Database, actorId: string, actor: User, actorRole: Role, branchId: string | undefined, record: Medicine) {
+  const before = db.medicines.find((medicine) => medicine.id === record.id)
+  const canSetPrices = canManageMedicinePrices(db, actor, actorRole, branchId)
+  if (!canSetPrices) {
+    record.costPrice = before?.costPrice ?? 0
+    record.sellingPrice = before?.sellingPrice ?? 0
+  }
+  if (!record.barcodes.length) record.barcodes = [generateMedicineBarcode(db, record.id)]
+  const recordBarcodes = new Set(record.barcodes.map((code) => code.toLowerCase()))
+  const duplicateBarcode = db.medicines.find((medicine) => medicine.id !== record.id && medicine.barcodes.some((code) => recordBarcodes.has(code.toLowerCase())))
   if (duplicateBarcode) throw new Error(`Barcode already belongs to ${duplicateBarcode.brandName}`)
+  const duplicateProductBarcode = db.products.find((product) => product.barcodes.some((code) => recordBarcodes.has(code.toLowerCase())))
+  if (duplicateProductBarcode) throw new Error(`Barcode already belongs to ${duplicateProductBarcode.name}`)
   const duplicateSku = db.medicines.find((medicine) => medicine.id !== record.id && medicine.sku.toLowerCase() === record.sku.toLowerCase())
   if (duplicateSku) throw new Error(`SKU already belongs to ${duplicateSku.brandName}`)
-  const before = db.medicines.find((medicine) => medicine.id === record.id)
   db.medicines = before ? db.medicines.map((medicine) => (medicine.id === record.id ? record : medicine)) : [record, ...db.medicines]
   addAudit(db, actorId, before ? 'Updated medicine record' : 'Created medicine record', 'medicine', record.id, before, record)
 }
@@ -485,6 +518,9 @@ function receiveStock(db: Database, actorId: string, actorRole: Role, payload: R
     const unitCost = Number(input.unitCost) || medicine.costPrice || 0
     const sellingPrice = Number(input.sellingPrice) || medicine.sellingPrice || 0
     if (sellingPrice > 0 && sellingPrice < unitCost) throw new Error('Selling price cannot be lower than unit cost')
+    const beforeMedicine = { ...medicine }
+    if (unitCost > 0) medicine.costPrice = unitCost
+    if (sellingPrice > 0) medicine.sellingPrice = sellingPrice
     const batch = {
       id: id('bat'),
       medicineId,
@@ -511,6 +547,9 @@ function receiveStock(db: Database, actorId: string, actorRole: Role, payload: R
     batches.push(batch)
     ledgerEntries.push(ledger)
     receipt.items.push({ medicineId, batchId: batch.id, quantity, unitCost: batch.unitCost })
+    if (unitCost > 0 || sellingPrice > 0) {
+      addAudit(db, actorId, `Updated catalog pricing from receipt for ${medicine.brandName}`, 'medicine', medicineId, beforeMedicine, { costPrice: medicine.costPrice, sellingPrice: medicine.sellingPrice, receipt: reference })
+    }
   }
   db.batches.unshift(...batches)
   db.ledger.unshift(...ledgerEntries)
@@ -866,7 +905,7 @@ function updateSellingPrice(db: Database, actorId: string, actorRole: Role, payl
   if (!actor) throw new Error('Authentication required')
   const medicineId = requireString(payload?.medicineId, 'Medicine')
   const branchId = requireString(payload?.branchId, 'Branch')
-  const priceManager = canAdmin(actor, getPrimaryAdminId(db)) || canManageBranch(actor, branchId, getPrimaryAdminId(db)) || actorRole === 'pharmacist' || actorRole === 'cashier'
+  const priceManager = canManageMedicinePrices(db, actor, actorRole, branchId)
   if (!priceManager) throw new Error('You do not have permission to update selling prices')
   const sellingPrice = requireNumber(payload?.sellingPrice, 'Selling price')
   const costPrice = Number(payload?.costPrice)

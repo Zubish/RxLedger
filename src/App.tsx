@@ -914,7 +914,7 @@ function App() {
   const permittedStockRows = useMemo(() => currentUser ? stockRows.filter((row) => canViewBranch(db, currentUser, row.batch.branchId)) : [], [currentUser, db, stockRows])
   const canWrite = currentUser ? currentUser.role === 'admin' || currentUser.role === 'pharmacist' || currentUser.role === 'inventory' : false
   const canSell = currentUser && activeBranch ? isSuperAdmin(db, currentUser) || canManageBranch(db, currentUser, activeBranch.id) || ((currentUser.role === 'pharmacist' || currentUser.role === 'cashier') && hasActiveBranchAssignment(currentUser, activeBranch.id)) : false
-  const canManagePrices = currentUser && activeBranch ? isSuperAdmin(db, currentUser) || canManageBranch(db, currentUser, activeBranch.id) || ((currentUser.role === 'pharmacist' || currentUser.role === 'cashier') && hasActiveBranchAssignment(currentUser, activeBranch.id)) : false
+  const canManagePrices = currentUser && activeBranch ? isSuperAdmin(db, currentUser) || canManageBranch(db, currentUser, activeBranch.id) || (currentUser.role === 'inventory' && hasActiveBranchAssignment(currentUser, activeBranch.id)) : false
   const canAdjust = currentUser ? currentUser.role === 'admin' || currentUser.role === 'pharmacist' : false
   const canAdmin = isSuperAdmin(db, currentUser)
   const dashboardStockRows = useMemo(() => canAdmin ? stockRows : activeBranchStockRows, [activeBranchStockRows, canAdmin, stockRows])
@@ -2373,27 +2373,32 @@ function Medicines({
       flash(`Barcode already belongs to ${duplicateBarcode.brandName}`)
       return
     }
-    void executeAction(records.length === 1 ? 'upsertMedicine' : 'upsertMedicines', records.length === 1 ? { record: records[0] } : { records }, `${records.length} medicine record${records.length > 1 ? 's' : ''} saved`)
+    void executeAction(records.length === 1 ? 'upsertMedicine' : 'upsertMedicines', records.length === 1 ? { record: records[0], branchId: activeBranch?.id } : { records, branchId: activeBranch?.id }, `${records.length} medicine record${records.length > 1 ? 's' : ''} saved`)
     resetDrafts()
   }
 
-  function updateSellingPrice(medicine: Medicine, value: string) {
+  function updateMedicinePricing(medicine: Medicine, updates: Partial<Pick<Medicine, 'costPrice' | 'sellingPrice'>>) {
     if (!activeBranch || !canManagePrices) return
-    const sellingPrice = Number(value)
+    const costPrice = updates.costPrice ?? medicine.costPrice
+    const sellingPrice = updates.sellingPrice ?? medicine.sellingPrice
+    if (!Number.isFinite(costPrice) || costPrice < 0) {
+      flash('Enter a valid cost price')
+      return
+    }
     if (!Number.isFinite(sellingPrice) || sellingPrice < 0) {
       flash('Enter a valid selling price')
       return
     }
-    if (sellingPrice > 0 && sellingPrice < medicine.costPrice) {
+    if (sellingPrice > 0 && sellingPrice < costPrice) {
       flash('Selling price must be equal to or greater than cost price')
       return
     }
     void executeAction('updateSellingPrice', {
       medicineId: medicine.id,
       branchId: activeBranch.id,
-      costPrice: medicine.costPrice,
+      costPrice,
       sellingPrice,
-    }, `${medicine.brandName} selling price updated`)
+    }, `${medicine.brandName} pricing updated`)
   }
 
   return (
@@ -2450,14 +2455,24 @@ function Medicines({
                       <strong>{number.format(stockTotals.get(medicine.id) ?? 0)}</strong>
                       <span className="table-subtext">{sellableUnitLabel(medicine)}</span>
                     </td>
-                    <td>{money.format(medicine.costPrice || 0)}</td>
+                    <td>
+                      <input
+                        className="table-price-input"
+                        type="number"
+                        min="0"
+                        defaultValue={medicine.costPrice || ''}
+                        onBlur={(event) => updateMedicinePricing(medicine, { costPrice: Number(event.currentTarget.value) || 0 })}
+                        disabled={!canManagePrices || !activeBranch}
+                        aria-label={`Cost price for ${medicine.brandName}`}
+                      />
+                    </td>
                     <td>
                       <input
                         className="table-price-input"
                         type="number"
                         min="0"
                         defaultValue={medicine.sellingPrice || getMedicineSellingPrice(stockRows, medicine.id) || ''}
-                        onBlur={(event) => updateSellingPrice(medicine, event.currentTarget.value)}
+                        onBlur={(event) => updateMedicinePricing(medicine, { sellingPrice: Number(event.currentTarget.value) || 0 })}
                         disabled={!canManagePrices || !activeBranch}
                         aria-label={`Selling price for ${medicine.brandName}`}
                       />
