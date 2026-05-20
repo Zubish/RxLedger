@@ -4082,6 +4082,7 @@ function Adjustments({ activeBranch, stockRows, canAdjust, executeAction, flash 
 
 function Reports({ db, stockRows, stockTotals, activeBranch }: { db: Database; stockRows: StockRow[]; stockTotals: Map<string, number>; activeBranch?: Branch }) {
   const [report, setReport] = useState<'stock' | 'movement' | 'supplier' | 'expiry' | 'reorder'>('stock')
+  const [stockItemType, setStockItemType] = useState<'medicine' | 'product'>('medicine')
   const [movementDate, setMovementDate] = useState('')
   const [movementType, setMovementType] = useState('')
   const [medicineFilter, setMedicineFilter] = useState('')
@@ -4089,7 +4090,14 @@ function Reports({ db, stockRows, stockTotals, activeBranch }: { db: Database; s
   const [categoryFilter, setCategoryFilter] = useState('')
   const [supplierFilter, setSupplierFilter] = useState('')
   const [supplierDate, setSupplierDate] = useState('')
-  const categories = useMemo(() => Array.from(new Set([...db.medicines.map((medicine) => medicine.category), ...db.products.map((product) => product.category)].filter(Boolean))).sort((a, b) => a.localeCompare(b)), [db.medicines, db.products])
+  const categories = useMemo(() => {
+    const source = report === 'stock' && stockItemType === 'medicine'
+      ? db.medicines.map((medicine) => medicine.category)
+      : report === 'stock'
+        ? db.products.map((product) => product.category)
+        : [...db.medicines.map((medicine) => medicine.category), ...db.products.map((product) => product.category)]
+    return Array.from(new Set(source.filter(Boolean))).sort((a, b) => a.localeCompare(b))
+  }, [db.medicines, db.products, report, stockItemType])
 
   const rows: ReportRow[] = useMemo(() => {
     const scopedBatchIds = new Set(stockRows.map((row) => row.batch.id))
@@ -4202,24 +4210,56 @@ function Reports({ db, stockRows, stockTotals, activeBranch }: { db: Database; s
           Manufacturer: medicine.manufacturer,
         }))
     }
-    return stockRows.map((row) => ({
-      SKU: row.medicine.sku,
-      Medicine: row.medicine.brandName,
-      Generic: row.medicine.genericName,
-      Form: row.medicine.form,
-      Strength: row.medicine.strength,
-      Category: row.medicine.category || '-',
-      Batch: row.batch.batchNumber,
-      Expiry: row.batch.expiryDate,
-      Quantity: row.quantity,
-      'Unit Cost': row.batch.unitCost,
-      'Cost Value': row.costValue,
-      Supplier: row.supplier?.name ?? '-',
-      Branch: row.branch?.name ?? row.batch.branchId,
-      Location: row.batch.location,
-    }))
-  }, [activeBranch, categoryFilter, db, genericFilter, medicineFilter, movementDate, movementType, report, stockRows, stockTotals, supplierDate, supplierFilter])
+    if (stockItemType === 'product') {
+      return db.products
+        .filter((product) => product.active)
+        .filter((product) => (
+          (!medicineFilter || product.name.toLowerCase().includes(medicineFilter.toLowerCase()) || product.sku.toLowerCase().includes(medicineFilter.toLowerCase())) &&
+          (!categoryFilter || product.category === categoryFilter)
+        ))
+        .map((product) => {
+          const supplier = db.suppliers.find((item) => item.id === product.supplierId)
+          return {
+            SKU: product.sku,
+            Product: product.name,
+            Category: product.category || '-',
+            Unit: product.unit,
+            Quantity: product.quantity,
+            'Unit Cost': product.costPrice,
+            'Selling Price': product.sellingPrice,
+            'Cost Value': product.quantity * product.costPrice,
+            Supplier: supplier?.name ?? '-',
+            Branch: activeBranch?.name ?? 'Mart register',
+            Status: product.active ? 'Active' : 'Inactive',
+          }
+        })
+    }
+    return stockRows
+      .filter((row) => (
+        (!medicineFilter || row.medicine.brandName.toLowerCase().includes(medicineFilter.toLowerCase()) || row.medicine.sku.toLowerCase().includes(medicineFilter.toLowerCase())) &&
+        (!genericFilter || row.medicine.genericName.toLowerCase().includes(genericFilter.toLowerCase())) &&
+        (!categoryFilter || row.medicine.category === categoryFilter)
+      ))
+      .map((row) => ({
+        SKU: row.medicine.sku,
+        Medicine: row.medicine.brandName,
+        Generic: row.medicine.genericName,
+        Form: row.medicine.form,
+        Strength: row.medicine.strength,
+        Category: row.medicine.category || '-',
+        Batch: row.batch.batchNumber,
+        Expiry: row.batch.expiryDate,
+        Quantity: row.quantity,
+        'Unit Cost': row.batch.unitCost,
+        'Cost Value': row.costValue,
+        Supplier: row.supplier?.name ?? '-',
+        Branch: row.branch?.name ?? row.batch.branchId,
+        Location: row.batch.location,
+      }))
+  }, [activeBranch, categoryFilter, db, genericFilter, medicineFilter, movementDate, movementType, report, stockItemType, stockRows, stockTotals, supplierDate, supplierFilter])
   const movementQuantityTotal = report === 'movement' ? rows.reduce((sum, row) => sum + Number(row.Quantity ?? 0), 0) : 0
+  const stockQuantityTotal = report === 'stock' ? rows.reduce((sum, row) => sum + Number(row.Quantity ?? 0), 0) : 0
+  const stockCostTotal = report === 'stock' ? rows.reduce((sum, row) => sum + Number(row['Cost Value'] ?? 0), 0) : 0
 
   return (
     <section className="content-section">
@@ -4254,6 +4294,30 @@ function Reports({ db, stockRows, stockTotals, activeBranch }: { db: Database; s
           <label>Generic<input value={genericFilter} onChange={(event) => setGenericFilter(event.target.value)} placeholder="Generic name" /></label>
           <label>Category<select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="">All categories</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
         </div>
+      )}
+      {report === 'stock' && (
+        <>
+          <div className="report-mode-switch">
+            <button className={stockItemType === 'medicine' ? 'active' : ''} type="button" onClick={() => { setStockItemType('medicine'); setCategoryFilter(''); setMedicineFilter(''); setGenericFilter('') }}>
+              <Pill size={16} />
+              Pharmacy
+            </button>
+            <button className={stockItemType === 'product' ? 'active' : ''} type="button" onClick={() => { setStockItemType('product'); setCategoryFilter(''); setMedicineFilter(''); setGenericFilter('') }}>
+              <Boxes size={16} />
+              Mart
+            </button>
+          </div>
+          <div className="report-filters">
+            <label>{stockItemType === 'medicine' ? 'Brand' : 'Product'}<input value={medicineFilter} onChange={(event) => setMedicineFilter(event.target.value)} placeholder={stockItemType === 'medicine' ? 'Brand name or SKU' : 'Product name or SKU'} /></label>
+            {stockItemType === 'medicine' && <label>Generic<input value={genericFilter} onChange={(event) => setGenericFilter(event.target.value)} placeholder="Generic name" /></label>}
+            <label>Category<select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="">All categories</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
+          </div>
+          <div className="report-summary">
+            <Archive size={16} />
+            <strong>{number.format(stockQuantityTotal)}</strong>
+            <span>{stockItemType === 'medicine' ? 'pharmacy units' : 'mart units'} on hand / {money.format(stockCostTotal)} value</span>
+          </div>
+        </>
       )}
       {report === 'supplier' && (
         <div className="report-filters">

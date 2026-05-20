@@ -2889,6 +2889,38 @@ button:disabled {
   margin-bottom: 14px;
 }
 
+.report-mode-switch {
+  background: #eef4f3;
+  border: 1px solid #dbe7e4;
+  border-radius: 10px;
+  display: inline-grid;
+  gap: 4px;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  margin-bottom: 14px;
+  padding: 4px;
+}
+
+.report-mode-switch button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: #52636c;
+  cursor: pointer;
+  display: inline-flex;
+  font-weight: 700;
+  gap: 7px;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+.report-mode-switch button.active {
+  background: #ffffff;
+  box-shadow: 0 6px 16px rgba(18, 32, 37, 0.08);
+  color: #006b45;
+}
+
 .report-summary {
   min-height: 40px;
   border: 1px solid #dbe7e4;
