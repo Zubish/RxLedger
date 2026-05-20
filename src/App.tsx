@@ -328,14 +328,17 @@ type SecurityEvent = {
   metadata?: Record<string, unknown>
 }
 
-type RequisitionStatus = 'pending' | 'fulfilled' | 'rejected' | 'cancelled'
+type RequisitionStatus = 'pending' | 'released' | 'received' | 'fulfilled' | 'rejected' | 'cancelled'
 
 type RequisitionItem = {
   id: string
   medicineId: string
   batchId: string
   quantity: number
+  releasedQuantity?: number
   fulfilledQuantity?: number
+  receivedQuantity?: number
+  destinationBatchId?: string
 }
 
 type Requisition = {
@@ -347,6 +350,10 @@ type Requisition = {
   items: RequisitionItem[]
   createdAt: string
   updatedAt: string
+  releasedBy?: string
+  releasedAt?: string
+  receivedBy?: string
+  receivedAt?: string
   handledBy?: string
   handledAt?: string
   note?: string
@@ -651,6 +658,11 @@ function getBranchName(db: Database, branchId: string) {
   return db.branches.find((branch) => branch.id === branchId)?.name ?? db.settings.branchName
 }
 
+function getUserName(db: Database, userId?: string) {
+  if (!userId) return 'Not recorded'
+  return db.users.find((user) => user.id === userId)?.name ?? 'Unknown user'
+}
+
 function getPrimaryAdminId(db: Database) {
   return db.settings.primaryAdminId || db.users.find((user) => user.role === 'admin' && user.status === 'active')?.id || ''
 }
@@ -792,6 +804,7 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
     canViewBranch(db, currentUser, request.requestingBranchId)
   ))
   const incomingRequisitions = relevantRequisitions.filter((request) => request.status === 'pending')
+  const releasedRequisitions = relevantRequisitions.filter((request) => request.status === 'released' && canViewBranch(db, currentUser, request.requestingBranchId))
   const handledRequisitions = relevantRequisitions.filter((request) => request.requesterUserId === currentUser.id && request.status !== 'pending')
   const branchAccessRequests = db.branchAccessRequests.filter((request) => request.status === 'pending' && canViewBranch(db, currentUser, request.branchId))
   const scopedMedicineIds = new Set(stockRows.map((row) => row.medicine.id))
@@ -842,6 +855,18 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
     })
   })
 
+  releasedRequisitions.forEach((request) => {
+    notifications.push({
+      id: `released-requisition-${request.id}`,
+      tone: 'info',
+      title: `Stock released by ${getBranchName(db, request.sourceBranchId)}`,
+      detail: `${request.items.length} item${request.items.length === 1 ? '' : 's'} awaiting receipt confirmation.`,
+      view: 'medicines',
+      branchId: request.requestingBranchId,
+      createdAt: request.updatedAt,
+    })
+  })
+
   branchAccessRequests.forEach((request) => {
     const user = db.users.find((item) => item.id === request.userId)
     notifications.push({
@@ -859,8 +884,8 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
   handledRequisitions.forEach((request) => {
     notifications.push({
       id: `handled-requisition-${request.id}`,
-      tone: request.status === 'fulfilled' ? 'good' : 'warning',
-      title: `Your requisition was ${request.status}`,
+      tone: request.status === 'received' || request.status === 'fulfilled' ? 'good' : request.status === 'released' ? 'info' : 'warning',
+      title: `Your requisition is ${request.status === 'released' ? 'awaiting receipt' : request.status}`,
       detail: `${getBranchName(db, request.sourceBranchId)} responded to your request.`,
       view: 'medicines',
       branchId: request.requestingBranchId,
@@ -2218,6 +2243,8 @@ function Medicines({
   const [historyDate, setHistoryDate] = useState('')
   const [cartItems, setCartItems] = useState<RequisitionCartItem[]>([])
   const [releaseQuantities, setReleaseQuantities] = useState<Record<string, number>>({})
+  const [receiveQuantities, setReceiveQuantities] = useState<Record<string, number>>({})
+  const [selectedRequisitionId, setSelectedRequisitionId] = useState('')
   const isEditing = drafts.length === 1 && Boolean(drafts[0].id)
   const stockCostTotals = useMemo(() => {
     const totals = new Map<string, number>()
@@ -2248,6 +2275,11 @@ function Medicines({
     return involved && dateMatches
   })
   const incomingRequisitions = db.requisitions.filter((request) => request.status === 'pending' && activeBranch && request.sourceBranchId === activeBranch.id && (isSuperAdmin(db, currentUser) || canViewBranch(db, currentUser, request.sourceBranchId)))
+  const awaitingReceiptRequisitions = db.requisitions.filter((request) => request.status === 'released' && activeBranch && request.requestingBranchId === activeBranch.id && (isSuperAdmin(db, currentUser) || canViewBranch(db, currentUser, request.requestingBranchId)))
+  const todaysRequisitions = visibleRequisitions
+    .filter((request) => request.createdAt.slice(0, 10) === today())
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  const selectedRequisition = db.requisitions.find((request) => request.id === selectedRequisitionId)
 
   function openRequestModal(medicineId: string) {
     setRequestMedicineId(medicineId)
@@ -2322,12 +2354,43 @@ function Medicines({
       flash('Release at least one item quantity before fulfilling this request')
       return
     }
-    void executeAction('fulfillRequisition', { requestId: request.id, items }, 'Requisition fulfilled and stock transferred')
+    void executeAction('fulfillRequisition', { requestId: request.id, items }, 'Requisition released for receiving confirmation')
     setReleaseQuantities((current) => {
       const next = { ...current }
       request.items.forEach((item) => delete next[item.id])
       return next
     })
+  }
+
+  function releasedQuantity(item: RequisitionItem) {
+    return item.releasedQuantity ?? item.fulfilledQuantity ?? 0
+  }
+
+  function getReceiveQuantity(item: RequisitionItem) {
+    return receiveQuantities[item.id] ?? releasedQuantity(item)
+  }
+
+  function updateReceiveQuantity(item: RequisitionItem, quantity: number) {
+    const maxReceive = releasedQuantity(item)
+    setReceiveQuantities((current) => ({
+      ...current,
+      [item.id]: Math.max(0, Math.min(Number(quantity) || 0, maxReceive)),
+    }))
+  }
+
+  function receiveRequisition(request: Requisition) {
+    const items = request.items.map((item) => ({ itemId: item.id, quantity: getReceiveQuantity(item) }))
+    if (!items.some((item) => item.quantity > 0)) {
+      flash('Receive at least one released item quantity')
+      return
+    }
+    void executeAction('receiveRequisition', { requestId: request.id, items }, 'Requisition received and stock added to branch')
+    setReceiveQuantities((current) => {
+      const next = { ...current }
+      request.items.forEach((item) => delete next[item.id])
+      return next
+    })
+    setSelectedRequisitionId('')
   }
 
   function rejectRequisition(requestId: string) {
@@ -2470,6 +2533,13 @@ function Medicines({
       costPrice,
       sellingPrice,
     }, `${medicine.brandName} pricing updated`)
+  }
+
+  function requisitionStatusLabel(status: RequisitionStatus) {
+    if (status === 'pending') return 'Pending release'
+    if (status === 'released') return 'Awaiting receipt'
+    if (status === 'received' || status === 'fulfilled') return 'Received'
+    return status[0].toUpperCase() + status.slice(1)
   }
 
   return (
@@ -2670,6 +2740,17 @@ function Medicines({
               </button>
             </div>
 
+            <section className="stack requisition-today-panel">
+              <h3>Today's requisitions</h3>
+              {todaysRequisitions.length ? todaysRequisitions.map((request) => (
+                <button className="line-card requisition-summary-card" type="button" key={request.id} onClick={() => setSelectedRequisitionId(request.id)}>
+                  <strong>{getBranchName(db, request.requestingBranchId)} from {getBranchName(db, request.sourceBranchId)}</strong>
+                  <span>{requisitionStatusLabel(request.status)} / {request.items.length} item{request.items.length === 1 ? '' : 's'} / {new Date(request.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  <span>Requester: {getUserName(db, request.requesterUserId)} / Fulfiller: {getUserName(db, request.releasedBy ?? request.handledBy)} / Receiver: {getUserName(db, request.receivedBy)}</span>
+                </button>
+              )) : <div className="empty-state">No requisitions recorded today.</div>}
+            </section>
+
             <div className="cart-layout">
               <section className="stack">
                 <h3>Draft items</h3>
@@ -2697,8 +2778,10 @@ function Medicines({
                 <h3>Incoming requests</h3>
                 {incomingRequisitions.length ? incomingRequisitions.map((request) => (
                   <article className="line-card" key={request.id}>
-                    <strong>{getBranchName(db, request.requestingBranchId)} request</strong>
-                    <span>{new Date(request.createdAt).toLocaleString()} / {request.items.length} item{request.items.length === 1 ? '' : 's'}</span>
+                    <button className="requisition-open-row" type="button" onClick={() => setSelectedRequisitionId(request.id)}>
+                      <strong>{getBranchName(db, request.requestingBranchId)} request</strong>
+                      <span>{new Date(request.createdAt).toLocaleString()} / requester: {getUserName(db, request.requesterUserId)}</span>
+                    </button>
                     {request.items.map((item) => {
                       const medicine = db.medicines.find((entry) => entry.id === item.medicineId)
                       const batch = db.batches.find((entry) => entry.id === item.batchId)
@@ -2727,7 +2810,7 @@ function Medicines({
                     <div className="button-row">
                       <button className="primary-button" type="button" onClick={() => fulfillRequisition(request)} disabled={!canFulfillActiveBranch}>
                         <PackageCheck size={16} />
-                        Fulfill
+                        Release
                       </button>
                       <button className="ghost-button" type="button" onClick={() => rejectRequisition(request.id)} disabled={!canFulfillActiveBranch}>
                         <XCircle size={16} />
@@ -2736,6 +2819,17 @@ function Medicines({
                     </div>
                   </article>
                 )) : <div className="empty-state">No incoming requests for this branch.</div>}
+              </section>
+
+              <section className="stack">
+                <h3>Awaiting receipt</h3>
+                {awaitingReceiptRequisitions.length ? awaitingReceiptRequisitions.map((request) => (
+                  <button className="line-card requisition-summary-card" type="button" key={request.id} onClick={() => setSelectedRequisitionId(request.id)}>
+                    <strong>{getBranchName(db, request.sourceBranchId)} released stock</strong>
+                    <span>{request.items.length} item{request.items.length === 1 ? '' : 's'} / released by {getUserName(db, request.releasedBy ?? request.handledBy)}</span>
+                    <span>Requester: {getUserName(db, request.requesterUserId)} / waiting for receiving confirmation</span>
+                  </button>
+                )) : <div className="empty-state">No released requisitions awaiting receipt.</div>}
               </section>
             </div>
 
@@ -2748,23 +2842,103 @@ function Medicines({
                 <div className="stack">
                   <label>Date filter<input type="date" value={historyDate} onChange={(event) => setHistoryDate(event.target.value)} /></label>
                   {visibleRequisitions.length ? visibleRequisitions.map((request) => (
-                    <article className="line-card" key={request.id}>
+                    <button className="line-card requisition-summary-card" type="button" key={request.id} onClick={() => setSelectedRequisitionId(request.id)}>
                       <strong>{getBranchName(db, request.requestingBranchId)} from {getBranchName(db, request.sourceBranchId)}</strong>
-                      <span>{request.status} / {new Date(request.createdAt).toLocaleString()}</span>
+                      <span>{requisitionStatusLabel(request.status)} / {new Date(request.createdAt).toLocaleString()}</span>
                       {request.items.map((item) => {
                         const medicine = db.medicines.find((entry) => entry.id === item.medicineId)
                         return (
                           <span key={item.id}>
                             {medicine?.brandName ?? item.medicineId} / requested {number.format(item.quantity)}
-                            {item.fulfilledQuantity !== undefined ? ` / released ${number.format(item.fulfilledQuantity)}` : ''}
+                            {releasedQuantity(item) ? ` / released ${number.format(releasedQuantity(item))}` : ''}
+                            {item.receivedQuantity !== undefined ? ` / received ${number.format(item.receivedQuantity)}` : ''}
                           </span>
                         )
                       })}
-                    </article>
+                    </button>
                   )) : <div className="empty-state">No requisition history for this filter.</div>}
                 </div>
               )}
             </div>
+          </section>
+        </div>
+      )}
+      {selectedRequisition && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <section className="modal-panel wide">
+            <div className="section-heading">
+              <div>
+                <h2>Requisition details</h2>
+                <p>{getBranchName(db, selectedRequisition.requestingBranchId)} from {getBranchName(db, selectedRequisition.sourceBranchId)} / {requisitionStatusLabel(selectedRequisition.status)}</p>
+              </div>
+              <button className="icon-button" type="button" onClick={() => setSelectedRequisitionId('')} title="Close">
+                <X size={17} />
+              </button>
+            </div>
+
+            <div className="requisition-detail-grid">
+              <div>
+                <span>Requester</span>
+                <strong>{getUserName(db, selectedRequisition.requesterUserId)}</strong>
+                <small>{new Date(selectedRequisition.createdAt).toLocaleString()}</small>
+              </div>
+              <div>
+                <span>Fulfiller</span>
+                <strong>{getUserName(db, selectedRequisition.releasedBy ?? selectedRequisition.handledBy)}</strong>
+                <small>{selectedRequisition.releasedAt || selectedRequisition.handledAt ? new Date(selectedRequisition.releasedAt ?? selectedRequisition.handledAt ?? '').toLocaleString() : 'Not released yet'}</small>
+              </div>
+              <div>
+                <span>Receiver</span>
+                <strong>{getUserName(db, selectedRequisition.receivedBy)}</strong>
+                <small>{selectedRequisition.receivedAt ? new Date(selectedRequisition.receivedAt).toLocaleString() : 'Not received yet'}</small>
+              </div>
+              <div>
+                <span>Branches</span>
+                <strong>{getBranchName(db, selectedRequisition.requestingBranchId)}</strong>
+                <small>Supplying: {getBranchName(db, selectedRequisition.sourceBranchId)}</small>
+              </div>
+            </div>
+
+            <div className="stack">
+              <h3>Items requested</h3>
+              {selectedRequisition.items.map((item) => {
+                const medicine = db.medicines.find((entry) => entry.id === item.medicineId)
+                const batch = db.batches.find((entry) => entry.id === item.batchId)
+                const canReceiveThis = selectedRequisition.status === 'released' && activeBranch?.id === selectedRequisition.requestingBranchId && canFulfillActiveBranch
+                return (
+                  <article className="requisition-detail-item" key={item.id}>
+                    <div>
+                      {medicine && <MedicineIdentity medicine={medicine} />}
+                      {!medicine && <strong>{item.medicineId}</strong>}
+                      <span>{batch?.batchNumber ?? item.batchId} / expires {batch?.expiryDate ?? 'not recorded'} / {batch?.location ?? 'source branch'}</span>
+                    </div>
+                    <dl>
+                      <div><dt>Requested</dt><dd>{number.format(item.quantity)}</dd></div>
+                      <div><dt>Released</dt><dd>{number.format(releasedQuantity(item))}</dd></div>
+                      <div><dt>Received</dt><dd>{item.receivedQuantity !== undefined ? number.format(item.receivedQuantity) : '-'}</dd></div>
+                    </dl>
+                    {canReceiveThis && (
+                      <label>
+                        Confirm received
+                        <input type="number" min="0" max={releasedQuantity(item)} value={numberInputValue(getReceiveQuantity(item))} onChange={(event) => updateReceiveQuantity(item, Number(event.target.value))} />
+                      </label>
+                    )}
+                  </article>
+                )
+              })}
+            </div>
+
+            {selectedRequisition.note && <div className="audit-note">Note: {selectedRequisition.note}</div>}
+
+            {selectedRequisition.status === 'released' && activeBranch?.id === selectedRequisition.requestingBranchId && (
+              <div className="form-actions">
+                <button className="ghost-button" type="button" onClick={() => setSelectedRequisitionId('')}>Close</button>
+                <button className="primary-button" type="button" onClick={() => receiveRequisition(selectedRequisition)} disabled={!canFulfillActiveBranch}>
+                  <PackageCheck size={17} />
+                  Accept received stock
+                </button>
+              </div>
+            )}
           </section>
         </div>
       )}

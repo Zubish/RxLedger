@@ -155,14 +155,17 @@ type SecurityEvent = {
   metadata?: Record<string, unknown>
 }
 
-type RequisitionStatus = 'pending' | 'fulfilled' | 'rejected' | 'cancelled'
+type RequisitionStatus = 'pending' | 'released' | 'received' | 'fulfilled' | 'rejected' | 'cancelled'
 
 type RequisitionItem = {
   id: string
   medicineId: string
   batchId: string
   quantity: number
+  releasedQuantity?: number
   fulfilledQuantity?: number
+  receivedQuantity?: number
+  destinationBatchId?: string
 }
 
 type Requisition = {
@@ -174,6 +177,10 @@ type Requisition = {
   items: RequisitionItem[]
   createdAt: string
   updatedAt: string
+  releasedBy?: string
+  releasedAt?: string
+  receivedBy?: string
+  receivedAt?: string
   handledBy?: string
   handledAt?: string
   note?: string
@@ -746,7 +753,13 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
       }
     }),
     securityEvents: raw.securityEvents ?? empty.securityEvents,
-    requisitions: raw.requisitions ?? empty.requisitions,
+    requisitions: (raw.requisitions ?? empty.requisitions).map((request) => ({
+      ...request,
+      items: (request.items ?? []).map((item) => ({
+        ...item,
+        releasedQuantity: item.releasedQuantity ?? item.fulfilledQuantity,
+      })),
+    })),
     branchAccessRequests: raw.branchAccessRequests ?? empty.branchAccessRequests,
     auditLogs: raw.auditLogs ?? empty.auditLogs,
     settings: {

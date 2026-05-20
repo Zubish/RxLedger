@@ -89,6 +89,9 @@ export default async function handler(req: HandlerRequest, res: HandlerResponse)
       case 'fulfillRequisition':
         fulfillRequisition(db, actor.id, body.payload)
         break
+      case 'receiveRequisition':
+        receiveRequisition(db, actor.id, body.payload)
+        break
       case 'rejectRequisition':
         rejectRequisition(db, actor.id, body.payload)
         break
@@ -686,12 +689,14 @@ function fulfillRequisition(db: Database, actorId: string, payload: Record<strin
   const transferEntries = []
   const transferBatches = []
   let totalReleased = 0
+  const reference = `Requisition ${request.id}`
   for (const item of request.items) {
     const sourceBatch = db.batches.find((batch) => batch.id === item.batchId)
     if (!sourceBatch) throw new Error('Source batch not found')
     const releaseQuantity = releaseByItem.has(item.id) ? releaseByItem.get(item.id) ?? 0 : item.quantity
     if (releaseQuantity > item.quantity) throw new Error('Release quantity cannot exceed requested quantity')
     if (releaseQuantity > getBatchAvailable(db, sourceBatch.id)) throw new Error('A requested batch no longer has enough stock')
+    item.releasedQuantity = releaseQuantity
     item.fulfilledQuantity = releaseQuantity
     if (releaseQuantity <= 0) continue
     const destinationBatch = {
@@ -700,7 +705,7 @@ function fulfillRequisition(db: Database, actorId: string, payload: Record<strin
       branchId: request.requestingBranchId,
       location: `Transfer from ${db.branches.find((branch) => branch.id === request.sourceBranchId)?.code || 'branch'}`,
     }
-    const reference = `Requisition ${request.id}`
+    item.destinationBatchId = destinationBatch.id
     transferBatches.push(destinationBatch)
     transferEntries.push({
       id: id('led'),
@@ -715,12 +720,52 @@ function fulfillRequisition(db: Database, actorId: string, payload: Record<strin
       fromBranchId: request.sourceBranchId,
       toBranchId: request.requestingBranchId,
     })
-    transferEntries.push({
+    totalReleased += releaseQuantity
+  }
+  if (totalReleased <= 0) throw new Error('Release at least one item quantity to fulfill this requisition')
+  db.batches.unshift(...transferBatches)
+  db.ledger.unshift(...transferEntries)
+  request.status = 'released'
+  request.releasedBy = actorId
+  request.releasedAt = nowIso()
+  request.handledBy = actorId
+  request.handledAt = request.releasedAt
+  request.updatedAt = nowIso()
+  addAudit(db, actorId, 'Released internal requisition stock', 'requisition', request.id, before, request)
+}
+
+function receiveRequisition(db: Database, actorId: string, payload: Record<string, unknown> | undefined) {
+  const actor = db.users.find((user) => user.id === actorId)
+  if (!actor) throw new Error('Authentication required')
+  const requestId = requireString(payload?.requestId, 'Requisition')
+  const request = db.requisitions.find((item) => item.id === requestId)
+  if (!request || request.status !== 'released') throw new Error('Released requisition not found')
+  if (!canWriteBranch(actor, request.requestingBranchId, getPrimaryAdminId(db))) throw new Error('You need branch posting access to receive this request')
+  const before = { ...request, items: request.items.map((item) => ({ ...item })) }
+  const receiveInputs = Array.isArray(payload?.items) ? (payload.items as Record<string, unknown>[]) : []
+  const receiveByItem = new Map(receiveInputs.map((input) => [
+    requireString(input.itemId ?? input.id, 'Requisition item'),
+    Math.max(0, requireNumber(input.quantity, 'Received quantity')),
+  ]))
+  const receiptEntries = []
+  let totalReceived = 0
+  const reference = `Requisition ${request.id}`
+  for (const item of request.items) {
+    const releasedQuantity = item.releasedQuantity ?? item.fulfilledQuantity ?? 0
+    const receivedQuantity = receiveByItem.has(item.id) ? receiveByItem.get(item.id) ?? 0 : releasedQuantity
+    if (receivedQuantity > releasedQuantity) throw new Error('Received quantity cannot exceed released quantity')
+    item.receivedQuantity = receivedQuantity
+    if (receivedQuantity <= 0) continue
+    const destinationBatchId = item.destinationBatchId
+    if (!destinationBatchId || !db.batches.some((batch) => batch.id === destinationBatchId && batch.branchId === request.requestingBranchId)) {
+      throw new Error('Destination batch for this requisition item was not found')
+    }
+    receiptEntries.push({
       id: id('led'),
       medicineId: item.medicineId,
-      batchId: destinationBatch.id,
+      batchId: destinationBatchId,
       type: 'stock-in' as LedgerType,
-      quantity: releaseQuantity,
+      quantity: receivedQuantity,
       reason: 'Internal requisition received',
       reference,
       userId: actorId,
@@ -728,16 +773,15 @@ function fulfillRequisition(db: Database, actorId: string, payload: Record<strin
       fromBranchId: request.sourceBranchId,
       toBranchId: request.requestingBranchId,
     })
-    totalReleased += releaseQuantity
+    totalReceived += receivedQuantity
   }
-  if (totalReleased <= 0) throw new Error('Release at least one item quantity to fulfill this requisition')
-  db.batches.unshift(...transferBatches)
-  db.ledger.unshift(...transferEntries)
-  request.status = 'fulfilled'
-  request.handledBy = actorId
-  request.handledAt = nowIso()
+  if (totalReceived <= 0) throw new Error('Receive at least one released item quantity')
+  db.ledger.unshift(...receiptEntries)
+  request.status = 'received'
+  request.receivedBy = actorId
+  request.receivedAt = nowIso()
   request.updatedAt = nowIso()
-  addAudit(db, actorId, 'Fulfilled internal requisition', 'requisition', request.id, before, request)
+  addAudit(db, actorId, 'Received internal requisition stock', 'requisition', request.id, before, request)
 }
 
 function rejectRequisition(db: Database, actorId: string, payload: Record<string, unknown> | undefined) {

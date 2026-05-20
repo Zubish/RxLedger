@@ -225,14 +225,17 @@ export type SecurityEvent = {
   metadata?: Record<string, unknown>
 }
 
-export type RequisitionStatus = 'pending' | 'fulfilled' | 'rejected' | 'cancelled'
+export type RequisitionStatus = 'pending' | 'released' | 'received' | 'fulfilled' | 'rejected' | 'cancelled'
 
 export type RequisitionItem = {
   id: string
   medicineId: string
   batchId: string
   quantity: number
+  releasedQuantity?: number
   fulfilledQuantity?: number
+  receivedQuantity?: number
+  destinationBatchId?: string
 }
 
 export type Requisition = {
@@ -244,6 +247,10 @@ export type Requisition = {
   items: RequisitionItem[]
   createdAt: string
   updatedAt: string
+  releasedBy?: string
+  releasedAt?: string
+  receivedBy?: string
+  receivedAt?: string
   handledBy?: string
   handledAt?: string
   note?: string
