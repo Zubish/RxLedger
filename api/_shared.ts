@@ -124,6 +124,8 @@ type LedgerEntry = {
 type ChatMessage = {
   id: string
   userId: string
+  channel?: 'group' | 'direct'
+  recipientUserId?: string
   body: string
   createdAt: string
 }
@@ -743,7 +745,11 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
     })),
     sales,
     posDrafts: (raw.posDrafts ?? empty.posDrafts).filter((draft) => draft.expiresAt > nowIso()),
-    chatMessages: raw.chatMessages ?? empty.chatMessages,
+    chatMessages: (raw.chatMessages ?? empty.chatMessages).map((message) => ({
+      ...message,
+      channel: message.channel === 'direct' ? 'direct' : 'group',
+      recipientUserId: message.recipientUserId || '',
+    })),
     passwordResetRequests: (raw.passwordResetRequests ?? empty.passwordResetRequests).map((request) => {
       const status = String(request.status)
       return {

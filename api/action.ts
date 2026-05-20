@@ -1123,9 +1123,18 @@ function updateSettings(db: Database, actorId: string, actorRole: Role, payload:
 function sendChatMessage(db: Database, actorId: string, payload: Record<string, unknown> | undefined) {
   const body = requireString(payload?.body, 'Message')
   if (body.length > 2000) throw new Error('Message is too long')
+  const channel: 'group' | 'direct' = optionalString(payload?.channel) === 'direct' ? 'direct' : 'group'
+  const recipientUserId = channel === 'direct' ? requireString(payload?.recipientUserId, 'Recipient') : ''
+  if (channel === 'direct') {
+    if (recipientUserId === actorId) throw new Error('Choose another employee for a direct message')
+    const recipient = db.users.find((user) => user.id === recipientUserId && user.status === 'active')
+    if (!recipient) throw new Error('Recipient not found or inactive')
+  }
   const message = {
     id: id('msg'),
     userId: actorId,
+    channel,
+    recipientUserId,
     body,
     createdAt: nowIso(),
   }

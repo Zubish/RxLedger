@@ -1039,6 +1039,25 @@ td span,
   gap: 10px;
 }
 
+.alert-list,
+.audit-list,
+.supplier-grid {
+  max-height: min(58vh, 560px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+}
+
+.branch-grid {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  max-height: clamp(250px, 34vh, 420px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+}
+
 .alert-item,
 .audit-item,
 .supplier-card,
@@ -1103,8 +1122,17 @@ td span,
 
 .table-wrap {
   width: 100%;
+  max-height: min(64vh, 620px);
   overflow: auto;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.table-wrap thead th {
+  background: #ffffff;
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 table {
@@ -2514,13 +2542,27 @@ button:disabled {
   align-items: center;
   border: 1px solid var(--rx-border);
   border-radius: 8px;
-  display: flex;
+  display: grid;
   gap: 12px;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   padding: 12px;
 }
 
 .workspace-logo-editor > div {
-  flex: 1;
+  min-width: 0;
+}
+
+.workspace-logo-editor .brand-mark {
+  flex: 0 0 auto;
+}
+
+.workspace-logo-editor strong,
+.workspace-logo-editor span {
+  display: block;
+}
+
+.workspace-logo-editor strong {
+  color: #172024;
 }
 
 .slug-available {
@@ -2854,6 +2896,11 @@ button:disabled {
 .access-list {
   display: grid;
   gap: 8px;
+  max-height: clamp(260px, 38vh, 460px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
 }
 
 .access-request-box {
@@ -3206,6 +3253,17 @@ button:disabled {
   gap: 16px;
 }
 
+.chat-controls {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto minmax(220px, 320px);
+}
+
+.chat-controls .report-mode-switch {
+  margin-bottom: 0;
+}
+
 .chat-list {
   display: grid;
   gap: 10px;
@@ -3478,6 +3536,7 @@ button:disabled {
   .cart-layout,
   .requisition-detail-grid,
   .requisition-detail-item,
+  .chat-controls,
   .form-grid,
   .report-filters,
   .nav-list {
@@ -3535,8 +3594,19 @@ button:disabled {
   }
 
   .form-actions button,
-  .topbar-actions button {
+  .topbar-actions button,
+  .workspace-logo-editor {
     width: 100%;
+  }
+
+  .workspace-logo-editor {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .workspace-logo-editor .file-button,
+  .workspace-logo-editor .ghost-button {
+    grid-column: 1 / -1;
+    justify-content: center;
   }
 }
 

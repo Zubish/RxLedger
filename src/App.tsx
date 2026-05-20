@@ -298,6 +298,8 @@ type AuditLog = {
 type ChatMessage = {
   id: string
   userId: string
+  channel?: 'group' | 'direct'
+  recipientUserId?: string
   body: string
   createdAt: string
 }
@@ -807,10 +809,17 @@ function isNotificationVisible(db: Database, currentUser: User, notification: Ap
   return activeBranch ? notification.branchId === activeBranch.id : true
 }
 
+function isChatMessageVisible(message: ChatMessage, currentUser: User) {
+  if (message.channel === 'direct') {
+    return message.userId === currentUser.id || message.recipientUserId === currentUser.id
+  }
+  return true
+}
+
 function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Map<string, number>, currentUser: User, activeBranch?: Branch): AppNotification[] {
   const notifications: AppNotification[] = []
   const lastChatSeen = currentUser.lastChatSeenAt ? new Date(currentUser.lastChatSeenAt).getTime() : 0
-  const unreadChat = db.chatMessages.filter((message) => message.userId !== currentUser.id && new Date(message.createdAt).getTime() > lastChatSeen)
+  const unreadChat = db.chatMessages.filter((message) => isChatMessageVisible(message, currentUser) && message.userId !== currentUser.id && new Date(message.createdAt).getTime() > lastChatSeen)
   const pendingUsers = db.users.filter((user) => user.status === 'pending')
   const relevantRequisitions = db.requisitions.filter((request) => (
     isSuperAdmin(db, currentUser) ||
@@ -1290,7 +1299,7 @@ function App() {
 
   const pendingUsers = canAdmin ? db.users.filter((user) => user.status === 'pending').length : 0
   const pendingAdminTasks = pendingUsers
-  const unreadChat = notifications.some((notification) => notification.id === 'chat-unread') ? db.chatMessages.filter((message) => message.userId !== currentUser.id && new Date(message.createdAt).getTime() > (currentUser.lastChatSeenAt ? new Date(currentUser.lastChatSeenAt).getTime() : 0)).length : 0
+  const unreadChat = notifications.some((notification) => notification.id === 'chat-unread') ? db.chatMessages.filter((message) => isChatMessageVisible(message, currentUser) && message.userId !== currentUser.id && new Date(message.createdAt).getTime() > (currentUser.lastChatSeenAt ? new Date(currentUser.lastChatSeenAt).getTime() : 0)).length : 0
 
   return (
     <div className={`${sidebarOpen ? 'app-shell sidebar-open' : 'app-shell'}${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
@@ -4495,7 +4504,10 @@ function Reports({ db, stockRows, stockTotals, activeBranch }: { db: Database; s
 
 function ChatView({ db, currentUser, executeAction }: { db: Database; currentUser: User; executeAction: ExecuteAction }) {
   const [body, setBody] = useState('')
+  const [channel, setChannel] = useState<'group' | 'direct'>('group')
+  const [recipientUserId, setRecipientUserId] = useState('')
   const readMarked = useRef(false)
+  const employees = useMemo(() => db.users.filter((user) => user.status === 'active' && user.id !== currentUser.id).sort((a, b) => a.name.localeCompare(b.name)), [currentUser.id, db.users])
 
   useEffect(() => {
     if (!readMarked.current) {
@@ -4507,42 +4519,71 @@ function ChatView({ db, currentUser, executeAction }: { db: Database; currentUse
   function submit(event: FormEvent) {
     event.preventDefault()
     if (!body.trim()) return
-    void executeAction('sendChatMessage', { body }, 'Message sent')
+    if (channel === 'direct' && !recipientUserId) return
+    void executeAction('sendChatMessage', { body, channel, recipientUserId: channel === 'direct' ? recipientUserId : '' }, channel === 'direct' ? 'Direct message sent' : 'Group message sent')
     setBody('')
   }
 
-  const messages = [...db.chatMessages].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+  const messages = db.chatMessages
+    .filter((message) => isChatMessageVisible(message, currentUser))
+    .filter((message) => channel === 'group'
+      ? message.channel !== 'direct'
+      : message.channel === 'direct' && (!recipientUserId || message.userId === recipientUserId || message.recipientUserId === recipientUserId || message.userId === currentUser.id && message.recipientUserId === recipientUserId))
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+  const activeRecipient = employees.find((user) => user.id === recipientUserId)
 
   return (
     <section className="content-section chat-section">
       <div className="section-heading">
         <div>
-          <h2>Team Chat</h2>
-          <p>Operational notes for pharmacists, inventory staff, and admins using this workspace.</p>
+          <h2>Messages</h2>
+          <p>Send workspace updates to everyone or private notes to another employee.</p>
         </div>
+      </div>
+      <div className="chat-controls">
+        <div className="report-mode-switch">
+          <button className={channel === 'group' ? 'active' : ''} type="button" onClick={() => setChannel('group')}>
+            <Users size={16} />
+            Group chat
+          </button>
+          <button className={channel === 'direct' ? 'active' : ''} type="button" onClick={() => setChannel('direct')}>
+            <User2 size={16} />
+            Direct message
+          </button>
+        </div>
+        {channel === 'direct' && (
+          <label>
+            Employee
+            <select value={recipientUserId} onChange={(event) => setRecipientUserId(event.target.value)}>
+              <option value="">Choose employee</option>
+              {employees.map((user) => <option key={user.id} value={user.id}>{user.name} / {roleLabels[user.role]}</option>)}
+            </select>
+          </label>
+        )}
       </div>
       <div className="chat-list">
         {messages.length ? (
           messages.map((message) => {
             const user = db.users.find((item) => item.id === message.userId)
+            const recipient = db.users.find((item) => item.id === message.recipientUserId)
             const mine = message.userId === currentUser.id
             return (
               <article className={mine ? 'chat-message mine' : 'chat-message'} key={message.id}>
                 <div>
                   <strong>{mine ? 'You' : user?.name ?? 'Team member'}</strong>
-                  <span>{new Date(message.createdAt).toLocaleString()}</span>
+                  <span>{message.channel === 'direct' ? `Direct${recipient ? ` to ${mine ? recipient.name : 'you'}` : ''}` : 'Group'} / {new Date(message.createdAt).toLocaleString()}</span>
                 </div>
                 <p>{message.body}</p>
               </article>
             )
           })
         ) : (
-          <div className="empty-state">No messages yet.</div>
+          <div className="empty-state">{channel === 'direct' && !activeRecipient ? 'Choose an employee to view or send direct messages.' : 'No messages yet.'}</div>
         )}
       </div>
       <form className="chat-composer" onSubmit={submit}>
-        <textarea value={body} onChange={(event) => setBody(event.target.value)} placeholder="Type a message for the team" maxLength={2000} />
-        <button className="primary-button" type="submit" disabled={!body.trim()}>
+        <textarea value={body} onChange={(event) => setBody(event.target.value)} placeholder={channel === 'direct' ? activeRecipient ? `Message ${activeRecipient.name}` : 'Choose an employee before typing a direct message' : 'Type a message for the group'} maxLength={2000} disabled={channel === 'direct' && !recipientUserId} />
+        <button className="primary-button" type="submit" disabled={!body.trim() || (channel === 'direct' && !recipientUserId)}>
           <Send size={17} />
           Send
         </button>
@@ -4830,32 +4871,6 @@ function BranchesView({
             </article>
           ))}
         </div>
-      </section>
-
-      <section className="content-section">
-        <div className="section-heading">
-          <div>
-            <h2>{form.id ? 'Edit Branch' : 'Add Branch'}</h2>
-            <p>Managers can maintain their branch. Only admins can create branches or assign branch managers.</p>
-          </div>
-        </div>
-        {!canManageSelected && form.id && <div className="form-error">You can view {form.name}, but only its manager or an admin can edit it.</div>}
-        <form className="form-grid" onSubmit={submit}>
-          <label className="full">Branch/site name<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} disabled={form.id ? !canManageSelected : !superAdmin} /></label>
-          <label>Code<input value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} placeholder="LOS-01" disabled={form.id ? !canManageSelected : !superAdmin} /></label>
-          <label>Phone<input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} disabled={form.id ? !canManageSelected : !superAdmin} /></label>
-          <label className="full">Manager<select value={form.managerUserId || ''} onChange={(event) => setForm({ ...form, managerUserId: event.target.value, managerName: db.users.find((user) => user.id === event.target.value)?.name ?? form.managerName })} disabled={!superAdmin}><option value="">No assigned manager</option>{managerOptions.map((user) => <option key={user.id} value={user.id}>{user.name} / {roleLabels[user.role]}</option>)}</select></label>
-          <label className="full">Manager/contact person<input value={form.managerName} onChange={(event) => setForm({ ...form, managerName: event.target.value })} disabled={form.id ? !canManageSelected : !superAdmin} /></label>
-          <label className="full">Address<textarea value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} disabled={form.id ? !canManageSelected : !superAdmin} /></label>
-          <label className="checkbox-row full"><input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} disabled={!superAdmin || form.id === 'main'} /> Active branch</label>
-          <div className="form-actions full">
-            <button className="ghost-button" type="button" onClick={() => setForm(createBlank())}>Clear</button>
-            <button className="primary-button" type="submit" disabled={form.id ? !canManageSelected : !superAdmin}>
-              <Building2 size={17} />
-              Save branch
-            </button>
-          </div>
-        </form>
 
         {selectedBranch && (
           <div className="branch-access-panel">
@@ -4911,6 +4926,32 @@ function BranchesView({
             </div>
           </div>
         )}
+      </section>
+
+      <section className="content-section">
+        <div className="section-heading">
+          <div>
+            <h2>{form.id ? 'Edit Branch' : 'Add Branch'}</h2>
+            <p>Managers can maintain their branch. Only admins can create branches or assign branch managers.</p>
+          </div>
+        </div>
+        {!canManageSelected && form.id && <div className="form-error">You can view {form.name}, but only its manager or an admin can edit it.</div>}
+        <form className="form-grid" onSubmit={submit}>
+          <label className="full">Branch/site name<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} disabled={form.id ? !canManageSelected : !superAdmin} /></label>
+          <label>Code<input value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} placeholder="LOS-01" disabled={form.id ? !canManageSelected : !superAdmin} /></label>
+          <label>Phone<input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} disabled={form.id ? !canManageSelected : !superAdmin} /></label>
+          <label className="full">Manager<select value={form.managerUserId || ''} onChange={(event) => setForm({ ...form, managerUserId: event.target.value, managerName: db.users.find((user) => user.id === event.target.value)?.name ?? form.managerName })} disabled={!superAdmin}><option value="">No assigned manager</option>{managerOptions.map((user) => <option key={user.id} value={user.id}>{user.name} / {roleLabels[user.role]}</option>)}</select></label>
+          <label className="full">Manager/contact person<input value={form.managerName} onChange={(event) => setForm({ ...form, managerName: event.target.value })} disabled={form.id ? !canManageSelected : !superAdmin} /></label>
+          <label className="full">Address<textarea value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} disabled={form.id ? !canManageSelected : !superAdmin} /></label>
+          <label className="checkbox-row full"><input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} disabled={!superAdmin || form.id === 'main'} /> Active branch</label>
+          <div className="form-actions full">
+            <button className="ghost-button" type="button" onClick={() => setForm(createBlank())}>Clear</button>
+            <button className="primary-button" type="submit" disabled={form.id ? !canManageSelected : !superAdmin}>
+              <Building2 size={17} />
+              Save branch
+            </button>
+          </div>
+        </form>
       </section>
     </div>
   )

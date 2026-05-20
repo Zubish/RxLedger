@@ -195,6 +195,8 @@ export type AuditLog = {
 export type ChatMessage = {
   id: string
   userId: string
+  channel?: 'group' | 'direct'
+  recipientUserId?: string
   body: string
   createdAt: string
 }
