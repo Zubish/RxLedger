@@ -2217,6 +2217,7 @@ function Medicines({
   const [historyOpen, setHistoryOpen] = useState(false)
   const [historyDate, setHistoryDate] = useState('')
   const [cartItems, setCartItems] = useState<RequisitionCartItem[]>([])
+  const [releaseQuantities, setReleaseQuantities] = useState<Record<string, number>>({})
   const isEditing = drafts.length === 1 && Boolean(drafts[0].id)
   const stockCostTotals = useMemo(() => {
     const totals = new Map<string, number>()
@@ -2295,8 +2296,38 @@ function Medicines({
     setCartOpen(false)
   }
 
-  function fulfillRequisition(requestId: string) {
-    void executeAction('fulfillRequisition', { requestId }, 'Requisition fulfilled and stock transferred')
+  function requisitionItemAvailability(item: RequisitionItem) {
+    return stockRows.find((row) => row.batch.id === item.batchId)?.quantity ?? 0
+  }
+
+  function defaultReleaseQuantity(item: RequisitionItem) {
+    return Math.min(item.quantity, requisitionItemAvailability(item))
+  }
+
+  function getReleaseQuantity(item: RequisitionItem) {
+    return releaseQuantities[item.id] ?? defaultReleaseQuantity(item)
+  }
+
+  function updateReleaseQuantity(item: RequisitionItem, quantity: number) {
+    const maxRelease = Math.min(item.quantity, requisitionItemAvailability(item))
+    setReleaseQuantities((current) => ({
+      ...current,
+      [item.id]: Math.max(0, Math.min(Number(quantity) || 0, maxRelease)),
+    }))
+  }
+
+  function fulfillRequisition(request: Requisition) {
+    const items = request.items.map((item) => ({ itemId: item.id, quantity: getReleaseQuantity(item) }))
+    if (!items.some((item) => item.quantity > 0)) {
+      flash('Release at least one item quantity before fulfilling this request')
+      return
+    }
+    void executeAction('fulfillRequisition', { requestId: request.id, items }, 'Requisition fulfilled and stock transferred')
+    setReleaseQuantities((current) => {
+      const next = { ...current }
+      request.items.forEach((item) => delete next[item.id])
+      return next
+    })
   }
 
   function rejectRequisition(requestId: string) {
@@ -2671,10 +2702,30 @@ function Medicines({
                     {request.items.map((item) => {
                       const medicine = db.medicines.find((entry) => entry.id === item.medicineId)
                       const batch = db.batches.find((entry) => entry.id === item.batchId)
-                      return <span key={item.id}>{medicine?.brandName ?? item.medicineId} / {batch?.batchNumber ?? item.batchId} / Qty {number.format(item.quantity)}</span>
+                      const available = requisitionItemAvailability(item)
+                      const maxRelease = Math.min(item.quantity, available)
+                      return (
+                        <div className="requisition-release-row" key={item.id}>
+                          <span>
+                            {medicine?.brandName ?? item.medicineId} / {batch?.batchNumber ?? item.batchId}
+                            <small>Requested {number.format(item.quantity)} / available {number.format(available)}</small>
+                          </span>
+                          <label>
+                            Release qty
+                            <input
+                              type="number"
+                              min="0"
+                              max={maxRelease}
+                              value={numberInputValue(getReleaseQuantity(item))}
+                              onChange={(event) => updateReleaseQuantity(item, Number(event.target.value))}
+                              disabled={!canFulfillActiveBranch}
+                            />
+                          </label>
+                        </div>
+                      )
                     })}
                     <div className="button-row">
-                      <button className="primary-button" type="button" onClick={() => fulfillRequisition(request.id)} disabled={!canFulfillActiveBranch}>
+                      <button className="primary-button" type="button" onClick={() => fulfillRequisition(request)} disabled={!canFulfillActiveBranch}>
                         <PackageCheck size={16} />
                         Fulfill
                       </button>
@@ -2700,6 +2751,15 @@ function Medicines({
                     <article className="line-card" key={request.id}>
                       <strong>{getBranchName(db, request.requestingBranchId)} from {getBranchName(db, request.sourceBranchId)}</strong>
                       <span>{request.status} / {new Date(request.createdAt).toLocaleString()}</span>
+                      {request.items.map((item) => {
+                        const medicine = db.medicines.find((entry) => entry.id === item.medicineId)
+                        return (
+                          <span key={item.id}>
+                            {medicine?.brandName ?? item.medicineId} / requested {number.format(item.quantity)}
+                            {item.fulfilledQuantity !== undefined ? ` / released ${number.format(item.fulfilledQuantity)}` : ''}
+                          </span>
+                        )
+                      })}
                     </article>
                   )) : <div className="empty-state">No requisition history for this filter.</div>}
                 </div>

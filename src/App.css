@@ -1201,6 +1201,32 @@ td strong {
   font-size: 14px;
 }
 
+.requisition-release-row {
+  align-items: end;
+  border: 1px solid #dce6e7;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) 132px;
+  padding: 10px;
+}
+
+.requisition-release-row > span {
+  color: #172024;
+  display: grid;
+  font-size: 13px;
+  gap: 4px;
+}
+
+.requisition-release-row small {
+  color: #68777e;
+  font-size: 12px;
+}
+
+.requisition-release-row label {
+  gap: 5px;
+}
+
 .pos-layout {
   align-items: start;
 }

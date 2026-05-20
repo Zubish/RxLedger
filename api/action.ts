@@ -678,12 +678,22 @@ function fulfillRequisition(db: Database, actorId: string, payload: Record<strin
   if (!request || request.status !== 'pending') throw new Error('Pending requisition not found')
   if (!canWriteBranch(actor, request.sourceBranchId, getPrimaryAdminId(db))) throw new Error('You need branch posting access to fulfill this request')
   const before = { ...request, items: request.items.map((item) => ({ ...item })) }
+  const releaseInputs = Array.isArray(payload?.items) ? (payload.items as Record<string, unknown>[]) : []
+  const releaseByItem = new Map(releaseInputs.map((input) => [
+    requireString(input.itemId ?? input.id, 'Requisition item'),
+    Math.max(0, requireNumber(input.quantity, 'Release quantity')),
+  ]))
   const transferEntries = []
   const transferBatches = []
+  let totalReleased = 0
   for (const item of request.items) {
     const sourceBatch = db.batches.find((batch) => batch.id === item.batchId)
     if (!sourceBatch) throw new Error('Source batch not found')
-    if (item.quantity > getBatchAvailable(db, sourceBatch.id)) throw new Error('A requested batch no longer has enough stock')
+    const releaseQuantity = releaseByItem.has(item.id) ? releaseByItem.get(item.id) ?? 0 : item.quantity
+    if (releaseQuantity > item.quantity) throw new Error('Release quantity cannot exceed requested quantity')
+    if (releaseQuantity > getBatchAvailable(db, sourceBatch.id)) throw new Error('A requested batch no longer has enough stock')
+    item.fulfilledQuantity = releaseQuantity
+    if (releaseQuantity <= 0) continue
     const destinationBatch = {
       ...sourceBatch,
       id: id('bat'),
@@ -697,7 +707,7 @@ function fulfillRequisition(db: Database, actorId: string, payload: Record<strin
       medicineId: item.medicineId,
       batchId: sourceBatch.id,
       type: 'stock-out' as LedgerType,
-      quantity: -item.quantity,
+      quantity: -releaseQuantity,
       reason: 'Internal requisition transfer',
       reference,
       userId: actorId,
@@ -710,7 +720,7 @@ function fulfillRequisition(db: Database, actorId: string, payload: Record<strin
       medicineId: item.medicineId,
       batchId: destinationBatch.id,
       type: 'stock-in' as LedgerType,
-      quantity: item.quantity,
+      quantity: releaseQuantity,
       reason: 'Internal requisition received',
       reference,
       userId: actorId,
@@ -718,8 +728,9 @@ function fulfillRequisition(db: Database, actorId: string, payload: Record<strin
       fromBranchId: request.sourceBranchId,
       toBranchId: request.requestingBranchId,
     })
-    item.fulfilledQuantity = item.quantity
+    totalReleased += releaseQuantity
   }
+  if (totalReleased <= 0) throw new Error('Release at least one item quantity to fulfill this requisition')
   db.batches.unshift(...transferBatches)
   db.ledger.unshift(...transferEntries)
   request.status = 'fulfilled'
