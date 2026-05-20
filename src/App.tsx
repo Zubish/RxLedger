@@ -482,6 +482,12 @@ const movementLabels: Record<LedgerType, string> = {
   'customer-return': 'Customer Return',
 }
 
+const movementFilterOptions = [
+  ...Object.entries(movementLabels).map(([value, label]) => ({ value, label })),
+  { value: 'pos', label: 'POS' },
+  { value: 'internal-transfer', label: 'Internal Transfer' },
+]
+
 const today = () => new Date().toISOString().slice(0, 10)
 const money = new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' })
 const number = new Intl.NumberFormat('en-NG')
@@ -783,6 +789,15 @@ function exportCsv(filename: string, rows: ReportRow[]) {
   anchor.download = filename
   anchor.click()
   URL.revokeObjectURL(url)
+}
+
+function escapeHtml(value: unknown) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
 }
 
 function isNotificationVisible(db: Database, currentUser: User, notification: AppNotification, activeBranch?: Branch) {
@@ -3479,7 +3494,6 @@ function POSView({
   const currentDraft = db.posDrafts.find((draft) => draft.userId === currentUser.id && draft.branchId === activeBranch.id && draft.expiresAt > new Date().toISOString())
   const [query, setQuery] = useState('')
   const [scan, setScan] = useState('')
-  const [category, setCategory] = useState('All')
   const [cart, setCart] = useState<CartItem[]>(() => currentDraft?.items.map((item) => ({
     rowId: id('pos'),
     itemType: item.itemType,
@@ -3496,22 +3510,28 @@ function POSView({
   const [selectedDraftId, setSelectedDraftId] = useState(currentDraft?.id ?? '')
   const [draftsOpen, setDraftsOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
-  const [historyDate, setHistoryDate] = useState('')
+  const [historyStartDate, setHistoryStartDate] = useState(today())
+  const [historyEndDate, setHistoryEndDate] = useState(today())
 
   const stockByMedicine = useMemo(() => aggregateMedicineStock(stockRows.filter((row) => row.quantity > 0 && row.daysToExpiry >= 0)), [stockRows])
-  const allSaleOptions: SaleOption[] = [
+  const allSaleOptions: SaleOption[] = useMemo(() => [
     ...db.medicines
       .filter((medicine) => medicine.active && (stockByMedicine.get(medicine.id) ?? 0) > 0)
-      .map((medicine) => ({
-        itemType: 'medicine' as const,
-        itemId: medicine.id,
-        title: medicine.brandName,
-        meta: `${medicineMeta(medicine)} / ${sellableUnitLabel(medicine)}`,
-        category: medicine.category || medicine.form || 'Medicines',
-        available: stockByMedicine.get(medicine.id) ?? 0,
-        unitPrice: medicine.sellingPrice || defaultMedicinePrice(medicine.id),
-        scanCodes: [medicine.sku, medicine.nafdacNumber, ...medicine.barcodes].filter(Boolean),
-      })),
+      .map((medicine) => {
+        const batchPrice = stockRows
+          .filter((row) => row.medicine.id === medicine.id && row.quantity > 0 && row.daysToExpiry >= 0)
+          .sort((a, b) => a.batch.expiryDate.localeCompare(b.batch.expiryDate))[0]?.batch.sellingPrice ?? 0
+        return {
+          itemType: 'medicine' as const,
+          itemId: medicine.id,
+          title: medicine.brandName,
+          meta: `${medicineMeta(medicine)} / ${sellableUnitLabel(medicine)}`,
+          category: medicine.category || medicine.form || 'Medicines',
+          available: stockByMedicine.get(medicine.id) ?? 0,
+          unitPrice: medicine.sellingPrice || batchPrice,
+          scanCodes: [medicine.sku, medicine.nafdacNumber, ...medicine.barcodes].filter(Boolean),
+        }
+      }),
     ...db.products
       .filter((product) => product.active && product.quantity > 0)
       .map((product) => ({
@@ -3524,14 +3544,38 @@ function POSView({
         unitPrice: product.sellingPrice,
         scanCodes: [product.sku, ...product.barcodes].filter(Boolean),
       })),
-  ]
-  const categories = ['All', ...Array.from(new Set(allSaleOptions.map((option) => option.category).filter(Boolean)))].slice(0, 7)
+  ], [db.medicines, db.products, stockByMedicine, stockRows])
+  const branchSales = useMemo(() => db.sales
+    .filter((sale) => sale.branchId === activeBranch.id)
+    .sort((a, b) => b.soldAt.localeCompare(a.soldAt)), [activeBranch.id, db.sales])
+  const frequentlySoldOptions = useMemo(() => {
+    const totals = new Map<string, { quantity: number; lastSoldAt: string }>()
+    branchSales.forEach((sale) => {
+      sale.items.forEach((item) => {
+        const itemId = item.itemType === 'product' ? item.productId : item.medicineId
+        if (!itemId) return
+        const key = `${item.itemType}:${itemId}`
+        const current = totals.get(key)
+        totals.set(key, {
+          quantity: (current?.quantity ?? 0) + item.quantity,
+          lastSoldAt: current && current.lastSoldAt > sale.soldAt ? current.lastSoldAt : sale.soldAt,
+        })
+      })
+    })
+    return allSaleOptions
+      .map((option) => ({ option, sales: totals.get(`${option.itemType}:${option.itemId}`) }))
+      .filter((entry) => entry.sales && entry.option.available > 0)
+      .sort((a, b) => (b.sales?.quantity ?? 0) - (a.sales?.quantity ?? 0) || (b.sales?.lastSoldAt ?? '').localeCompare(a.sales?.lastSoldAt ?? ''))
+      .map((entry) => entry.option)
+      .slice(0, 16)
+  }, [allSaleOptions, branchSales])
   const saleOptions = allSaleOptions
-    .filter((medicine) => {
-      const text = `${medicine.title} ${medicine.meta} ${medicine.scanCodes.join(' ')}`.toLowerCase()
-      return (category === 'All' || medicine.category === category) && text.includes(query.toLowerCase())
+    .filter((item) => {
+      const text = `${item.title} ${item.meta} ${item.category} ${item.scanCodes.join(' ')}`.toLowerCase()
+      return text.includes(query.toLowerCase())
     })
     .slice(0, 16)
+  const visibleSaleOptions = query.trim() ? saleOptions : frequentlySoldOptions
   const cartRows = cart.map((item) => {
     const option = saleOptions.find((entry) => entry.itemType === item.itemType && entry.itemId === item.itemId)
       ?? makeSaleOption(item.itemType, item.itemId)
@@ -3544,10 +3588,17 @@ function POSView({
   const safeDiscount = discountMode === 'percent' ? Math.min(subtotal, subtotal * Math.min(discountInput, 100) / 100) : Math.min(discountInput, subtotal)
   const total = Math.max(0, subtotal - safeDiscount)
   const changeDue = Math.max(0, (Number(cashPaid) || 0) - total)
-  const branchSales = db.sales
-    .filter((sale) => sale.branchId === activeBranch.id)
-    .sort((a, b) => b.soldAt.localeCompare(a.soldAt))
-  const filteredSales = branchSales.filter((sale) => !historyDate || sale.soldAt.slice(0, 10) === historyDate)
+  const filteredSales = branchSales.filter((sale) => {
+    const soldDate = sale.soldAt.slice(0, 10)
+    return (!historyStartDate || soldDate >= historyStartDate) && (!historyEndDate || soldDate <= historyEndDate)
+  })
+  const filteredSalesTotal = filteredSales.reduce((sum, sale) => sum + (sale.total ?? sale.subtotal), 0)
+  const filteredSalesDiscount = filteredSales.reduce((sum, sale) => sum + (sale.discount ?? 0), 0)
+  const filteredSalesItems = filteredSales.reduce((sum, sale) => sum + sale.items.reduce((itemSum, item) => itemSum + item.quantity, 0), 0)
+  const paymentTotals = filteredSales.reduce<Record<string, number>>((totals, sale) => {
+    totals[sale.paymentMethod] = (totals[sale.paymentMethod] ?? 0) + (sale.total ?? sale.subtotal)
+    return totals
+  }, {})
   const branchDrafts = db.posDrafts
     .filter((draft) => draft.branchId === activeBranch.id && draft.expiresAt > new Date().toISOString())
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
@@ -3726,6 +3777,66 @@ function POSView({
     resetSaleForm()
   }
 
+  function printSalesHistory() {
+    if (!filteredSales.length) return
+    const period = `${historyStartDate || 'Start'} to ${historyEndDate || 'End'}`
+    const rows = filteredSales.map((sale) => {
+      const cashier = db.users.find((user) => user.id === sale.cashierUserId)?.name ?? 'Unknown'
+      const items = sale.items.map((item) => `
+        <li>${escapeHtml(item.itemName || item.medicineId || item.productId)} - ${number.format(item.quantity)} x ${money.format(item.unitPrice)} = ${money.format(item.lineTotal)}</li>
+      `).join('')
+      return `
+        <article>
+          <h3>${escapeHtml(sale.reference)} - ${money.format(sale.total ?? sale.subtotal)}</h3>
+          <p>${new Date(sale.soldAt).toLocaleString()} | Cashier: ${escapeHtml(cashier)} | Payment: ${escapeHtml(sale.paymentMethod)}</p>
+          <p>Customer: ${escapeHtml(sale.customerName || 'Walk-in customer')}${sale.customerPhone ? ` | ${escapeHtml(sale.customerPhone)}` : ''}</p>
+          <ul>${items}</ul>
+          <p>Discount: ${money.format(sale.discount || 0)} | Subtotal: ${money.format(sale.subtotal)} | Total: ${money.format(sale.total ?? sale.subtotal)}</p>
+        </article>
+      `
+    }).join('')
+    const paymentSummary = Object.entries(paymentTotals).map(([method, amount]) => `<li>${escapeHtml(method)}: ${money.format(amount)}</li>`).join('')
+    const win = window.open('', '_blank', 'width=900,height=700')
+    if (!win) return
+    win.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>POS sales reconciliation</title>
+          <style>
+            body { color: #172024; font-family: Arial, sans-serif; margin: 32px; }
+            header { border-bottom: 2px solid #006b45; margin-bottom: 18px; padding-bottom: 12px; }
+            h1 { margin: 0 0 8px; }
+            article { border-bottom: 1px solid #d7e4e3; padding: 14px 0; }
+            h3 { margin: 0 0 6px; }
+            p, li { font-size: 13px; }
+            .summary { display: grid; gap: 8px; grid-template-columns: repeat(4, 1fr); margin: 18px 0; }
+            .summary div { border: 1px solid #d7e4e3; border-radius: 8px; padding: 10px; }
+            @media print { button { display: none; } }
+          </style>
+        </head>
+        <body>
+          <header>
+            <h1>${escapeHtml(db.settings.accountName)} POS sales reconciliation</h1>
+            <p>${escapeHtml(activeBranch.name)} | ${escapeHtml(period)}</p>
+            <button onclick="window.print()">Print</button>
+          </header>
+          <section class="summary">
+            <div><strong>${number.format(filteredSales.length)}</strong><br />sales</div>
+            <div><strong>${number.format(filteredSalesItems)}</strong><br />items sold</div>
+            <div><strong>${money.format(filteredSalesDiscount)}</strong><br />discount</div>
+            <div><strong>${money.format(filteredSalesTotal)}</strong><br />total sales</div>
+          </section>
+          <h2>Payment totals</h2>
+          <ul>${paymentSummary || '<li>No payment totals</li>'}</ul>
+          ${rows}
+        </body>
+      </html>
+    `)
+    win.document.close()
+    win.focus()
+  }
+
   return (
     <div className="pos-redesign">
       <div className="pos-window">
@@ -3773,22 +3884,15 @@ function POSView({
               </button>
             </div>
 
-            <div className="pos-category-row">
-              {categories.map((item) => (
-                <button
-                  className={category === item ? 'active' : ''}
-                  key={item}
-                  type="button"
-                  onClick={() => setCategory(item)}
-                  disabled={!canSell}
-                >
-                  {item}
-                </button>
-              ))}
+            <div className="pos-quick-heading">
+              <div>
+                <strong>{query.trim() ? 'Search results' : 'Frequently sold items'}</strong>
+                <span>{query.trim() ? 'Matching stocked Pharmacy and Mart items' : 'Based on real sales history and current stock availability'}</span>
+              </div>
             </div>
 
             <div className="pos-catalog-grid">
-              {saleOptions.map((option) => {
+              {visibleSaleOptions.map((option) => {
                 const tone = optionTone(option)
                 return (
                   <button className="pos-catalog-card" type="button" key={`${option.itemType}-${option.itemId}`} onClick={() => addItem(option.itemType, option.itemId)} disabled={!canSell || option.unitPrice <= 0}>
@@ -3805,7 +3909,11 @@ function POSView({
                   </button>
                 )
               })}
-              {!saleOptions.length && <div className="empty-state">No stocked medicines or retail products match this search.</div>}
+              {!visibleSaleOptions.length && (
+                <div className="empty-state">
+                  {query.trim() ? 'No stocked medicines or retail products match this search.' : 'No frequently sold stocked items yet. Use search or scan to sell the first items.'}
+                </div>
+              )}
             </div>
           </section>
 
@@ -3945,16 +4053,36 @@ function POSView({
               </div>
               <button type="button" onClick={() => setHistoryOpen(false)} aria-label="Close sales history"><X size={18} /></button>
             </header>
-            <label className="pos-modal-filter">
-              <span>Filter by date</span>
-              <input type="date" value={historyDate} onChange={(event) => setHistoryDate(event.target.value)} />
-            </label>
+            <div className="pos-modal-filter pos-period-filter">
+              <label>
+                <span>Start date</span>
+                <input type="date" value={historyStartDate} onChange={(event) => setHistoryStartDate(event.target.value)} />
+              </label>
+              <label>
+                <span>End date</span>
+                <input type="date" value={historyEndDate} onChange={(event) => setHistoryEndDate(event.target.value)} />
+              </label>
+              <button type="button" onClick={printSalesHistory} disabled={!filteredSales.length}>
+                <Printer size={15} />
+                Print
+              </button>
+            </div>
+            <div className="pos-sales-summary">
+              <div><span>Sales</span><strong>{number.format(filteredSales.length)}</strong></div>
+              <div><span>Items sold</span><strong>{number.format(filteredSalesItems)}</strong></div>
+              <div><span>Discount</span><strong>{money.format(filteredSalesDiscount)}</strong></div>
+              <div><span>Total</span><strong>{money.format(filteredSalesTotal)}</strong></div>
+            </div>
+            <div className="pos-payment-summary">
+              {Object.entries(paymentTotals).map(([method, amount]) => <span key={method}>{method}: <strong>{money.format(amount)}</strong></span>)}
+              {!Object.keys(paymentTotals).length && <span>No sales in this period</span>}
+            </div>
             <div className="pos-modal-list">
               {filteredSales.map((sale) => (
                 <article className="sale-history-item" key={sale.id}>
                   <div>
                     <strong>{money.format(sale.total ?? sale.subtotal)} / {sale.paymentMethod}</strong>
-                    <span>{new Date(sale.soldAt).toLocaleString()} / Ref {sale.reference}{sale.bookingCode ? ` / Draft ${sale.bookingCode}` : ''}</span>
+                    <span>{new Date(sale.soldAt).toLocaleString()} / Ref {sale.reference}{sale.bookingCode ? ` / Draft ${sale.bookingCode}` : ''} / Cashier {getUserName(db, sale.cashierUserId)}</span>
                   </div>
                   <span>{sale.customerName || 'Walk-in customer'}{sale.customerPhone ? ` / ${sale.customerPhone}` : ''}</span>
                   <ul>
@@ -3965,7 +4093,7 @@ function POSView({
                   {sale.discount > 0 && <small>Discount: {money.format(sale.discount)}</small>}
                 </article>
               ))}
-              {!filteredSales.length && <div className="empty-state">No sales recorded for this date.</div>}
+              {!filteredSales.length && <div className="empty-state">No sales recorded for this period.</div>}
             </div>
           </section>
         </div>
@@ -4083,7 +4211,9 @@ function Adjustments({ activeBranch, stockRows, canAdjust, executeAction, flash 
 function Reports({ db, stockRows, stockTotals, activeBranch }: { db: Database; stockRows: StockRow[]; stockTotals: Map<string, number>; activeBranch?: Branch }) {
   const [report, setReport] = useState<'stock' | 'movement' | 'supplier' | 'expiry' | 'reorder'>('stock')
   const [stockItemType, setStockItemType] = useState<'medicine' | 'product'>('medicine')
-  const [movementDate, setMovementDate] = useState('')
+  const [movementItemType, setMovementItemType] = useState<'medicine' | 'product'>('medicine')
+  const [movementStartDate, setMovementStartDate] = useState('')
+  const [movementEndDate, setMovementEndDate] = useState('')
   const [movementType, setMovementType] = useState('')
   const [medicineFilter, setMedicineFilter] = useState('')
   const [genericFilter, setGenericFilter] = useState('')
@@ -4091,23 +4221,24 @@ function Reports({ db, stockRows, stockTotals, activeBranch }: { db: Database; s
   const [supplierFilter, setSupplierFilter] = useState('')
   const [supplierDate, setSupplierDate] = useState('')
   const categories = useMemo(() => {
-    const source = report === 'stock' && stockItemType === 'medicine'
-      ? db.medicines.map((medicine) => medicine.category)
-      : report === 'stock'
-        ? db.products.map((product) => product.category)
+    const source = report === 'stock'
+      ? stockItemType === 'medicine'
+        ? db.medicines.map((medicine) => medicine.category)
+        : db.products.map((product) => product.category)
+      : report === 'movement'
+        ? movementItemType === 'medicine'
+          ? db.medicines.map((medicine) => medicine.category)
+          : db.products.map((product) => product.category)
         : [...db.medicines.map((medicine) => medicine.category), ...db.products.map((product) => product.category)]
     return Array.from(new Set(source.filter(Boolean))).sort((a, b) => a.localeCompare(b))
-  }, [db.medicines, db.products, report, stockItemType])
+  }, [db.medicines, db.products, movementItemType, report, stockItemType])
 
   const rows: ReportRow[] = useMemo(() => {
     const scopedBatchIds = new Set(stockRows.map((row) => row.batch.id))
-    const scopedBranchIds = new Set(stockRows.map((row) => row.batch.branchId))
-    if (!scopedBranchIds.size) {
-      if (activeBranch) scopedBranchIds.add(activeBranch.id)
-      else db.branches.filter((branch) => branch.active).forEach((branch) => scopedBranchIds.add(branch.id))
-    }
+    const scopedBranchIds = new Set(activeBranch ? [activeBranch.id] : db.branches.filter((branch) => branch.active).map((branch) => branch.id))
     if (report === 'movement') {
       return db.ledger
+        .filter((entry) => movementItemType === 'product' ? entry.itemType === 'product' : entry.itemType !== 'product')
         .filter((entry) => entry.itemType === 'product' ? scopedBranchIds.has(entry.toBranchId || entry.fromBranchId || '') : scopedBatchIds.has(entry.batchId))
         .filter((entry) => {
           const medicine = entry.itemType === 'product' ? undefined : db.medicines.find((item) => item.id === entry.medicineId)
@@ -4115,8 +4246,11 @@ function Reports({ db, stockRows, stockTotals, activeBranch }: { db: Database; s
           const itemName = medicine?.brandName ?? product?.name ?? ''
           const genericName = medicine?.genericName ?? ''
           const category = medicine?.category || product?.category || ''
-          return (!movementDate || entry.createdAt.slice(0, 10) === movementDate) &&
-            (!movementType || entry.type === movementType) &&
+          const semanticType = entry.reason === 'POS sale' ? 'pos' : entry.reason.startsWith('Internal requisition') ? 'internal-transfer' : entry.type
+          const entryDate = entry.createdAt.slice(0, 10)
+          return (!movementStartDate || entryDate >= movementStartDate) &&
+            (!movementEndDate || entryDate <= movementEndDate) &&
+            (!movementType || semanticType === movementType) &&
             (!medicineFilter || itemName.toLowerCase().includes(medicineFilter.toLowerCase())) &&
             (!genericFilter || genericName.toLowerCase().includes(genericFilter.toLowerCase())) &&
             (!categoryFilter || category === categoryFilter)
@@ -4130,9 +4264,14 @@ function Reports({ db, stockRows, stockTotals, activeBranch }: { db: Database; s
           const branchName = getBranchName(db, batch?.branchId ?? entry.toBranchId ?? entry.fromBranchId ?? 'main')
           const from = entry.fromBranchId ? getBranchName(db, entry.fromBranchId) : entry.type === 'stock-in' ? supplier?.name ?? 'Supplier' : entry.type === 'customer-return' ? 'Customer' : branchName
           const to = entry.toBranchId ? getBranchName(db, entry.toBranchId) : entry.type === 'supplier-return' ? supplier?.name ?? 'Supplier' : entry.type === 'stock-out' ? entry.reason : entry.type === 'write-off' ? 'Write-off' : branchName
+          const sale = entry.reason === 'POS sale' ? db.sales.find((item) => item.reference === entry.reference) : undefined
+          const saleItem = sale?.items.find((item) => entry.itemType === 'product' ? item.productId === entry.productId : item.medicineId === entry.medicineId && (!item.batchId || item.batchId === entry.batchId))
+          const semanticType = entry.reason === 'POS sale' ? 'POS' : entry.reason.startsWith('Internal requisition') ? 'Internal Transfer' : movementLabels[entry.type]
+          const unitPrice = saleItem?.unitPrice ?? entry.sellingPrice ?? 0
+          const salesValue = entry.reason === 'POS sale' ? Math.abs(entry.quantity) * unitPrice : 0
           return {
             Date: new Date(entry.createdAt).toLocaleString(),
-            Type: movementLabels[entry.type],
+            Type: semanticType,
             'Item type': entry.itemType === 'product' ? 'Mart' : 'Pharmacy',
             Medicine: medicine ? medicineReportName(medicine) : product?.name ?? entry.productId ?? 'Unknown',
             Generic: medicine?.genericName ?? '-',
@@ -4144,6 +4283,8 @@ function Reports({ db, stockRows, stockTotals, activeBranch }: { db: Database; s
             From: from,
             To: to,
             Quantity: entry.quantity,
+            'Unit Price': unitPrice || '-',
+            'Sales Value': salesValue || '-',
             Reason: entry.reason,
             Reference: entry.reference,
             User: user?.name ?? 'Unknown',
@@ -4256,8 +4397,10 @@ function Reports({ db, stockRows, stockTotals, activeBranch }: { db: Database; s
         Branch: row.branch?.name ?? row.batch.branchId,
         Location: row.batch.location,
       }))
-  }, [activeBranch, categoryFilter, db, genericFilter, medicineFilter, movementDate, movementType, report, stockItemType, stockRows, stockTotals, supplierDate, supplierFilter])
+  }, [activeBranch, categoryFilter, db, genericFilter, medicineFilter, movementEndDate, movementItemType, movementStartDate, movementType, report, stockItemType, stockRows, stockTotals, supplierDate, supplierFilter])
   const movementQuantityTotal = report === 'movement' ? rows.reduce((sum, row) => sum + Number(row.Quantity ?? 0), 0) : 0
+  const movementUnitsMoved = report === 'movement' ? rows.reduce((sum, row) => sum + Math.abs(Number(row.Quantity ?? 0)), 0) : 0
+  const movementSalesTotal = report === 'movement' ? rows.reduce((sum, row) => sum + (Number(row['Sales Value']) || 0), 0) : 0
   const stockQuantityTotal = report === 'stock' ? rows.reduce((sum, row) => sum + Number(row.Quantity ?? 0), 0) : 0
   const stockCostTotal = report === 'stock' ? rows.reduce((sum, row) => sum + Number(row['Cost Value'] ?? 0), 0) : 0
 
@@ -4287,13 +4430,26 @@ function Reports({ db, stockRows, stockTotals, activeBranch }: { db: Database; s
         <button className={report === 'reorder' ? 'active' : ''} onClick={() => setReport('reorder')} type="button">Reorder</button>
       </div>
       {report === 'movement' && (
-        <div className="report-filters">
-          <label>Date<input type="date" value={movementDate} onChange={(event) => setMovementDate(event.target.value)} /></label>
-          <label>Type<select value={movementType} onChange={(event) => setMovementType(event.target.value)}><option value="">All types</option>{Object.entries(movementLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-          <label>Item<input value={medicineFilter} onChange={(event) => setMedicineFilter(event.target.value)} placeholder="Item name" /></label>
-          <label>Generic<input value={genericFilter} onChange={(event) => setGenericFilter(event.target.value)} placeholder="Generic name" /></label>
-          <label>Category<select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="">All categories</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
-        </div>
+        <>
+          <div className="report-mode-switch">
+            <button className={movementItemType === 'medicine' ? 'active' : ''} type="button" onClick={() => { setMovementItemType('medicine'); setCategoryFilter(''); setMedicineFilter(''); setGenericFilter('') }}>
+              <Pill size={16} />
+              Pharmacy
+            </button>
+            <button className={movementItemType === 'product' ? 'active' : ''} type="button" onClick={() => { setMovementItemType('product'); setCategoryFilter(''); setMedicineFilter(''); setGenericFilter('') }}>
+              <Boxes size={16} />
+              Mart
+            </button>
+          </div>
+          <div className="report-filters">
+            <label>Start date<input type="date" value={movementStartDate} onChange={(event) => setMovementStartDate(event.target.value)} /></label>
+            <label>End date<input type="date" value={movementEndDate} onChange={(event) => setMovementEndDate(event.target.value)} /></label>
+            <label>Type<select value={movementType} onChange={(event) => setMovementType(event.target.value)}><option value="">All types</option>{movementFilterOptions.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}</select></label>
+            <label>{movementItemType === 'medicine' ? 'Brand' : 'Product'}<input value={medicineFilter} onChange={(event) => setMedicineFilter(event.target.value)} placeholder={movementItemType === 'medicine' ? 'Brand name' : 'Product name'} /></label>
+            {movementItemType === 'medicine' && <label>Generic<input value={genericFilter} onChange={(event) => setGenericFilter(event.target.value)} placeholder="Generic name" /></label>}
+            <label>Category<select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="">All categories</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
+          </div>
+        </>
       )}
       {report === 'stock' && (
         <>
@@ -4328,8 +4484,8 @@ function Reports({ db, stockRows, stockTotals, activeBranch }: { db: Database; s
       {report === 'movement' && (
         <div className="report-summary">
           <Archive size={16} />
-          <strong>{number.format(movementQuantityTotal)}</strong>
-          <span>total units moved{categoryFilter ? ` in ${categoryFilter}` : ''}</span>
+          <strong>{number.format(movementUnitsMoved)}</strong>
+          <span>units moved{categoryFilter ? ` in ${categoryFilter}` : ''} / net {number.format(movementQuantityTotal)} / POS sales value {money.format(movementSalesTotal)}</span>
         </div>
       )}
       <ReportTable rows={rows} />
