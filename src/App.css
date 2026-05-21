@@ -3085,6 +3085,245 @@ button:disabled {
   font-size: 13px;
 }
 
+.quest-coach {
+  background: #ffffff;
+  border: 1px solid #cfe0dc;
+  border-radius: 12px;
+  bottom: 20px;
+  box-shadow: 0 18px 48px rgba(18, 32, 37, 0.16);
+  display: grid;
+  gap: 10px;
+  max-width: min(380px, calc(100vw - 40px));
+  padding: 14px;
+  position: fixed;
+  right: 20px;
+  z-index: 25;
+}
+
+.quest-coach-head,
+.quest-status,
+.quest-actions,
+.quest-guide-link {
+  align-items: center;
+  display: flex;
+}
+
+.quest-coach-head {
+  justify-content: space-between;
+}
+
+.quest-coach-head span,
+.quest-guide-link {
+  color: #006b45;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 7px;
+  text-transform: uppercase;
+}
+
+.quest-coach-head button,
+.quest-guide-link {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.quest-progress {
+  background: #eef4f3;
+  border-radius: 999px;
+  height: 7px;
+  overflow: hidden;
+}
+
+.quest-progress span {
+  background: linear-gradient(90deg, #006b45, #2fa37d);
+  display: block;
+  height: 100%;
+}
+
+.quest-coach strong {
+  color: #172024;
+  font-size: 17px;
+}
+
+.quest-coach p {
+  color: #52636c;
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.quest-status {
+  color: #68777e;
+  font-size: 12px;
+  justify-content: space-between;
+}
+
+.quest-status b {
+  background: #eef4f3;
+  border-radius: 999px;
+  color: #52636c;
+  padding: 4px 8px;
+}
+
+.quest-status b.done {
+  background: #e3f6ec;
+  color: #006b45;
+}
+
+.quest-actions {
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.quest-actions button {
+  min-height: 34px;
+}
+
+.quest-guide-link {
+  justify-content: center;
+  min-height: 28px;
+}
+
+.guide-section {
+  display: grid;
+  gap: 16px;
+}
+
+.guide-hero {
+  align-items: center;
+  background:
+    linear-gradient(135deg, rgba(47, 163, 125, 0.12), rgba(71, 191, 255, 0.10)),
+    #f8fbfb;
+  border: 1px solid #d7e4e3;
+  border-radius: 12px;
+  display: flex;
+  gap: 12px;
+  padding: 14px;
+}
+
+.guide-hero svg {
+  color: #006b45;
+  flex: 0 0 auto;
+}
+
+.guide-hero strong,
+.guide-hero span {
+  display: block;
+}
+
+.guide-hero span {
+  color: #52636c;
+  font-size: 13px;
+  margin-top: 3px;
+}
+
+.guide-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.guide-card {
+  background: #ffffff;
+  border: 1px solid #d7e4e3;
+  border-radius: 12px;
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.guide-card h3 {
+  font-size: 16px;
+  margin: 0 0 5px;
+}
+
+.guide-card p {
+  color: #52636c;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 10px;
+}
+
+.guide-card ol {
+  color: #435056;
+  display: grid;
+  font-size: 13px;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.guide-card .ghost-button {
+  justify-self: start;
+}
+
+.guide-shot {
+  background:
+    radial-gradient(circle at 85% 12%, rgba(71, 191, 255, 0.22), transparent 28%),
+    linear-gradient(135deg, #f8fbfb, #ffffff);
+  border: 1px solid #d7e4e3;
+  border-radius: 10px;
+  min-height: 128px;
+  overflow: hidden;
+}
+
+.guide-shot-top {
+  background: #eef4f3;
+  display: flex;
+  gap: 5px;
+  padding: 9px;
+}
+
+.guide-shot-top span {
+  border-radius: 999px;
+  height: 9px;
+  width: 9px;
+}
+
+.guide-shot-top span:nth-child(1) {
+  background: #ff5f57;
+}
+
+.guide-shot-top span:nth-child(2) {
+  background: #ffbd2e;
+}
+
+.guide-shot-top span:nth-child(3) {
+  background: #28c840;
+}
+
+.guide-shot-body {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+}
+
+.guide-shot-body b {
+  color: #071114;
+  font-size: 15px;
+}
+
+.guide-shot-body span,
+.guide-shot-body em {
+  border-radius: 8px;
+  display: block;
+  font-style: normal;
+  min-height: 24px;
+  padding: 6px 8px;
+}
+
+.guide-shot-body span {
+  background: #e8f6f1;
+  color: #006b45;
+}
+
+.guide-shot-body em {
+  background: #071114;
+  color: #ffffff;
+  width: 70%;
+}
+
 .audit-item {
   align-items: center;
 }
@@ -3601,6 +3840,22 @@ button:disabled {
 
   .workspace-logo-editor {
     grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .quest-coach {
+    bottom: 12px;
+    left: 12px;
+    max-width: none;
+    right: 12px;
+  }
+
+  .quest-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .quest-actions button {
+    width: 100%;
   }
 
   .workspace-logo-editor .file-button,

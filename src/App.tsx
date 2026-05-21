@@ -7,6 +7,7 @@ import {
   Archive,
   Barcode,
   Bell,
+  BookOpen,
   Boxes,
   Building2,
   Calculator,
@@ -37,12 +38,14 @@ import {
   Search,
   Send,
   Settings,
+  Sparkles,
   ShoppingCart,
   ShieldCheck,
   Smartphone,
   StickyNote,
   Trash2,
   Truck,
+  Trophy,
   Upload,
   UserCheck,
   UserPlus,
@@ -95,6 +98,7 @@ type View =
   | 'audit'
   | 'users'
   | 'branches'
+  | 'guide'
   | 'settings'
 
 type User = {
@@ -304,6 +308,17 @@ type ChatMessage = {
   createdAt: string
 }
 
+type QuestStep = {
+  id: string
+  title: string
+  body: string
+  view: View
+  action: string
+  roles?: Role[]
+  superAdminOnly?: boolean
+  branchManagerOnly?: boolean
+}
+
 type PasswordResetRequest = {
   id: string
   userId: string
@@ -450,6 +465,7 @@ const views: Array<{ id: View; label: string; icon: typeof LayoutDashboard; admi
   { id: 'audit', label: 'Audit', icon: ShieldCheck },
   { id: 'users', label: 'Users', icon: Users, adminOnly: true },
   { id: 'branches', label: 'Branches', icon: Building2 },
+  { id: 'guide', label: 'Guide', icon: BookOpen },
   { id: 'settings', label: 'Settings', icon: Settings, adminOnly: true },
 ]
 
@@ -538,6 +554,25 @@ function compactMoney(value: number) {
 function numberInputValue(value: unknown) {
   const numeric = Number(value)
   return Number.isFinite(numeric) && numeric !== 0 ? numeric : ''
+}
+
+function safeStorageKey(db: Database, currentUser: User, suffix: string) {
+  return `rxledger:${db.settings.companySlug || db.settings.companyCode || 'workspace'}:${currentUser.id}:${suffix}`
+}
+
+function getStoredNumber(key: string, fallback = 0) {
+  if (typeof window === 'undefined') return fallback
+  const value = Number(window.localStorage.getItem(key))
+  return Number.isFinite(value) ? value : fallback
+}
+
+function getStoredBoolean(key: string) {
+  if (typeof window === 'undefined') return false
+  return window.localStorage.getItem(key) === 'true'
+}
+
+function setStoredValue(key: string, value: string) {
+  if (typeof window !== 'undefined') window.localStorage.setItem(key, value)
 }
 
 function medicineMeta(medicine: Medicine) {
@@ -814,6 +849,122 @@ function isChatMessageVisible(message: ChatMessage, currentUser: User) {
     return message.userId === currentUser.id || message.recipientUserId === currentUser.id
   }
   return true
+}
+
+function getQuestSteps(db: Database, currentUser: User): QuestStep[] {
+  const superAdmin = isSuperAdmin(db, currentUser)
+  const managesBranch = db.branches.some((branch) => canManageBranch(db, currentUser, branch.id))
+  const baseSteps: QuestStep[] = [
+    {
+      id: 'branch-switcher',
+      title: 'Choose your working branch',
+      body: 'Open the branch selector at the top right and switch to a branch/site so the dashboard reflects the workspace you are testing.',
+      view: 'dashboard',
+      action: 'Open dashboard',
+    },
+    {
+      id: 'chat',
+      title: 'Send a message',
+      body: 'Open Messages and try the group chat. If another staff account exists, switch to Direct message and send a private note.',
+      view: 'chat',
+      action: 'Open messages',
+    },
+  ]
+  const roleSteps: QuestStep[] = [
+    {
+      id: 'pos-open',
+      title: 'Run a POS test sale',
+      body: 'Open POS, search for an in-stock Pharmacy or Mart item, add it to the cart, then save it as a draft or complete it if you are the cashier.',
+      view: 'pos',
+      action: 'Open POS',
+      roles: ['cashier', 'pharmacist'],
+    },
+    {
+      id: 'sales-history',
+      title: 'Review sale history',
+      body: 'Use the history button on POS to filter sales by period and print the reconciliation summary for the beta test.',
+      view: 'pos',
+      action: 'Open POS history',
+      roles: ['cashier'],
+    },
+    {
+      id: 'receive-stock',
+      title: 'Receive stock',
+      body: 'Open Receive, search by name, SKU, or barcode, then confirm that Pharmacy and Mart receiving flows work as expected.',
+      view: 'receive',
+      action: 'Open Receive',
+      roles: ['inventory', 'pharmacist', 'admin'],
+    },
+    {
+      id: 'pharmacy-price',
+      title: 'Check Pharmacy prices',
+      body: 'Open Pharmacy and confirm cost price, selling price, barcode, and stock display look correct for medicines.',
+      view: 'medicines',
+      action: 'Open Pharmacy',
+      roles: ['inventory', 'pharmacist', 'admin'],
+    },
+    {
+      id: 'mart-products',
+      title: 'Check Mart products',
+      body: 'Open Mart and confirm non-medicinal products, quantities, prices, and barcode/SKU records are beta-ready.',
+      view: 'products',
+      action: 'Open Mart',
+      roles: ['inventory', 'cashier', 'admin'],
+    },
+    {
+      id: 'requisition',
+      title: 'Test internal requisition',
+      body: 'From Pharmacy, review requisitions and confirm requesting, fulfilling, and receiving between branches is clear.',
+      view: 'medicines',
+      action: 'Open Pharmacy',
+      roles: ['inventory', 'pharmacist', 'admin'],
+    },
+    {
+      id: 'branch-access',
+      title: 'Review branch staff access',
+      body: 'Open Branches and Sites, select a branch, then review the staff access section underneath the branch cards.',
+      view: 'branches',
+      action: 'Open branches',
+      branchManagerOnly: true,
+    },
+    {
+      id: 'reports',
+      title: 'Export a report',
+      body: 'Open Reports, switch between Pharmacy and Mart, filter stock or movement, then export CSV or Print/PDF.',
+      view: 'reports',
+      action: 'Open Reports',
+    },
+    {
+      id: 'settings-logo',
+      title: 'Confirm workspace identity',
+      body: 'Open Settings and verify the company logo, account name, and operational thresholds are correct.',
+      view: 'settings',
+      action: 'Open Settings',
+      superAdminOnly: true,
+    },
+    {
+      id: 'users',
+      title: 'Review user access',
+      body: 'Open Users and confirm pending users, active roles, and security events are ready for beta oversight.',
+      view: 'users',
+      action: 'Open Users',
+      superAdminOnly: true,
+    },
+    {
+      id: 'audit',
+      title: 'Inspect the audit trail',
+      body: 'Open Audit to confirm the app is recording important changes with actor, entity, and timestamp.',
+      view: 'audit',
+      action: 'Open Audit',
+      roles: ['viewer', 'admin'],
+    },
+  ]
+  return [...baseSteps, ...roleSteps].filter((step) => {
+    if (step.superAdminOnly && !superAdmin) return false
+    if (step.branchManagerOnly && !managesBranch && !superAdmin) return false
+    if (step.roles && !step.roles.includes(currentUser.role) && !superAdmin) return false
+    return true
+  })
 }
 
 function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Map<string, number>, currentUser: User, activeBranch?: Branch): AppNotification[] {
@@ -1447,8 +1598,10 @@ function App() {
           {activeView === 'audit' && <Audit db={db} />}
           {activeView === 'users' && <UserManagement db={db} currentUser={currentUser} executeAction={executeAction} flash={flash} />}
           {activeView === 'branches' && activeBranch && <BranchesView db={db} currentUser={currentUser} activeBranchId={activeBranch.id} setActiveBranchId={switchActiveBranch} executeAction={executeAction} />}
+          {activeView === 'guide' && <GuideView db={db} currentUser={currentUser} setActiveView={setActiveView} />}
           {activeView === 'settings' && <SettingsView db={db} canAdmin={canAdmin} executeAction={executeAction} />}
         </div>
+        <QuestCoach db={db} currentUser={currentUser} activeView={activeView} setActiveView={setActiveView} />
       </main>
     </div>
   )
@@ -4499,6 +4652,215 @@ function Reports({ db, stockRows, stockTotals, activeBranch }: { db: Database; s
       )}
       <ReportTable rows={rows} />
     </section>
+  )
+}
+
+function QuestCoach({ db, currentUser, activeView, setActiveView }: { db: Database; currentUser: User; activeView: View; setActiveView: (view: View) => void }) {
+  const steps = getQuestSteps(db, currentUser)
+  const indexKey = safeStorageKey(db, currentUser, 'quest-index')
+  const dismissedKey = safeStorageKey(db, currentUser, 'quest-dismissed')
+  const [index, setIndex] = useState(() => getStoredNumber(indexKey, 0))
+  const [dismissed, setDismissed] = useState(() => getStoredBoolean(dismissedKey))
+  const safeIndex = Math.min(index, Math.max(steps.length - 1, 0))
+  const step = steps[safeIndex]
+  const complete = step ? activeView === step.view : false
+  const progress = steps.length ? Math.round(((safeIndex + (complete ? 1 : 0)) / steps.length) * 100) : 100
+
+  useEffect(() => {
+    setStoredValue(indexKey, String(safeIndex))
+  }, [indexKey, safeIndex])
+
+  useEffect(() => {
+    setStoredValue(dismissedKey, String(dismissed))
+  }, [dismissed, dismissedKey])
+
+  if (dismissed || !step) return null
+
+  function next() {
+    if (safeIndex >= steps.length - 1) {
+      setDismissed(true)
+      return
+    }
+    setIndex(safeIndex + 1)
+  }
+
+  function previous() {
+    setIndex(Math.max(0, safeIndex - 1))
+  }
+
+  return (
+    <aside className="quest-coach" aria-label="Beta quest coach">
+      <div className="quest-coach-head">
+        <span><Trophy size={16} /> Beta quest</span>
+        <button type="button" onClick={() => setDismissed(true)}>Skip</button>
+      </div>
+      <div className="quest-progress" aria-label={`${progress}% complete`}>
+        <span style={{ width: `${progress}%` }} />
+      </div>
+      <strong>{step.title}</strong>
+      <p>{step.body}</p>
+      <div className="quest-status">
+        <span>{safeIndex + 1} of {steps.length}</span>
+        <b className={complete ? 'done' : ''}>{complete ? 'You are here' : roleLabels[currentUser.role]}</b>
+      </div>
+      <div className="quest-actions">
+        <button className="ghost-button" type="button" onClick={() => setActiveView(step.view)}>{step.action}</button>
+        <button className="ghost-button" type="button" onClick={previous} disabled={safeIndex === 0}>Back</button>
+        <button className="primary-button" type="button" onClick={next}>{safeIndex >= steps.length - 1 ? 'Finish' : 'Next'}</button>
+      </div>
+      <button className="quest-guide-link" type="button" onClick={() => setActiveView('guide')}>
+        <BookOpen size={15} />
+        Open role guide
+      </button>
+    </aside>
+  )
+}
+
+type GuideCard = {
+  id: string
+  title: string
+  summary: string
+  view: View
+  shot: 'branch' | 'pos' | 'receive' | 'reports' | 'access' | 'settings' | 'chat'
+  steps: string[]
+  roles?: Role[]
+  superAdminOnly?: boolean
+  branchManagerOnly?: boolean
+}
+
+const guideCards: GuideCard[] = [
+  {
+    id: 'branch',
+    title: 'Choose the correct branch',
+    summary: 'Start every shift by confirming the branch/site at the top right of the workspace.',
+    view: 'dashboard',
+    shot: 'branch',
+    steps: ['Open Dashboard.', 'Use the branch selector in the top bar.', 'Choose the branch you are working from.', 'Confirm cards and alerts refresh for that branch.'],
+  },
+  {
+    id: 'pos',
+    title: 'Complete a POS sale',
+    summary: 'Cashiers and pharmacists can find in-stock items, add them to cart, apply discounts, and print reconciliation history.',
+    view: 'pos',
+    shot: 'pos',
+    roles: ['cashier', 'pharmacist'],
+    steps: ['Open POS.', 'Search by product name, SKU, barcode, or use Frequently sold items.', 'Add items to cart and enter customer/payment details.', 'Save draft or complete sale if you are the cashier.'],
+  },
+  {
+    id: 'receive',
+    title: 'Receive Pharmacy and Mart stock',
+    summary: 'Inventory staff receive medicines and general products from the same workflow.',
+    view: 'receive',
+    shot: 'receive',
+    roles: ['inventory', 'pharmacist', 'admin'],
+    steps: ['Open Receive.', 'Switch between Pharmacy and Mart where needed.', 'Search by name, SKU, or barcode.', 'Enter invoice, supplier, cost, selling price, quantity, and optional batch/expiry for products.'],
+  },
+  {
+    id: 'reports',
+    title: 'Export stock and movement reports',
+    summary: 'Reports help beta testers check stock at hand, stock movement, POS value, suppliers, expiry, and reorder needs.',
+    view: 'reports',
+    shot: 'reports',
+    steps: ['Open Reports.', 'Choose Stock on hand or Movement ledger.', 'Switch between Pharmacy and Mart.', 'Filter by date, type, brand/product, generic, or category, then export CSV or print.'],
+  },
+  {
+    id: 'access',
+    title: 'Manage staff access',
+    summary: 'Super admins and branch managers can review which employees can work inside a selected branch.',
+    view: 'branches',
+    shot: 'access',
+    branchManagerOnly: true,
+    steps: ['Open Branches.', 'Select a branch/site card.', 'Review Staff Access underneath the branch list.', 'Tick access, set expiry dates where needed, and save changes.'],
+  },
+  {
+    id: 'settings',
+    title: 'Brand the workspace',
+    summary: 'Super admins can confirm company identity, logo, default branch, and operational thresholds.',
+    view: 'settings',
+    shot: 'settings',
+    superAdminOnly: true,
+    steps: ['Open Settings.', 'Upload or remove the workspace logo.', 'Confirm company name and licence details.', 'Save near-expiry and approval thresholds.'],
+  },
+  {
+    id: 'chat',
+    title: 'Message the team',
+    summary: 'Use group chat for shared updates and direct messages for employee-to-employee coordination.',
+    view: 'chat',
+    shot: 'chat',
+    steps: ['Open Messages.', 'Choose Group chat or Direct message.', 'Select an employee for direct messages.', 'Send operational notes without leaving the workspace.'],
+  },
+]
+
+function visibleGuideCards(db: Database, currentUser: User) {
+  const superAdmin = isSuperAdmin(db, currentUser)
+  const managesBranch = db.branches.some((branch) => canManageBranch(db, currentUser, branch.id))
+  return guideCards.filter((card) => {
+    if (card.superAdminOnly && !superAdmin) return false
+    if (card.branchManagerOnly && !managesBranch && !superAdmin) return false
+    if (card.roles && !card.roles.includes(currentUser.role) && !superAdmin) return false
+    return true
+  })
+}
+
+function GuideView({ db, currentUser, setActiveView }: { db: Database; currentUser: User; setActiveView: (view: View) => void }) {
+  const cards = visibleGuideCards(db, currentUser)
+  const questSteps = getQuestSteps(db, currentUser)
+  return (
+    <section className="content-section guide-section">
+      <div className="section-heading">
+        <div>
+          <h2>{roleLabels[currentUser.role]} Guide</h2>
+          <p>Role-specific walkthroughs for beta testing the workspace without guessing where to start.</p>
+        </div>
+        <span className="pill active">{questSteps.length} quest tasks</span>
+      </div>
+      <div className="guide-hero">
+        <Sparkles size={24} />
+        <div>
+          <strong>Beta orientation</strong>
+          <span>Use the quest coach for quick practice, then use this manual when you need step-by-step help.</span>
+        </div>
+      </div>
+      <div className="guide-grid">
+        {cards.map((card) => (
+          <article className="guide-card" key={card.id}>
+            <GuideScreenshot type={card.shot} />
+            <div>
+              <h3>{card.title}</h3>
+              <p>{card.summary}</p>
+              <ol>
+                {card.steps.map((step) => <li key={step}>{step}</li>)}
+              </ol>
+            </div>
+            <button className="ghost-button" type="button" onClick={() => setActiveView(card.view)}>
+              Open feature
+            </button>
+          </article>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function GuideScreenshot({ type }: { type: GuideCard['shot'] }) {
+  const labels: Record<GuideCard['shot'], string[]> = {
+    branch: ['Dashboard', 'Port-Harcourt main store', '1 notification'],
+    pos: ['Frequently sold items', 'Sale cart', 'Complete sale'],
+    receive: ['Receive stock', 'Search SKU/barcode', 'Invoice items'],
+    reports: ['Movement ledger', 'Pharmacy | Mart', 'CSV / Print'],
+    access: ['Branches and Sites', 'Staff Access', 'Can authorize'],
+    settings: ['Workspace logo', 'Account Settings', 'Save settings'],
+    chat: ['Messages', 'Group chat', 'Direct message'],
+  }
+  return (
+    <div className={`guide-shot ${type}`} aria-label={`${type} screenshot illustration`}>
+      <div className="guide-shot-top"><span /><span /><span /></div>
+      <div className="guide-shot-body">
+        <b>{labels[type][0]}</b>
+        <span>{labels[type][1]}</span>
+        <em>{labels[type][2]}</em>
+      </div>
+    </div>
   )
 }
 
