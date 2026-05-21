@@ -3093,11 +3093,20 @@ button:disabled {
   box-shadow: 0 18px 48px rgba(18, 32, 37, 0.16);
   display: grid;
   gap: 10px;
-  max-width: min(380px, calc(100vw - 40px));
+  max-height: calc(100dvh - 40px);
+  max-width: min(390px, calc(100vw - 40px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 14px;
   position: fixed;
   right: 20px;
+  scrollbar-gutter: stable;
   z-index: 25;
+}
+
+.quest-coach.is-complete {
+  border-color: #a9dcc5;
+  box-shadow: 0 22px 56px rgba(0, 107, 69, 0.18);
 }
 
 .quest-coach-head,
@@ -3112,7 +3121,7 @@ button:disabled {
   justify-content: space-between;
 }
 
-.quest-coach-head span,
+.quest-drag-handle,
 .quest-guide-link {
   color: #006b45;
   font-size: 12px;
@@ -3126,6 +3135,20 @@ button:disabled {
   background: transparent;
   border: 0;
   cursor: pointer;
+}
+
+.quest-drag-handle {
+  align-items: center;
+  border-radius: 8px;
+  display: inline-flex;
+  min-height: 30px;
+  padding: 0 8px 0 0;
+  touch-action: none;
+  user-select: none;
+}
+
+.quest-drag-handle:hover {
+  background: #eef4f3;
 }
 
 .quest-progress {
@@ -3153,6 +3176,28 @@ button:disabled {
   margin: 0;
 }
 
+.quest-completion {
+  align-items: center;
+  background:
+    linear-gradient(135deg, rgba(47, 163, 125, 0.14), rgba(71, 191, 255, 0.08)),
+    #f7fcfa;
+  border: 1px solid #bee7d3;
+  border-radius: 10px;
+  display: grid;
+  gap: 7px;
+  justify-items: center;
+  padding: 14px;
+  text-align: center;
+}
+
+.quest-completion svg {
+  color: #006b45;
+}
+
+.quest-completion strong {
+  color: #006b45;
+}
+
 .quest-status {
   color: #68777e;
   font-size: 12px;
@@ -3173,6 +3218,8 @@ button:disabled {
 
 .quest-actions {
   gap: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) auto auto;
   justify-content: flex-end;
 }
 
