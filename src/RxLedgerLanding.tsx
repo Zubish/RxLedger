@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   ArrowRight,
   ShieldCheck,
@@ -63,8 +63,8 @@ function Nav({ onCreateWorkspace, onSignIn }: LandingProps) {
           <button className="hidden h-9 items-center justify-center rounded-md px-3 text-sm font-medium text-ink-soft transition-colors hover:text-ink sm:inline-flex" type="button" onClick={onSignIn}>
             Sign in
           </button>
-          <button className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-brand px-3.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:bg-brand/90" type="button" onClick={onCreateWorkspace}>
-            Create workspace
+          <button className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md bg-brand px-3.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:bg-brand/90" type="button" onClick={onCreateWorkspace}>
+            <span className="hidden sm:inline">Create workspace</span>
             <ArrowRight className="size-3.5" />
           </button>
         </div>
@@ -93,8 +93,8 @@ function Hero({ onCreateWorkspace }: { onCreateWorkspace: () => void }) {
             "radial-gradient(900px 500px at 15% -10%, color-mix(in oklab, var(--brand) 14%, transparent), transparent 60%), radial-gradient(700px 400px at 95% 10%, color-mix(in oklab, var(--accent-2) 10%, transparent), transparent 60%)",
         }}
       />
-      <div className="landing-container grid items-center gap-14 pt-16 pb-20 lg:grid-cols-[1fr_1.08fr] lg:gap-16 lg:pt-24 lg:pb-28 2xl:grid-cols-[0.95fr_1.15fr] 2xl:gap-24">
-        <div>
+      <div className="landing-container grid min-w-0 items-center gap-14 pt-16 pb-20 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.08fr)] lg:gap-16 lg:pt-24 lg:pb-28 2xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.15fr)] 2xl:gap-24">
+        <div className="w-[calc(100vw-2rem)] min-w-0 justify-self-start text-center lg:w-auto lg:justify-self-auto lg:text-left">
           <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1 text-xs font-medium text-ink-soft shadow-sm backdrop-blur">
             <Sparkles className="size-3.5 text-brand" />
             <span className="hidden sm:inline">Free 30-day trial - no card required</span>
@@ -102,24 +102,25 @@ function Hero({ onCreateWorkspace }: { onCreateWorkspace: () => void }) {
             <span className="mx-1 hidden h-3 w-px bg-border sm:block" />
             <span className="text-brand">Try workspace -&gt;</span>
           </div>
-          <h1 className="mt-6 max-w-4xl font-display text-[44px] font-extrabold leading-[1.05] tracking-tight text-ink sm:text-5xl lg:text-[58px] 2xl:text-[76px]">
-            Pharmacy operations, <span className="text-brand">audited by default.</span>
+          <h1 className="mx-auto mt-6 max-w-[calc(100vw-2rem)] text-center font-display text-[26px] font-extrabold leading-[1.05] tracking-tight text-ink min-[380px]:text-[28px] sm:text-5xl lg:max-w-4xl lg:text-[56px] 2xl:text-[62px]">
+            <span className="block 2xl:whitespace-nowrap">Pharmacy Operations</span>
+            <span className="block text-brand">audited by default.</span>
           </h1>
-          <p className="mt-5 max-w-2xl text-lg leading-relaxed text-ink-soft 2xl:text-xl">
+          <p className="mx-auto mt-5 max-w-[17rem] text-base leading-relaxed text-ink-soft min-[380px]:max-w-[18rem] sm:max-w-2xl sm:text-lg lg:mx-0 2xl:text-xl">
             RxLedger is the multi-tenant workspace for community pharmacies, hospital dispensaries, and
             multi-branch retailers — FEFO inventory, POS checkout, role-based access, and clean day-end
             reconciliation in one calm system.
           </p>
-          <div className="mt-8 flex flex-wrap items-center gap-3">
-            <button className="group inline-flex h-12 items-center gap-2 rounded-lg bg-brand px-5 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:bg-brand/90" type="button" onClick={onCreateWorkspace}>
+          <div className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:justify-start">
+            <button className="group inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-brand px-5 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:bg-brand/90 sm:w-auto" type="button" onClick={onCreateWorkspace}>
               Start free 30-day trial
               <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
             </button>
-            <button className="inline-flex h-12 items-center gap-2 rounded-lg border border-border bg-card px-5 text-sm font-semibold text-ink shadow-sm transition-colors hover:bg-surface" type="button">
+            <button className="inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-border bg-card px-5 text-sm font-semibold text-ink shadow-sm transition-colors hover:bg-surface sm:w-auto" type="button">
               Book a 20-min demo
             </button>
           </div>
-          <ul className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-xs text-ink-soft">
+          <ul className="mx-auto mt-6 flex max-w-[17rem] flex-col items-center justify-center gap-x-5 gap-y-2 text-xs text-ink-soft min-[380px]:max-w-[18rem] sm:max-w-none sm:flex-row sm:flex-wrap lg:mx-0 lg:justify-start">
             <li className="inline-flex items-center gap-1.5"><CheckCircle2 className="size-3.5 text-brand" /> No card to start</li>
             <li className="inline-flex items-center gap-1.5"><CheckCircle2 className="size-3.5 text-brand" /> Setup in under 15 minutes</li>
             <li className="inline-flex items-center gap-1.5"><CheckCircle2 className="size-3.5 text-brand" /> Cancel anytime</li>
@@ -135,13 +136,13 @@ function Hero({ onCreateWorkspace }: { onCreateWorkspace: () => void }) {
 /* ---------------- Dashboard Preview (software preview, merged from v1+v2+v3) ---------------- */
 function DashboardPreview() {
   return (
-    <div className="relative">
+    <div className="relative min-w-0 max-w-full overflow-hidden">
       <div
         aria-hidden
         className="absolute -inset-6 -z-10 rounded-[28px] opacity-70 blur-2xl"
         style={{ background: "linear-gradient(135deg, color-mix(in oklab, var(--brand) 22%, transparent), color-mix(in oklab, var(--accent-2) 18%, transparent))" }}
       />
-      <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-2xl ring-1 ring-black/[0.03]">
+      <div className="max-w-full overflow-hidden rounded-2xl border border-border bg-card shadow-2xl ring-1 ring-black/[0.03]">
         {/* Window chrome */}
         <div className="flex items-center justify-between border-b border-border bg-surface/60 px-4 py-2.5">
           <div className="flex items-center gap-2">
@@ -254,9 +255,9 @@ function TrustStrip() {
   ];
   return (
     <section className="border-y border-border bg-surface/60">
-      <div className="landing-container grid grid-cols-2 gap-y-6 py-10 md:grid-cols-4">
+      <div className="landing-container grid grid-cols-2 place-items-center gap-y-6 py-10 text-center md:grid-cols-4">
         {items.map((it) => (
-          <div key={it.label} className="flex flex-col items-start">
+          <div key={it.label} className="flex min-w-32 flex-col items-center">
             <span className="font-display text-3xl font-extrabold tracking-tight text-ink">{it.value}</span>
             <span className="mt-1 font-mono text-[10px] uppercase tracking-widest text-ink-soft">{it.label}</span>
           </div>
@@ -442,23 +443,86 @@ function Roles() {
   );
 }
 
+const testimonials = [
+  {
+    initials: "IO",
+    name: "Dr. Ifeanyi Okeke",
+    role: "Superintendent Pharmacist · MedVault, Lagos · 3 branches",
+    quote: (
+      <>
+        “Switching to RxLedger cut our expiry waste by <span className="text-brand-soft">42%</span> in one quarter.
+        The FEFO prompt at the POS is the single change that paid for the whole system —
+        my pharmacists trust the queue, and my day-end is finally boring.”
+      </>
+    ),
+  },
+  {
+    initials: "AA",
+    name: "Amina Adewale",
+    role: "Branch Manager · GreenLife Pharmacy · 5 branches",
+    quote: (
+      <>
+        “Our branch managers finally see stock, sales, requisitions, and cash movement in one place.
+        It feels built for how pharmacies actually work, not forced into a generic retail system.”
+      </>
+    ),
+  },
+  {
+    initials: "NE",
+    name: "Nnamdi Eze",
+    role: "Inventory Officer · CityCare Pharmacy · 2 branches",
+    quote: (
+      <>
+        “The audit trail changed our end-of-day checks. We can trace every received item, POS sale,
+        price update, and transfer without chasing paper records across branches.”
+      </>
+    ),
+  },
+];
+
 /* ---------------- Testimonial ---------------- */
 function Testimonial() {
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setActiveIndex((current) => (current + 1) % testimonials.length);
+    }, 2800);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const active = testimonials[activeIndex];
+
   return (
     <section className="bg-ink py-24 text-primary-foreground">
       <div className="landing-container">
         <Zap className="size-6 text-brand-soft" />
-        <blockquote className="mt-6 font-display text-2xl font-medium leading-snug tracking-tight md:text-3xl">
-          “Switching to RxLedger cut our expiry waste by <span className="text-brand-soft">42%</span> in one quarter.
-          The FEFO prompt at the POS is the single change that paid for the whole system —
-          my pharmacists trust the queue, and my day-end is finally boring.”
+        <blockquote
+          key={active.name}
+          className="mt-6 min-h-48 animate-[testimonialFade_420ms_ease-out] font-display text-2xl font-medium leading-snug tracking-tight md:min-h-36 md:text-3xl"
+          aria-live="polite"
+        >
+          {active.quote}
         </blockquote>
         <div className="mt-8 flex items-center gap-4">
-          <div className="grid size-12 place-items-center rounded-full bg-white/10 font-display text-sm font-bold">IO</div>
+          <div className="grid size-12 place-items-center rounded-full bg-white/10 font-display text-sm font-bold">{active.initials}</div>
           <div>
-            <p className="font-semibold">Dr. Ifeanyi Okeke</p>
-            <p className="font-mono text-xs text-primary-foreground/60">Superintendent Pharmacist · MedVault, Lagos · 3 branches</p>
+            <p className="font-semibold">{active.name}</p>
+            <p className="font-mono text-xs text-primary-foreground/60">{active.role}</p>
           </div>
+        </div>
+        <div className="mt-7 flex gap-2" aria-label="Testimonial slides">
+          {testimonials.map((testimonial, index) => (
+            <button
+              key={testimonial.name}
+              type="button"
+              className={`h-1.5 rounded-full transition-all ${activeIndex === index ? "w-8 bg-brand-soft" : "w-2 bg-white/25 hover:bg-white/45"}`}
+              aria-label={`Show testimonial from ${testimonial.name}`}
+              aria-pressed={activeIndex === index}
+              onClick={() => setActiveIndex(index)}
+            />
+          ))}
         </div>
       </div>
     </section>
@@ -598,8 +662,8 @@ function Footer() {
             <span className="font-display text-lg font-extrabold tracking-tight">RxLedger</span>
           </div>
           <p className="mt-4 max-w-xs text-sm text-ink-soft">
-            Auditable operations for community pharmacies, hospital dispensaries, and multi-branch medicine
-            retailers. Built in Lagos, for pharmacies that cannot afford guesswork.
+            Auditable operations for community pharmacies and multi-branch medicine retailers. Built for
+            pharmacies that cannot afford guesswork.
           </p>
         </div>
         <FooterCol title="Product" links={["Inventory ledger", "POS checkout", "Multi-branch", "Audit trail", "Roles"]} />
@@ -608,7 +672,7 @@ function Footer() {
       </div>
       <div className="border-t border-border">
         <div className="landing-container flex flex-col items-center justify-between gap-3 py-6 text-xs text-ink-soft md:flex-row">
-          <span className="font-mono uppercase tracking-widest">© 2026 RxLedger Technologies · Lagos, Nigeria</span>
+          <span className="font-mono uppercase tracking-widest">© 2026 RxLedger Technologies</span>
           <div className="flex items-center gap-5">
             <a href="mailto:support@rxledger.com" className="hover:text-ink">support@rxledger.com</a>
             <a href="https://x.com/rxledger" className="hover:text-ink">Twitter</a>
