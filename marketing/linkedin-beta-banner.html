@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RxLedger Beta Testing Banner</title>
+    <style>
+      :root {
+        --ink: #071814;
+        --muted: #425a55;
+        --green: #006b45;
+        --green-2: #2fa37d;
+        --green-soft: #e8f6ef;
+        --purple: #863bff;
+        --cyan: #47bfff;
+        --paper: #fbfaf5;
+        --line: #d5e3db;
+        --warn: #9a6500;
+        --danger: #d93636;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #edf4f1;
+        font-family: Inter, "Segoe UI", Arial, sans-serif;
+      }
+
+      .banner {
+        position: relative;
+        width: 1600px;
+        height: 900px;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 12% 18%, rgba(134, 59, 255, 0.1), transparent 20%),
+          radial-gradient(circle at 92% 6%, rgba(47, 163, 125, 0.18), transparent 26%),
+          linear-gradient(115deg, #fffdf7 0%, #fbfbf3 46%, #edf6ef 100%);
+        color: var(--ink);
+      }
+
+      .banner::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image: radial-gradient(rgba(0, 107, 69, 0.16) 1.3px, transparent 1.3px);
+        background-size: 26px 26px;
+        opacity: 0.35;
+      }
+
+      .banner::after {
+        content: "";
+        position: absolute;
+        left: -12%;
+        right: -5%;
+        bottom: -28%;
+        height: 285px;
+        background: linear-gradient(90deg, #003f2e, #006b45 58%, #042d2c);
+        border-top: 8px solid #e7cf95;
+        border-radius: 50% 50% 0 0 / 80% 80% 0 0;
+      }
+
+      .brand {
+        position: absolute;
+        top: 70px;
+        left: 82px;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+      }
+
+      .brand-mark {
+        width: 66px;
+        height: 66px;
+        display: grid;
+        place-items: center;
+        border-radius: 18px;
+        background: #fff;
+        box-shadow: 0 14px 30px rgba(18, 32, 37, 0.1);
+      }
+
+      .brand-mark img {
+        width: 48px;
+        height: 46px;
+      }
+
+      .brand span {
+        color: #004a34;
+        font-size: 43px;
+        font-weight: 850;
+        letter-spacing: -0.04em;
+      }
+
+      .copy {
+        position: absolute;
+        z-index: 2;
+        left: 82px;
+        top: 202px;
+        width: 690px;
+      }
+
+      .eyebrow {
+        color: var(--green);
+        font-size: 22px;
+        font-weight: 850;
+        letter-spacing: 0.36em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 30px 0 0;
+        max-width: 710px;
+        color: #06201a;
+        font-size: 82px;
+        line-height: 0.98;
+        letter-spacing: -0.075em;
+      }
+
+      h1 strong {
+        color: var(--green);
+      }
+
+      .subcopy {
+        margin: 30px 0 0;
+        max-width: 640px;
+        color: #1d2f2a;
+        font-size: 29px;
+        line-height: 1.38;
+        letter-spacing: -0.03em;
+      }
+
+      .cta {
+        margin-top: 38px;
+        width: 430px;
+        height: 78px;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        color: #fff;
+        background: linear-gradient(135deg, #006b45, #008a5f);
+        box-shadow: 0 22px 42px rgba(0, 70, 45, 0.28);
+        font-size: 29px;
+        font-weight: 820;
+        letter-spacing: -0.035em;
+      }
+
+      .cta svg {
+        width: 32px;
+        height: 32px;
+      }
+
+      .proof {
+        margin-top: 34px;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        color: #2d403b;
+        font-size: 20px;
+      }
+
+      .proof b {
+        color: var(--green);
+      }
+
+      .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--green);
+      }
+
+      .product {
+        position: absolute;
+        z-index: 2;
+        top: 120px;
+        right: 76px;
+        width: 732px;
+        padding: 34px 32px 38px;
+        transform: rotate(-4deg);
+        border: 2px solid rgba(0, 107, 69, 0.18);
+        border-radius: 34px;
+        background: rgba(255, 255, 255, 0.68);
+        box-shadow: 0 40px 90px rgba(15, 65, 46, 0.2);
+        backdrop-filter: blur(16px);
+      }
+
+      .metric-row {
+        display: grid;
+        grid-template-columns: 1.1fr 0.95fr;
+        gap: 22px;
+        margin-bottom: 26px;
+      }
+
+      .metric {
+        min-height: 156px;
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        padding: 24px;
+        border: 1px solid rgba(0, 107, 69, 0.1);
+        border-radius: 22px;
+        background: #fff;
+        box-shadow: 0 18px 34px rgba(16, 40, 33, 0.11);
+      }
+
+      .metric-icon {
+        width: 72px;
+        height: 72px;
+        flex: 0 0 auto;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        color: var(--green);
+        background: var(--green-soft);
+      }
+
+      .metric-icon.warn {
+        color: var(--warn);
+        background: #fff1d7;
+      }
+
+      .metric strong {
+        display: block;
+        font-size: 34px;
+        line-height: 1;
+        letter-spacing: -0.05em;
+      }
+
+      .metric span {
+        display: block;
+        margin-top: 8px;
+        color: #33423e;
+        font-size: 22px;
+        line-height: 1.1;
+      }
+
+      .metric small {
+        display: block;
+        margin-top: 8px;
+        color: #00833f;
+        font-size: 20px;
+        font-weight: 750;
+      }
+
+      .ledger {
+        overflow: hidden;
+        border: 1px solid rgba(0, 107, 69, 0.11);
+        border-radius: 24px;
+        background: #fff;
+        box-shadow: 0 20px 36px rgba(16, 40, 33, 0.12);
+      }
+
+      .ledger-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 28px 30px;
+        border-bottom: 1px solid #e6ece7;
+      }
+
+      .ledger-title {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        font-size: 25px;
+        font-weight: 820;
+        letter-spacing: -0.04em;
+      }
+
+      .pill-icon {
+        width: 44px;
+        height: 44px;
+        display: grid;
+        place-items: center;
+        border-radius: 12px;
+        color: #fff;
+        background: var(--green);
+      }
+
+      .branch-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        padding: 10px 16px;
+        border: 1px solid #d8e4dd;
+        border-radius: 999px;
+        color: #354541;
+        font-size: 16px;
+      }
+
+      .green-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--green-2);
+      }
+
+      .table-head,
+      .row {
+        display: grid;
+        grid-template-columns: 1.7fr 1fr 0.5fr 1.2fr;
+        align-items: center;
+      }
+
+      .table-head {
+        padding: 16px 30px;
+        border-bottom: 1px solid #e6ece7;
+        color: #0a2720;
+        font-size: 15px;
+        font-weight: 780;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .row {
+        min-height: 92px;
+        padding: 14px 30px;
+        border-bottom: 1px solid #edf1ee;
+        font-size: 17px;
+      }
+
+      .row:last-child {
+        border-bottom: 0;
+      }
+
+      .item {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .pack {
+        width: 60px;
+        height: 60px;
+        display: grid;
+        place-items: center;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #f3f8f5, #fff);
+        border: 1px solid #e3ede7;
+      }
+
+      .pack svg {
+        width: 38px;
+        height: 38px;
+      }
+
+      .item strong,
+      .item span {
+        display: block;
+      }
+
+      .item strong {
+        font-size: 17px;
+      }
+
+      .item span {
+        margin-top: 4px;
+        color: var(--green);
+        font-size: 15px;
+        font-style: italic;
+      }
+
+      .status {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        width: 100%;
+        padding: 14px 12px;
+        border-radius: 12px;
+        font-size: 15px;
+        font-weight: 820;
+        text-transform: uppercase;
+      }
+
+      .status.danger {
+        color: #d31520;
+        background: #ffe8e8;
+      }
+
+      .status.low {
+        color: #b37300;
+        background: #fff1d8;
+      }
+
+      .status.stable {
+        color: #006b45;
+        background: #e2f4ea;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="banner" aria-label="RxLedger LinkedIn beta testing banner">
+      <div class="brand">
+        <div class="brand-mark">
+          <img src="../public/favicon.svg" alt="" />
+        </div>
+        <span>RxLedger</span>
+      </div>
+
+      <section class="copy">
+        <div class="eyebrow">Beta testing is open</div>
+        <h1>
+          Pharmacy operations, <strong>audited by default.</strong>
+        </h1>
+        <p class="subcopy">
+          Test the workspace for FEFO inventory, POS checkout, branch movement,
+          requisitions, and day-end reconciliation.
+        </p>
+        <div class="cta">
+          Join beta testing
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12h14" />
+            <path d="m12 5 7 7-7 7" />
+          </svg>
+        </div>
+        <div class="proof">
+          <b>rxledger.vercel.app</b>
+          <span class="dot"></span>
+          <span>Built for pharmacies with stock they must trust</span>
+        </div>
+      </section>
+
+      <section class="product" aria-hidden="true">
+        <div class="metric-row">
+          <div class="metric">
+            <div class="metric-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 17l6-6 4 4 7-8" />
+                <path d="M14 7h6v6" />
+              </svg>
+            </div>
+            <div>
+              <strong>₦1,842,500</strong>
+              <span>sales reconciled</span>
+              <small>+12.4% today</small>
+            </div>
+          </div>
+          <div class="metric">
+            <div class="metric-icon warn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 2v4" />
+                <path d="M16 2v4" />
+                <rect x="3" y="4" width="18" height="18" rx="2" />
+                <path d="M3 10h18" />
+                <path d="M12 15h.01" />
+                <path d="M12 18h.01" />
+              </svg>
+            </div>
+            <div>
+              <strong>14</strong>
+              <span>near-expiry batches</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="ledger">
+          <div class="ledger-head">
+            <div class="ledger-title">
+              <span class="pill-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="m10.5 20.5 10-10a4.95 4.95 0 0 0-7-7l-10 10a4.95 4.95 0 0 0 7 7Z" />
+                  <path d="m8.5 8.5 7 7" />
+                </svg>
+              </span>
+              FEFO dispense queue
+            </div>
+            <div class="branch-chip"><span class="green-dot"></span> All branches</div>
+          </div>
+          <div class="table-head">
+            <span>Item · batch</span>
+            <span>Expiry</span>
+            <span>Qty</span>
+            <span>Status</span>
+          </div>
+          <div class="row">
+            <div class="item">
+              <div class="pack">
+                <svg viewBox="0 0 40 40">
+                  <rect x="8" y="6" width="24" height="28" rx="4" fill="#fff" stroke="#c9d8d1" />
+                  <path d="M11 11h18v7H11z" fill="#e53935" />
+                  <path d="M13 24h14" stroke="#006b45" stroke-width="2" />
+                  <path d="M17 20h6" stroke="#006b45" stroke-width="2" />
+                </svg>
+              </div>
+              <div><strong>Amoxicillin 500mg</strong><span>B-2241</span></div>
+            </div>
+            <span>15 Jun 2025</span>
+            <span>32</span>
+            <span class="status danger">Dispense first</span>
+          </div>
+          <div class="row">
+            <div class="item">
+              <div class="pack">
+                <svg viewBox="0 0 40 40">
+                  <rect x="12" y="8" width="13" height="24" rx="4" fill="#47bfff" stroke="#0b6b73" />
+                  <rect x="20" y="17" width="10" height="13" rx="3" fill="#0f766e" />
+                </svg>
+              </div>
+              <div><strong>Ventolin Inhaler</strong><span>B-1178</span></div>
+            </div>
+            <span>02 Jul 2025</span>
+            <span>18</span>
+            <span class="status low">Low</span>
+          </div>
+          <div class="row">
+            <div class="item">
+              <div class="pack">
+                <svg viewBox="0 0 40 40">
+                  <rect x="8" y="7" width="24" height="26" rx="4" fill="#fff" stroke="#c9d8d1" />
+                  <path d="M8 25h24v8H8z" fill="#1e9e54" />
+                  <path d="M13 12h14" stroke="#006b45" stroke-width="2" />
+                </svg>
+              </div>
+              <div><strong>Panadol Extra</strong><span>B-3320</span></div>
+            </div>
+            <span>12 Oct 2025</span>
+            <span>76</span>
+            <span class="status stable">Stable</span>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
