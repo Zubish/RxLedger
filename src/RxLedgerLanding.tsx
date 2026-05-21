@@ -94,7 +94,7 @@ function Hero({ onCreateWorkspace }: { onCreateWorkspace: () => void }) {
         }}
       />
       <div className="landing-container grid min-w-0 items-center gap-14 pt-16 pb-20 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.08fr)] lg:gap-16 lg:pt-24 lg:pb-28 2xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.15fr)] 2xl:gap-24">
-        <div className="w-[calc(100vw-2rem)] min-w-0 justify-self-start text-center lg:w-auto lg:justify-self-auto lg:text-left">
+        <div className="w-[calc(100vw-2rem)] min-w-0 justify-self-start text-left lg:w-auto lg:justify-self-auto">
           <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1 text-xs font-medium text-ink-soft shadow-sm backdrop-blur">
             <Sparkles className="size-3.5 text-brand" />
             <span className="hidden sm:inline">Free 30-day trial - no card required</span>
@@ -102,16 +102,16 @@ function Hero({ onCreateWorkspace }: { onCreateWorkspace: () => void }) {
             <span className="mx-1 hidden h-3 w-px bg-border sm:block" />
             <span className="text-brand">Try workspace -&gt;</span>
           </div>
-          <h1 className="mx-auto mt-6 max-w-[calc(100vw-2rem)] text-center font-display text-[26px] font-extrabold leading-[1.05] tracking-tight text-ink min-[380px]:text-[28px] sm:text-5xl lg:max-w-4xl lg:text-[56px] 2xl:text-[62px]">
+          <h1 className="mt-6 max-w-[calc(100vw-2rem)] text-left font-display text-[26px] font-extrabold leading-[1.05] tracking-tight text-ink min-[380px]:text-[28px] sm:text-5xl lg:max-w-4xl lg:text-[56px] 2xl:text-[62px]">
             <span className="block 2xl:whitespace-nowrap">Pharmacy Operations</span>
             <span className="block text-brand">audited by default.</span>
           </h1>
-          <p className="mx-auto mt-5 max-w-[17rem] text-base leading-relaxed text-ink-soft min-[380px]:max-w-[18rem] sm:max-w-2xl sm:text-lg lg:mx-0 2xl:text-xl">
+          <p className="mt-5 max-w-[17rem] text-base leading-relaxed text-ink-soft min-[380px]:max-w-[18rem] sm:max-w-2xl sm:text-lg 2xl:text-xl">
             RxLedger is the multi-tenant workspace for community pharmacies, hospital dispensaries, and
             multi-branch retailers — FEFO inventory, POS checkout, role-based access, and clean day-end
             reconciliation in one calm system.
           </p>
-          <div className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:justify-start">
+          <div className="mt-8 flex flex-col items-stretch justify-start gap-3 sm:flex-row sm:flex-wrap sm:items-center">
             <button className="group inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-brand px-5 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:bg-brand/90 sm:w-auto" type="button" onClick={onCreateWorkspace}>
               Start free 30-day trial
               <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
@@ -120,7 +120,7 @@ function Hero({ onCreateWorkspace }: { onCreateWorkspace: () => void }) {
               Book a 20-min demo
             </button>
           </div>
-          <ul className="mx-auto mt-6 flex max-w-[17rem] flex-col items-center justify-center gap-x-5 gap-y-2 text-xs text-ink-soft min-[380px]:max-w-[18rem] sm:max-w-none sm:flex-row sm:flex-wrap lg:mx-0 lg:justify-start">
+          <ul className="mt-6 flex max-w-[17rem] flex-col items-start justify-start gap-x-5 gap-y-2 text-xs text-ink-soft min-[380px]:max-w-[18rem] sm:max-w-none sm:flex-row sm:flex-wrap">
             <li className="inline-flex items-center gap-1.5"><CheckCircle2 className="size-3.5 text-brand" /> No card to start</li>
             <li className="inline-flex items-center gap-1.5"><CheckCircle2 className="size-3.5 text-brand" /> Setup in under 15 minutes</li>
             <li className="inline-flex items-center gap-1.5"><CheckCircle2 className="size-3.5 text-brand" /> Cancel anytime</li>
@@ -483,24 +483,45 @@ const testimonials = [
 /* ---------------- Testimonial ---------------- */
 function Testimonial() {
   const [activeIndex, setActiveIndex] = useState(0);
+  const [isVisible, setIsVisible] = useState(true);
 
   useEffect(() => {
+    let swapTimer: number | undefined;
     const timer = window.setInterval(() => {
-      setActiveIndex((current) => (current + 1) % testimonials.length);
-    }, 2800);
+      setIsVisible(false);
+      swapTimer = window.setTimeout(() => {
+        setActiveIndex((current) => (current + 1) % testimonials.length);
+        setIsVisible(true);
+      }, 700);
+    }, 5000);
 
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearInterval(timer);
+      if (swapTimer) {
+        window.clearTimeout(swapTimer);
+      }
+    };
   }, []);
 
   const active = testimonials[activeIndex];
+  const showTestimonial = (index: number) => {
+    if (index === activeIndex) {
+      return;
+    }
+
+    setIsVisible(false);
+    window.setTimeout(() => {
+      setActiveIndex(index);
+      setIsVisible(true);
+    }, 700);
+  };
 
   return (
     <section className="bg-ink py-24 text-primary-foreground">
       <div className="landing-container">
         <Zap className="size-6 text-brand-soft" />
         <blockquote
-          key={active.name}
-          className="mt-6 min-h-48 animate-[testimonialFade_420ms_ease-out] font-display text-2xl font-medium leading-snug tracking-tight md:min-h-36 md:text-3xl"
+          className={`mt-6 min-h-48 font-display text-2xl font-medium leading-snug tracking-tight transition-all duration-700 ease-in-out md:min-h-36 md:text-3xl ${isVisible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"}`}
           aria-live="polite"
         >
           {active.quote}
@@ -520,7 +541,7 @@ function Testimonial() {
               className={`h-1.5 rounded-full transition-all ${activeIndex === index ? "w-8 bg-brand-soft" : "w-2 bg-white/25 hover:bg-white/45"}`}
               aria-label={`Show testimonial from ${testimonial.name}`}
               aria-pressed={activeIndex === index}
-              onClick={() => setActiveIndex(index)}
+              onClick={() => showTestimonial(index)}
             />
           ))}
         </div>
