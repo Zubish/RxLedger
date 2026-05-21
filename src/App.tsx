@@ -1953,15 +1953,15 @@ function SetupForm({
   }
 
   return (
-    <form className="form-grid" onSubmit={submit}>
-      <label className="full">Pharmacy/company name<input required value={form.pharmacyName} onChange={(event) => setForm({ ...form, pharmacyName: event.target.value, companySlug: form.companySlug || slugifyCompany(event.target.value) })} placeholder="Totalenergies EP" autoFocus /></label>
+    <form className="form-grid" onSubmit={submit} autoComplete="off">
+      <label className="full">Pharmacy/company name<input required value={form.pharmacyName} onChange={(event) => setForm({ ...form, pharmacyName: event.target.value, companySlug: form.companySlug || slugifyCompany(event.target.value) })} placeholder="Enter your company name" autoFocus /></label>
       {slugStatus.message && <div className={`form-note full slug-${slugStatus.state}`}>{slugStatus.message}</div>}
-      <label className="full">Business registration/licence details<input required value={form.businessLicense} onChange={(event) => setForm({ ...form, businessLicense: event.target.value })} placeholder="PCN, CAC, or internal licence reference" /></label>
-      <label className="full">Main branch address<input required value={form.mainBranchAddress} onChange={(event) => setForm({ ...form, mainBranchAddress: event.target.value })} placeholder="Address of the main branch, warehouse, or dispensary" /></label>
-      <label className="full">First branch/site<input required value={form.branchName} onChange={(event) => setForm({ ...form, branchName: event.target.value })} placeholder="Deepwater Medical LOS" /></label>
-      <label className="full">Permanent admin full name<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
-      <label>Email<input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
-      <label>Phone<input required value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label>
+      <label className="full">Business registration/licence details<input required value={form.businessLicense} onChange={(event) => setForm({ ...form, businessLicense: event.target.value })} placeholder="Enter licence or registration reference" /></label>
+      <label className="full">Main branch address<input required value={form.mainBranchAddress} onChange={(event) => setForm({ ...form, mainBranchAddress: event.target.value })} placeholder="Enter main branch address" /></label>
+      <label className="full">First branch/site<input required value={form.branchName} onChange={(event) => setForm({ ...form, branchName: event.target.value })} placeholder="Enter first branch or site name" /></label>
+      <label className="full">Permanent admin full name<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Enter admin full name" /></label>
+      <label>Email<input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="Enter admin email address" /></label>
+      <label>Phone<input required value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="Enter admin phone number" /></label>
       <PasswordInput label="New password" value={form.password} onChange={(password) => setForm({ ...form, password })} visible={showPassword} onToggle={() => setShowPassword((visible) => !visible)} autoComplete="new-password" minLength={8} full />
       <PasswordInput label="Confirm password" value={confirmPassword} onChange={setConfirmPassword} visible={showPassword} autoComplete="new-password" minLength={8} full showToggle={false} />
       <div className="form-actions full">
@@ -4127,11 +4127,11 @@ function POSView({
             <div className="pos-customer-panel">
               <label>
                 <span><User2 size={15} /> Customer</span>
-                <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Walk-in customer" disabled={!canSell} />
+                <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Enter customer name" disabled={!canSell} />
               </label>
               <label>
                 <span><Phone size={15} /> Phone</span>
-                <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="+234 ..." disabled={!canSell} />
+                <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="Enter customer phone number" disabled={!canSell} />
               </label>
               <div className="pos-payment-block">
                 <span><Wallet size={15} /> Payment method</span>
@@ -4158,11 +4158,11 @@ function POSView({
               </label>
               <label>
                 <span><Wallet size={15} /> Cash paid</span>
-                <input type="number" min="0" value={numberInputValue(cashPaid)} onChange={(event) => setCashPaid(Number(event.target.value))} placeholder="0.00" disabled={!canSell} />
+                <input type="number" min="0" value={numberInputValue(cashPaid)} onChange={(event) => setCashPaid(Number(event.target.value))} placeholder="Enter amount paid" disabled={!canSell} />
               </label>
               <label>
                 <span><StickyNote size={15} /> Note</span>
-                <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Optional" disabled={!canSell} />
+                <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Add optional sale note" disabled={!canSell} />
               </label>
             </div>
 
@@ -5427,11 +5427,11 @@ function BranchesView({
         {!canManageSelected && form.id && <div className="form-error">You can view {form.name}, but only its manager or an admin can edit it.</div>}
         <form className="form-grid" onSubmit={submit}>
           <label className="full">Branch/site name<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} disabled={form.id ? !canManageSelected : !superAdmin} /></label>
-          <label>Code<input value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} placeholder="LOS-01" disabled={form.id ? !canManageSelected : !superAdmin} /></label>
-          <label>Phone<input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} disabled={form.id ? !canManageSelected : !superAdmin} /></label>
+          <label>Code<input value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} placeholder="Enter branch code" disabled={form.id ? !canManageSelected : !superAdmin} /></label>
+          <label>Phone<input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="Enter branch phone number" disabled={form.id ? !canManageSelected : !superAdmin} /></label>
           <label className="full">Manager<select value={form.managerUserId || ''} onChange={(event) => setForm({ ...form, managerUserId: event.target.value, managerName: db.users.find((user) => user.id === event.target.value)?.name ?? form.managerName })} disabled={!superAdmin}><option value="">No assigned manager</option>{managerOptions.map((user) => <option key={user.id} value={user.id}>{user.name} / {roleLabels[user.role]}</option>)}</select></label>
-          <label className="full">Manager/contact person<input value={form.managerName} onChange={(event) => setForm({ ...form, managerName: event.target.value })} disabled={form.id ? !canManageSelected : !superAdmin} /></label>
-          <label className="full">Address<textarea value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} disabled={form.id ? !canManageSelected : !superAdmin} /></label>
+          <label className="full">Manager/contact person<input value={form.managerName} onChange={(event) => setForm({ ...form, managerName: event.target.value })} placeholder="Enter manager or contact name" disabled={form.id ? !canManageSelected : !superAdmin} /></label>
+          <label className="full">Address<textarea value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} placeholder="Enter branch address" disabled={form.id ? !canManageSelected : !superAdmin} /></label>
           <label className="checkbox-row full"><input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} disabled={!superAdmin || form.id === 'main'} /> Active branch</label>
           <div className="form-actions full">
             <button className="ghost-button" type="button" onClick={() => setForm(createBlank())}>Clear</button>
