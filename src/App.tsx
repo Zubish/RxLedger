@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { FormEvent, KeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
+import type { FormEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { readSheet } from 'read-excel-file/browser'
 import {
   Activity,
@@ -13,7 +13,6 @@ import {
   Calculator,
   CheckCircle2,
   ChevronLeft,
-  ChevronRight,
   ClipboardList,
   Download,
   Eye,
@@ -78,8 +77,6 @@ import {
 } from './api'
 import RxLedgerLanding from './RxLedgerLanding'
 import './App.css'
-
-const SIDEBAR_WIDTH = 280
 
 type Role = 'admin' | 'pharmacist' | 'inventory' | 'cashier' | 'viewer'
 type UserStatus = 'pending' | 'active' | 'suspended'
@@ -1135,13 +1132,10 @@ function App() {
   const [authIntent, setAuthIntent] = useState<'landing' | 'setup' | 'signin'>('landing')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
-  const [drawerHandleTop, setDrawerHandleTop] = useState(() => typeof window === 'undefined' ? 360 : Math.round(window.innerHeight / 2))
-  const [drawerHandleDragging, setDrawerHandleDragging] = useState(false)
   const [activeBranchId, setActiveBranchId] = useState('main')
   const [branchMenuOpen, setBranchMenuOpen] = useState(false)
   const [branchSwitching, setBranchSwitching] = useState(false)
   const [branchSwitchLabel, setBranchSwitchLabel] = useState('')
-  const drawerDragRef = useRef({ active: false, moved: false, startY: 0, startTop: drawerHandleTop })
   const branchSwitchTimerRef = useRef<number | undefined>(undefined)
 
   const currentUser = db.users.find((user) => user.id === sessionUserId && user.status === 'active') ?? null
@@ -1330,55 +1324,9 @@ function App() {
     setSidebarOpen(false)
   }
 
-  function toggleSidebar() {
-    setSidebarCollapsed((collapsed) => !collapsed)
-    setSidebarOpen(false)
-  }
-
-  function clampDrawerHandleTop(value: number) {
-    const minimum = 76
-    const maximum = typeof window === 'undefined' ? Math.max(minimum, value) : Math.max(minimum, window.innerHeight - 76)
-    return Math.min(Math.max(value, minimum), maximum)
-  }
-
-  function startDrawerHandleDrag(event: ReactPointerEvent<HTMLButtonElement>) {
-    drawerDragRef.current = {
-      active: true,
-      moved: false,
-      startY: event.clientY,
-      startTop: drawerHandleTop,
-    }
-    setDrawerHandleDragging(true)
-    event.currentTarget.setPointerCapture(event.pointerId)
-  }
-
-  function moveDrawerHandle(event: ReactPointerEvent<HTMLButtonElement>) {
-    if (!drawerDragRef.current.active) return
-    const nextTop = drawerDragRef.current.startTop + event.clientY - drawerDragRef.current.startY
-    if (Math.abs(event.clientY - drawerDragRef.current.startY) > 5) {
-      drawerDragRef.current.moved = true
-    }
-    setDrawerHandleTop(clampDrawerHandleTop(nextTop))
-  }
-
-  function stopDrawerHandleDrag(event: ReactPointerEvent<HTMLButtonElement>) {
-    if (!drawerDragRef.current.active) return
-    try {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    } catch {
-      // Pointer capture may already be released when the pointer is cancelled.
-    }
-    drawerDragRef.current.active = false
-    setDrawerHandleDragging(false)
-    if (!drawerDragRef.current.moved) {
-      toggleSidebar()
-    }
-  }
-
-  function handleDrawerKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
-    if (event.key !== 'Enter' && event.key !== ' ') return
-    event.preventDefault()
-    toggleSidebar()
+  function openSidebar() {
+    setSidebarCollapsed(false)
+    setSidebarOpen(true)
   }
 
   useEffect(() => {
@@ -1457,11 +1405,16 @@ function App() {
       <button className="sidebar-backdrop" type="button" aria-label="Close menu" onClick={collapseSidebar} />
       <aside className="sidebar">
         <div className="brand-block">
-          <BrandMark settings={db.settings} />
-          <div>
-            <strong>{db.settings.softwareName}</strong>
-            <span>{db.settings.accountName}</span>
+          <div className="brand-identity">
+            <BrandMark settings={db.settings} />
+            <div>
+              <strong>{db.settings.softwareName}</strong>
+              <span>{db.settings.accountName}</span>
+            </div>
           </div>
+          <button className="sidebar-close-button" type="button" onClick={collapseSidebar} aria-label="Close control panel" title="Close control panel">
+            <X size={17} strokeWidth={2.4} />
+          </button>
         </div>
 
         <nav className="nav-list" aria-label="Primary navigation">
@@ -1504,29 +1457,11 @@ function App() {
         </div>
       </aside>
 
-      <button
-        className={`drawer-handle${sidebarCollapsed ? ' is-closed' : ' is-open'}${drawerHandleDragging ? ' is-dragging' : ''}`}
-        type="button"
-        style={{
-          left: sidebarCollapsed ? 0 : SIDEBAR_WIDTH - 26,
-          top: drawerHandleTop,
-        }}
-        aria-label={sidebarCollapsed ? 'Open control panel' : 'Collapse control panel'}
-        aria-expanded={!sidebarCollapsed}
-        onKeyDown={handleDrawerKeyDown}
-        onPointerDown={startDrawerHandleDrag}
-        onPointerMove={moveDrawerHandle}
-        onPointerUp={stopDrawerHandleDrag}
-        onPointerCancel={stopDrawerHandleDrag}
-      >
-        {sidebarCollapsed ? <ChevronRight size={30} strokeWidth={3.2} /> : <ChevronLeft size={30} strokeWidth={3.2} />}
-      </button>
-
       <main className="workspace">
         <header className="topbar">
           <div className="topbar-title">
-            <button className="mobile-menu-button" type="button" onClick={() => setSidebarOpen((open) => !open)} aria-label={sidebarOpen ? 'Close menu' : 'Open menu'} aria-expanded={sidebarOpen}>
-              {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
+            <button className="mobile-menu-button" type="button" onClick={openSidebar} aria-label="Open control panel" aria-expanded={!sidebarCollapsed || sidebarOpen}>
+              <Menu size={20} />
             </button>
             <div>
               <span className="eyebrow">{db.settings.accountName}</span>
