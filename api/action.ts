@@ -10,7 +10,6 @@ import {
   deleteOtherSessions,
   fail,
   getAuthenticatedUser,
-  getBearerToken,
   getCompanySlugFromRequest,
   getRequestIp,
   getRequestUserAgent,
@@ -182,20 +181,20 @@ function updateUser(db: Database, actorId: string, payload: Record<string, unkno
 async function triggerSecurityPanic(req: HandlerRequest, db: Database, actorId: string) {
   const actor = db.users.find((user) => user.id === actorId)
   if (!actor) throw new Error('Authentication required')
-  const token = getBearerToken(req)
-  await deleteOtherSessions(actorId, token)
+  await deleteOtherSessions(actorId)
+  actor.knownDevices = []
   addSecurityEvent(db, {
     userId: actor.id,
     email: actor.email,
     type: 'panic-triggered',
     severity: 'critical',
-    detail: 'The user triggered Secure my account. Other sessions were signed out.',
+    detail: 'The user triggered Secure my account. All sessions were signed out and remembered browsers were cleared.',
     ipAddress: getRequestIp(req),
     userAgent: getRequestUserAgent(req),
   })
-  addAudit(db, actorId, 'Triggered secure account panic action', 'user', actorId, undefined, { signedOutOtherSessions: true })
+  addAudit(db, actorId, 'Triggered secure account panic action', 'user', actorId, undefined, { signedOutAllSessions: true, clearedRememberedBrowsers: true })
   try {
-    await sendSecurityEmail(actor.email, 'RxLedger account security action triggered', 'Secure my account was triggered for your RxLedger account. Other sessions were signed out. If this was not you, reset your password immediately.')
+    await sendSecurityEmail(actor.email, 'RxLedger account security action triggered', 'Secure my account was triggered for your RxLedger account. All sessions were signed out and remembered browsers were cleared. If this was not you, reset your password immediately.')
   } catch (error) {
     addSecurityEvent(db, {
       userId: actor.id,

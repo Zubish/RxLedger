@@ -1207,17 +1207,41 @@ function App() {
     window.setTimeout(() => setNotice(''), 2800)
   }
 
-  const forceSignOut = useCallback(async (message?: string) => {
-    try {
-      await apiLogout()
-    } catch {
-      clearStoredToken()
-    }
+  const forgetBrowserUser = useCallback((userId?: string | null) => {
+    clearStoredToken()
+    if (typeof window === 'undefined') return
+    window.sessionStorage.clear()
+    if (!userId) return
+    const workspaceKey = db.settings.companySlug || db.settings.companyCode || 'workspace'
+    const userStoragePrefix = `rxledger:${workspaceKey}:${userId}:`
+    Object.keys(window.localStorage).forEach((key) => {
+      if (key.startsWith(userStoragePrefix) || key.includes(`:${userId}:`)) {
+        window.localStorage.removeItem(key)
+      }
+    })
+  }, [db.settings.companyCode, db.settings.companySlug])
+
+  const returnToSignIn = useCallback((message?: string) => {
     setSessionUserId(null)
     setActiveView('dashboard')
     setSidebarOpen(false)
-    if (message) setConnectionError(message)
+    setSidebarCollapsed(true)
+    setBranchMenuOpen(false)
+    setAuthIntent('signin')
+    setNotice('')
+    setConnectionError(message ?? '')
   }, [])
+
+  const forceSignOut = useCallback(async (message?: string) => {
+    const userId = sessionUserId
+    try {
+      await apiLogout()
+    } catch {
+      // Local browser state is still cleared below even if the server session is already gone.
+    }
+    forgetBrowserUser(userId)
+    returnToSignIn(message)
+  }, [forgetBrowserUser, returnToSignIn, sessionUserId])
 
   async function executeAction(action: string, payload: Record<string, unknown>, successMessage?: string) {
     try {
@@ -1268,9 +1292,19 @@ function App() {
     await apiCompletePasswordReset(input)
   }
 
-  function triggerSecurityPanic() {
-    if (!window.confirm('Secure this account now? Other active sessions will be signed out and a security event will be recorded.')) return
-    void executeAction('triggerSecurityPanic', {}, 'Other sessions were signed out')
+  async function triggerSecurityPanic() {
+    const userId = currentUser?.id
+    if (!userId) return
+    if (!window.confirm('Secure this account now? Every active session, including this browser, will be signed out and remembered browsers will be cleared.')) return
+    try {
+      await runAction('triggerSecurityPanic', {})
+      forgetBrowserUser(userId)
+      returnToSignIn()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to secure this account'
+      forgetBrowserUser(userId)
+      returnToSignIn(message.toLowerCase().includes('authentication') ? 'Session expired. Please sign in again.' : message)
+    }
   }
 
   async function signIn(email: string, password: string) {
@@ -2003,9 +2037,9 @@ function LoginForm({
   }
 
   return (
-    <form className="stack" onSubmit={submit}>
-      <label>Email<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" /></label>
-      <PasswordInput label="Password" value={password} onChange={setPassword} visible={showPassword} onToggle={() => setShowPassword((visible) => !visible)} autoComplete="current-password" />
+    <form className="stack" onSubmit={submit} autoComplete="off">
+      <label>Email<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="off" /></label>
+      <PasswordInput label="Password" value={password} onChange={setPassword} visible={showPassword} onToggle={() => setShowPassword((visible) => !visible)} autoComplete="off" />
       <button className="primary-button" type="submit">
         <Lock size={17} />
         Log in
