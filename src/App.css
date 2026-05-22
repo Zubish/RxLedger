@@ -2718,7 +2718,6 @@ button:disabled {
 .primary-button,
 .ghost-button,
 .file-button,
-.mobile-menu-button,
 .icon-button {
   border-radius: 8px;
   min-height: 38px;
@@ -2751,24 +2750,6 @@ button:disabled {
 .ghost-button:hover {
   background: #f3f8f7;
   color: var(--rx-pos-green);
-}
-
-.mobile-menu-button {
-  display: none;
-  width: 42px;
-  background: #ffffff;
-  border: 1px solid #cbd7d8;
-  color: #24343a;
-  flex: 0 0 auto;
-  padding: 0;
-}
-
-.mobile-menu-button:hover {
-  background: #eef4f3;
-}
-
-.app-shell.sidebar-collapsed .mobile-menu-button {
-  display: inline-flex;
 }
 
 .file-button {
@@ -2846,6 +2827,81 @@ button:disabled {
   padding-top: 14px;
   display: grid;
   gap: 12px;
+}
+
+.drawer-handle {
+  align-items: center;
+  background: #1f7f63;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  cursor: grab;
+  display: inline-flex;
+  height: 58px;
+  justify-content: center;
+  position: fixed;
+  transform: translateY(-50%);
+  transition:
+    background 180ms ease,
+    box-shadow 180ms ease,
+    left 180ms ease,
+    transform 120ms ease;
+  width: 58px;
+  z-index: 110;
+}
+
+.drawer-handle.is-closed {
+  border-left: 0;
+  border-radius: 0 999px 999px 0;
+  box-shadow: 0 14px 28px rgba(18, 32, 37, 0.25), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.drawer-handle.is-open {
+  background: #122025;
+  border-color: #294349;
+  border-radius: 999px;
+  box-shadow: 0 16px 32px rgba(18, 32, 37, 0.28), 0 0 0 4px rgba(31, 127, 99, 0.14);
+}
+
+.drawer-handle.is-open::before {
+  background: #122025;
+  border: 1px solid #294349;
+  border-right: 0;
+  border-radius: 999px 0 0 999px;
+  bottom: -4px;
+  content: '';
+  left: -12px;
+  position: absolute;
+  top: -4px;
+  width: 30px;
+  z-index: -1;
+}
+
+.drawer-handle:hover {
+  background: #24916f;
+  box-shadow: 0 18px 34px rgba(18, 32, 37, 0.31), 0 0 0 5px rgba(31, 127, 99, 0.13);
+}
+
+.drawer-handle.is-open:hover {
+  background: #172b31;
+}
+
+.drawer-handle:active,
+.drawer-handle.is-dragging {
+  cursor: grabbing;
+  transform: translateY(-50%) scale(0.94);
+}
+
+.drawer-handle svg {
+  filter: drop-shadow(0 2px 2px rgba(18, 32, 37, 0.3));
+  transition: transform 160ms ease;
+}
+
+.drawer-handle:hover svg {
+  transform: translateX(2px);
+}
+
+.drawer-handle.is-open:hover svg {
+  transform: translateX(-2px);
 }
 
 .search-box {
@@ -3748,10 +3804,6 @@ button:disabled {
     pointer-events: auto;
   }
 
-  .mobile-menu-button {
-    display: inline-flex;
-  }
-
   .nav-list {
     grid-template-columns: 1fr;
   }
@@ -3945,6 +3997,7 @@ button:disabled {
 
 @media print {
   .sidebar,
+  .drawer-handle,
   .topbar-actions,
   .tabs,
   .ghost-button,
