@@ -471,10 +471,9 @@
   height: 100vh;
   height: 100dvh;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
   overscroll-behavior: contain;
   position: sticky;
-  scrollbar-gutter: stable;
   top: 0;
 }
 
@@ -501,6 +500,7 @@
 
 .brand-block {
   gap: 12px;
+  flex: 0 0 auto;
 }
 
 .brand-block strong,
@@ -555,6 +555,13 @@ td span,
 .nav-list {
   display: grid;
   gap: 6px;
+  align-content: start;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
 }
 
 .nav-item,
@@ -593,7 +600,8 @@ td span,
 }
 
 .sidebar-bottom {
-  margin-top: auto;
+  flex: 0 0 auto;
+  margin-top: 0;
   display: grid;
   gap: 10px;
 }
@@ -3676,7 +3684,7 @@ button:disabled {
     height: 100dvh;
     min-height: 100dvh;
     left: 0;
-    overflow-y: auto;
+    overflow: hidden;
     position: fixed;
     top: 0;
     transform: translateX(-105%);
