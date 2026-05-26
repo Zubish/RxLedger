@@ -864,15 +864,24 @@ function activeDraft(db: Database, userId: string, branchId: string) {
   return db.posDrafts.find((draft) => draft.userId === userId && draft.branchId === branchId)
 }
 
+function addDays(dateIso: string, days: number) {
+  const date = new Date(dateIso)
+  date.setDate(date.getDate() + days)
+  return date.toISOString().slice(0, 10)
+}
+
 function normalizeDraftItems(payload: unknown): PosDraft['items'] {
   if (!Array.isArray(payload)) return []
   return payload.map((item) => {
     const input = item as Record<string, unknown>
     const itemType: 'medicine' | 'product' = input.itemType === 'product' ? 'product' : 'medicine'
+    const daysSupply = Math.max(0, Number(input.daysSupply) || 0)
     return {
       itemType,
       itemId: requireString(input.itemId, itemType === 'product' ? 'Product' : 'Medicine'),
       quantity: requireNumber(input.quantity, 'Quantity'),
+      daysSupply: daysSupply || undefined,
+      counselingNote: optionalString(input.counselingNote),
     }
   }).filter((item) => item.quantity > 0)
 }
@@ -951,6 +960,9 @@ function recordSale(db: Database, actorId: string, actorRole: Role, payload: Rec
         quantity,
         unitPrice: product.sellingPrice,
         lineTotal: quantity * product.sellingPrice,
+        daysSupply: input.daysSupply,
+        counselingNote: input.counselingNote,
+        followUpMessage: input.counselingNote,
       })
       ledgerEntries.push({
         id: id('led'),
@@ -999,6 +1011,10 @@ function recordSale(db: Database, actorId: string, actorRole: Role, payload: Rec
         quantity: take,
         unitPrice,
         lineTotal,
+        daysSupply: input.daysSupply,
+        refillDueAt: input.daysSupply ? addDays(nowIso(), input.daysSupply) : undefined,
+        counselingNote: input.counselingNote,
+        followUpMessage: input.counselingNote,
       })
       ledgerEntries.push({
         id: id('led'),

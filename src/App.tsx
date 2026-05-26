@@ -89,6 +89,7 @@ type View =
   | 'suppliers'
   | 'receive'
   | 'pos'
+  | 'patients'
   | 'issue'
   | 'adjust'
   | 'reports'
@@ -264,6 +265,10 @@ type Sale = {
     quantity: number
     unitPrice: number
     lineTotal: number
+    daysSupply?: number
+    refillDueAt?: string
+    counselingNote?: string
+    followUpMessage?: string
   }>
 }
 
@@ -281,6 +286,8 @@ type PosDraft = {
     itemType: 'medicine' | 'product'
     itemId: string
     quantity: number
+    daysSupply?: number
+    counselingNote?: string
   }>
   createdAt: string
   updatedAt: string
@@ -456,6 +463,7 @@ const views: Array<{ id: View; label: string; icon: typeof LayoutDashboard; admi
   { id: 'suppliers', label: 'Suppliers', icon: Truck },
   { id: 'receive', label: 'Receive', icon: PackagePlus },
   { id: 'pos', label: 'POS', icon: Calculator },
+  { id: 'patients', label: 'Patients', icon: User2 },
   { id: 'issue', label: 'Issue Stock', icon: PackageMinus },
   { id: 'adjust', label: 'Adjust/Returns', icon: RotateCcw },
   { id: 'reports', label: 'Reports', icon: FileText },
@@ -703,6 +711,157 @@ function getBranchName(db: Database, branchId: string) {
 function getUserName(db: Database, userId?: string) {
   if (!userId) return 'Not recorded'
   return db.users.find((user) => user.id === userId)?.name ?? 'Unknown user'
+}
+
+function normalizePhone(value: string) {
+  return value.replace(/\D/g, '')
+}
+
+function addDaysToDate(dateIso: string, days: number) {
+  const date = new Date(dateIso)
+  date.setDate(date.getDate() + days)
+  return date.toISOString().slice(0, 10)
+}
+
+function formatDate(value?: string) {
+  if (!value) return 'Not set'
+  return new Date(`${value.slice(0, 10)}T00:00:00`).toLocaleDateString()
+}
+
+function patientKeyForSale(sale: Sale) {
+  const phone = normalizePhone(sale.customerPhone)
+  if (phone) return `phone:${phone}`
+  const name = sale.customerName.trim().toLowerCase()
+  return name ? `name:${name}` : ''
+}
+
+function patientDisplayName(sale: Sale) {
+  return sale.customerName.trim() || (sale.customerPhone.trim() ? sale.customerPhone.trim() : 'Walk-in patient')
+}
+
+function getSaleItemLabel(db: Database, item: Sale['items'][number]) {
+  if (item.itemName) return item.itemName
+  if (item.itemType === 'product') return db.products.find((product) => product.id === item.productId)?.name || 'Retail item'
+  return db.medicines.find((medicine) => medicine.id === item.medicineId)?.brandName || 'Medicine'
+}
+
+function defaultCounselingText(db: Database, itemType: 'medicine' | 'product', itemId: string) {
+  if (itemType === 'product') return ''
+  const medicine = db.medicines.find((item) => item.id === itemId)
+  if (!medicine) return ''
+  const medicineName = [medicine.brandName, medicine.strength].filter(Boolean).join(' ')
+  const category = `${medicine.category} ${medicine.genericName} ${medicine.form}`.toLowerCase()
+  const notes = [
+    `Take ${medicineName} exactly as directed by the pharmacist.`,
+    'Do not stop early unless a pharmacist or doctor advises you.',
+  ]
+  if (category.includes('antibiotic') || category.includes('amoxic') || category.includes('cipro')) {
+    notes.push('Complete the full course, even if you feel better.')
+  }
+  if (category.includes('metformin') || category.includes('diabet')) {
+    notes.push('Take with meals and monitor your blood sugar as advised.')
+  }
+  if (category.includes('hypertension') || category.includes('amlodipine') || category.includes('bp')) {
+    notes.push('Take at the same time daily and keep monitoring your blood pressure.')
+  }
+  notes.push('Contact the pharmacy if you notice unusual side effects.')
+  return notes.join(' ')
+}
+
+function buildPatientProfiles(db: Database, branchId?: string) {
+  const map = new Map<string, {
+    key: string
+    name: string
+    phone: string
+    sales: Sale[]
+    totalSpent: number
+    lastVisit: string
+  }>()
+  db.sales
+    .filter((sale) => !branchId || sale.branchId === branchId)
+    .forEach((sale) => {
+      const key = patientKeyForSale(sale)
+      if (!key) return
+      const existing = map.get(key)
+      const total = sale.total ?? sale.subtotal
+      if (existing) {
+        existing.sales.push(sale)
+        existing.totalSpent += total
+        if (sale.soldAt > existing.lastVisit) {
+          existing.lastVisit = sale.soldAt
+          existing.name = patientDisplayName(sale)
+          existing.phone = sale.customerPhone || existing.phone
+        }
+        return
+      }
+      map.set(key, {
+        key,
+        name: patientDisplayName(sale),
+        phone: sale.customerPhone,
+        sales: [sale],
+        totalSpent: total,
+        lastVisit: sale.soldAt,
+      })
+    })
+  return [...map.values()].map((profile) => ({
+    ...profile,
+    sales: profile.sales.sort((a, b) => b.soldAt.localeCompare(a.soldAt)),
+  })).sort((a, b) => b.lastVisit.localeCompare(a.lastVisit))
+}
+
+function buildRefillRows(db: Database, branchId?: string) {
+  const latestByPatientMedicine = new Map<string, {
+    profileKey: string
+    patientName: string
+    phone: string
+    sale: Sale
+    item: Sale['items'][number]
+    medicineName: string
+    refillDueAt: string
+    daysUntilDue: number
+  }>()
+  const profiles = buildPatientProfiles(db, branchId)
+  profiles.forEach((profile) => {
+    profile.sales.forEach((sale) => {
+      sale.items.forEach((item) => {
+        if (item.itemType !== 'medicine' || !item.medicineId || !item.daysSupply) return
+        const refillDueAt = item.refillDueAt || addDaysToDate(sale.soldAt, item.daysSupply)
+        const key = `${profile.key}:${item.medicineId}`
+        const existing = latestByPatientMedicine.get(key)
+        if (existing && existing.sale.soldAt >= sale.soldAt) return
+        latestByPatientMedicine.set(key, {
+          profileKey: profile.key,
+          patientName: profile.name,
+          phone: profile.phone,
+          sale,
+          item,
+          medicineName: getSaleItemLabel(db, item),
+          refillDueAt,
+          daysUntilDue: daysUntil(refillDueAt),
+        })
+      })
+    })
+  })
+  return [...latestByPatientMedicine.values()].sort((a, b) => a.refillDueAt.localeCompare(b.refillDueAt))
+}
+
+function patientCareMessage(pharmacyName: string, patientName: string, body: string) {
+  const greeting = patientName && patientName !== 'Walk-in patient' ? `Hello ${patientName}, ` : 'Hello, '
+  return `${greeting}${body} - ${pharmacyName}`
+}
+
+function refillMessage(pharmacyName: string, row: ReturnType<typeof buildRefillRows>[number]) {
+  return patientCareMessage(
+    pharmacyName,
+    row.patientName,
+    `your ${row.medicineName} may be due for refill ${row.daysUntilDue < 0 ? 'now' : row.daysUntilDue === 0 ? 'today' : `on ${formatDate(row.refillDueAt)}`}. Kindly visit or contact the pharmacy.`,
+  )
+}
+
+function whatsappHref(phone: string, message: string) {
+  const digits = normalizePhone(phone)
+  const normalized = digits.startsWith('0') ? `234${digits.slice(1)}` : digits
+  return normalized ? `https://wa.me/${normalized}?text=${encodeURIComponent(message)}` : ''
 }
 
 function getPrimaryAdminId(db: Database) {
@@ -1628,6 +1787,7 @@ function App() {
           {activeView === 'suppliers' && <Suppliers db={db} canWrite={canWrite} executeAction={executeAction} />}
           {activeView === 'receive' && activeBranch && <ReceiveStock db={db} activeBranch={activeBranch} canWrite={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
           {activeView === 'pos' && activeBranch && <POSView key={`${currentUser.id}-${activeBranch.id}`} db={db} currentUser={currentUser} activeBranch={activeBranch} stockRows={activeBranchStockRows} canSell={Boolean(canSell)} executeAction={executeAction} flash={flash} />}
+          {activeView === 'patients' && <PatientsView db={db} activeBranch={activeBranch} flash={flash} />}
           {activeView === 'issue' && activeBranch && <IssueStock db={db} activeBranch={activeBranch} stockRows={activeBranchStockRows} canWrite={Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
           {activeView === 'adjust' && activeBranch && <Adjustments activeBranch={activeBranch} stockRows={activeBranchStockRows} canAdjust={canAdjust && Boolean(canWriteActiveBranch)} executeAction={executeAction} flash={flash} />}
           {activeView === 'reports' && <Reports db={db} stockRows={dashboardStockRows} stockTotals={dashboardStockTotals} activeBranch={canAdmin ? undefined : activeBranch} />}
@@ -3680,6 +3840,8 @@ function POSView({
     itemType: 'medicine' | 'product'
     itemId: string
     quantity: number
+    daysSupply?: number
+    counselingNote?: string
   }
   type SaleOption = {
     itemType: 'medicine' | 'product'
@@ -3699,6 +3861,8 @@ function POSView({
     itemType: item.itemType,
     itemId: item.itemId,
     quantity: item.quantity,
+    daysSupply: item.daysSupply,
+    counselingNote: item.counselingNote,
   })) ?? [])
   const [customerName, setCustomerName] = useState(currentDraft?.customerName ?? '')
   const [customerPhone, setCustomerPhone] = useState(currentDraft?.customerPhone ?? '')
@@ -3803,6 +3967,15 @@ function POSView({
     .filter((draft) => draft.branchId === activeBranch.id && draft.expiresAt > new Date().toISOString())
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   const canCompleteSale = currentUser.role === 'cashier'
+  const patientProfiles = useMemo(() => buildPatientProfiles(db, activeBranch.id), [activeBranch.id, db])
+  const selectedPatient = useMemo(() => {
+    const phone = normalizePhone(customerPhone)
+    const name = customerName.trim().toLowerCase()
+    return patientProfiles.find((profile) => (
+      (phone && normalizePhone(profile.phone) === phone) ||
+      (name && profile.name.toLowerCase() === name)
+    ))
+  }, [customerName, customerPhone, patientProfiles])
 
   function defaultMedicinePrice(medicineId: string) {
     return stockRows
@@ -3847,7 +4020,14 @@ function POSView({
       if (existing) {
         return current.map((item) => item.rowId === existing.rowId ? { ...item, quantity: Math.min(item.quantity + 1, option.available || item.quantity + 1) } : item)
       }
-      return [...current, { rowId: id('pos'), itemType, itemId, quantity: 1 }]
+      return [...current, {
+        rowId: id('pos'),
+        itemType,
+        itemId,
+        quantity: 1,
+        daysSupply: itemType === 'medicine' ? 30 : undefined,
+        counselingNote: defaultCounselingText(db, itemType, itemId),
+      }]
     })
     flash(`${option.title} added to POS cart`)
   }
@@ -3919,7 +4099,13 @@ function POSView({
       paymentMethod,
       discount: safeDiscount,
       note,
-      items: cart.map((item) => ({ itemType: item.itemType, itemId: item.itemId, quantity: item.quantity })),
+      items: cart.map((item) => ({
+        itemType: item.itemType,
+        itemId: item.itemId,
+        quantity: item.quantity,
+        daysSupply: item.daysSupply,
+        counselingNote: item.counselingNote,
+      })),
     }
   }
 
@@ -3946,7 +4132,14 @@ function POSView({
 
   function loadDraft(draft: PosDraft) {
     setSelectedDraftId(draft.id)
-    setCart(draft.items.map((item) => ({ rowId: id('pos'), itemType: item.itemType, itemId: item.itemId, quantity: item.quantity })))
+    setCart(draft.items.map((item) => ({
+      rowId: id('pos'),
+      itemType: item.itemType,
+      itemId: item.itemId,
+      quantity: item.quantity,
+      daysSupply: item.daysSupply,
+      counselingNote: item.counselingNote,
+    })))
     setCustomerName(draft.customerName)
     setCustomerPhone(draft.customerPhone)
     setPaymentMethod(draft.paymentMethod)
@@ -4156,6 +4349,18 @@ function POSView({
                         <strong>{money.format(item.lineTotal)}</strong>
                       </div>
                     </div>
+                    {item.itemType === 'medicine' && (
+                      <div className="pos-care-fields">
+                        <label>
+                          <span>Therapy days</span>
+                          <input type="number" min="0" value={numberInputValue(item.daysSupply)} onChange={(event) => updateCart(item.rowId, { daysSupply: Number(event.target.value) })} disabled={!canSell} />
+                        </label>
+                        <label>
+                          <span>Counseling follow-up</span>
+                          <textarea value={item.counselingNote ?? ''} onChange={(event) => updateCart(item.rowId, { counselingNote: event.target.value })} disabled={!canSell} rows={2} />
+                        </label>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -4171,6 +4376,12 @@ function POSView({
                 <span><Phone size={15} /> Phone</span>
                 <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="Enter customer phone number" disabled={!canSell} />
               </label>
+              {selectedPatient && (
+                <div className="pos-patient-snapshot">
+                  <strong>{selectedPatient.name}</strong>
+                  <span>{selectedPatient.sales.length} previous visit{selectedPatient.sales.length === 1 ? '' : 's'} / last seen {new Date(selectedPatient.lastVisit).toLocaleDateString()}</span>
+                </div>
+              )}
               <div className="pos-payment-block">
                 <span><Wallet size={15} /> Payment method</span>
                 <div>
@@ -4335,6 +4546,167 @@ function POSView({
           </section>
         </div>
       )}
+    </div>
+  )
+}
+
+function PatientsView({ db, activeBranch, flash }: { db: Database; activeBranch?: Branch; flash: (message: string) => void }) {
+  const [query, setQuery] = useState('')
+  const [selectedKey, setSelectedKey] = useState('')
+  const branchId = activeBranch?.id
+  const profiles = useMemo(() => buildPatientProfiles(db, branchId), [branchId, db])
+  const refillRows = useMemo(() => buildRefillRows(db, branchId), [branchId, db])
+  const dueRows = refillRows.filter((row) => row.daysUntilDue <= 7)
+  const filteredProfiles = profiles.filter((profile) => {
+    const text = `${profile.name} ${profile.phone} ${profile.sales.map((sale) => sale.reference).join(' ')}`.toLowerCase()
+    return text.includes(query.toLowerCase())
+  })
+  const selectedProfile = filteredProfiles.find((profile) => profile.key === selectedKey) ?? filteredProfiles[0]
+  const selectedMessages = selectedProfile?.sales.flatMap((sale) => sale.items
+    .filter((item) => item.counselingNote || item.followUpMessage)
+    .map((item) => ({
+      sale,
+      item,
+      medicineName: getSaleItemLabel(db, item),
+      body: item.followUpMessage || item.counselingNote || '',
+    }))) ?? []
+
+  async function copyMessage(message: string) {
+    try {
+      await navigator.clipboard.writeText(message)
+      flash('Patient message copied')
+    } catch {
+      flash(message)
+    }
+  }
+
+  return (
+    <div className="page-grid patients-page">
+      <section className="metric-grid">
+        <Metric icon={Users} label="Known patients" value={compactNumber(profiles.length)} />
+        <Metric icon={Bell} label="Refills due soon" value={compactNumber(dueRows.length)} tone={dueRows.length ? 'warning' : 'good'} />
+        <Metric icon={MessageSquare} label="Follow-up notes" value={compactNumber(selectedMessages.length)} />
+        <Metric icon={Phone} label="Phone-linked records" value={compactNumber(profiles.filter((profile) => profile.phone).length)} />
+      </section>
+
+      <section className="content-section">
+        <div className="section-heading">
+          <div>
+            <h2>Patient Lookup</h2>
+            <p>Search by phone, name, or receipt reference from POS sales history.</p>
+          </div>
+          {activeBranch && <span className="pill active">{activeBranch.name}</span>}
+        </div>
+        <label className="patient-search">
+          <Search size={18} />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search patient phone, name, or receipt..." />
+        </label>
+        <div className="patients-layout">
+          <div className="patient-list">
+            {filteredProfiles.map((profile) => (
+              <button className={profile.key === selectedProfile?.key ? 'patient-list-item active' : 'patient-list-item'} key={profile.key} type="button" onClick={() => setSelectedKey(profile.key)}>
+                <strong>{profile.name}</strong>
+                <span>{profile.phone || 'No phone saved'} / {profile.sales.length} visit{profile.sales.length === 1 ? '' : 's'}</span>
+                <small>Last seen {new Date(profile.lastVisit).toLocaleDateString()} / {money.format(profile.totalSpent)}</small>
+              </button>
+            ))}
+            {!filteredProfiles.length && <div className="empty-state">No patient records match this search yet.</div>}
+          </div>
+
+          <div className="patient-profile-panel">
+            {selectedProfile ? (
+              <>
+                <header className="patient-profile-header">
+                  <div>
+                    <span className="eyebrow">Patient profile</span>
+                    <h2>{selectedProfile.name}</h2>
+                    <p>{selectedProfile.phone || 'Phone number not recorded'} / {selectedProfile.sales.length} visit{selectedProfile.sales.length === 1 ? '' : 's'}</p>
+                  </div>
+                  <strong>{money.format(selectedProfile.totalSpent)}</strong>
+                </header>
+
+                <div className="patient-profile-grid">
+                  <section>
+                    <h3>Medication History</h3>
+                    <div className="patient-timeline">
+                      {selectedProfile.sales.map((sale) => (
+                        <article key={sale.id}>
+                          <div>
+                            <strong>{new Date(sale.soldAt).toLocaleDateString()} / {sale.reference}</strong>
+                            <span>{sale.items.length} item{sale.items.length === 1 ? '' : 's'} / {money.format(sale.total ?? sale.subtotal)}</span>
+                          </div>
+                          <ul>
+                            {sale.items.map((item, index) => (
+                              <li key={`${sale.id}-${index}`}>
+                                {getSaleItemLabel(db, item)} / Qty {number.format(item.quantity)}
+                                {item.daysSupply ? ` / ${item.daysSupply} therapy day${item.daysSupply === 1 ? '' : 's'}` : ''}
+                                {item.refillDueAt ? ` / refill ${formatDate(item.refillDueAt)}` : ''}
+                              </li>
+                            ))}
+                          </ul>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section>
+                    <h3>Follow-up Messages</h3>
+                    <div className="patient-message-list">
+                      {selectedMessages.map(({ sale, item, medicineName, body }) => {
+                        const message = patientCareMessage(db.settings.accountName, selectedProfile.name, `${medicineName}: ${body}`)
+                        const href = whatsappHref(selectedProfile.phone, message)
+                        return (
+                          <article key={`${sale.id}-${medicineName}-${item.batchId || item.productId || item.medicineId}`}>
+                            <strong>{medicineName}</strong>
+                            <p>{message}</p>
+                            <footer>
+                              <button type="button" onClick={() => { void copyMessage(message) }}><ClipboardList size={14} /> Copy</button>
+                              {href && <a href={href} target="_blank" rel="noreferrer"><Smartphone size={14} /> WhatsApp</a>}
+                            </footer>
+                          </article>
+                        )
+                      })}
+                      {!selectedMessages.length && <div className="empty-state">No counseling messages captured for this patient yet.</div>}
+                    </div>
+                  </section>
+                </div>
+              </>
+            ) : (
+              <div className="empty-state">Select a patient to see their medication history and follow-up messages.</div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="content-section">
+        <div className="section-heading">
+          <div>
+            <h2>Refill Reminders</h2>
+            <p>Generated from medicines sold with therapy days recorded at checkout.</p>
+          </div>
+          <span className="pill warning">{dueRows.length} due within 7 days</span>
+        </div>
+        <div className="patient-reminder-list">
+          {dueRows.map((row) => {
+            const message = refillMessage(db.settings.accountName, row)
+            const href = whatsappHref(row.phone, message)
+            return (
+              <article key={`${row.profileKey}-${row.item.medicineId}-${row.sale.id}`}>
+                <div>
+                  <strong>{row.patientName}</strong>
+                  <span>{row.medicineName} / refill {formatDate(row.refillDueAt)} / {row.daysUntilDue < 0 ? `${Math.abs(row.daysUntilDue)} day${Math.abs(row.daysUntilDue) === 1 ? '' : 's'} overdue` : `${row.daysUntilDue} day${row.daysUntilDue === 1 ? '' : 's'} left`}</span>
+                  <small>{row.phone || 'No phone saved'}</small>
+                </div>
+                <footer>
+                  <button type="button" onClick={() => { void copyMessage(message) }}><ClipboardList size={14} /> Copy</button>
+                  {href && <a href={href} target="_blank" rel="noreferrer"><Smartphone size={14} /> WhatsApp</a>}
+                </footer>
+              </article>
+            )
+          })}
+          {!dueRows.length && <div className="empty-state">No refill reminders due in the next 7 days.</div>}
+        </div>
+      </section>
     </div>
   )
 }

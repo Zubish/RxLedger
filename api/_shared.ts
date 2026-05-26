@@ -211,6 +211,10 @@ type Sale = {
     quantity: number
     unitPrice: number
     lineTotal: number
+    daysSupply?: number
+    refillDueAt?: string
+    counselingNote?: string
+    followUpMessage?: string
   }>
 }
 
@@ -228,6 +232,8 @@ type PosDraft = {
     itemType: 'medicine' | 'product'
     itemId: string
     quantity: number
+    daysSupply?: number
+    counselingNote?: string
   }>
   createdAt: string
   updatedAt: string
@@ -700,6 +706,10 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
         quantity: Number(item.quantity) || 0,
         unitPrice: Number(item.unitPrice) || 0,
         lineTotal: Number(item.lineTotal) || 0,
+        daysSupply: Number(item.daysSupply) || undefined,
+        refillDueAt: item.refillDueAt || undefined,
+        counselingNote: item.counselingNote || undefined,
+        followUpMessage: item.followUpMessage || undefined,
       })),
     }
   })
@@ -744,7 +754,16 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
       })),
     })),
     sales,
-    posDrafts: (raw.posDrafts ?? empty.posDrafts).filter((draft) => draft.expiresAt > nowIso()),
+    posDrafts: (raw.posDrafts ?? empty.posDrafts).filter((draft) => draft.expiresAt > nowIso()).map((draft) => ({
+      ...draft,
+      items: (draft.items ?? []).map((item) => ({
+        itemType: item.itemType === 'product' ? 'product' : 'medicine',
+        itemId: item.itemId || '',
+        quantity: Number(item.quantity) || 0,
+        daysSupply: Number(item.daysSupply) || undefined,
+        counselingNote: item.counselingNote || undefined,
+      })),
+    })),
     chatMessages: (raw.chatMessages ?? empty.chatMessages).map((message) => ({
       ...message,
       channel: message.channel === 'direct' ? 'direct' : 'group',

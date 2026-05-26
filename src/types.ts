@@ -158,6 +158,10 @@ export type Sale = {
     quantity: number
     unitPrice: number
     lineTotal: number
+    daysSupply?: number
+    refillDueAt?: string
+    counselingNote?: string
+    followUpMessage?: string
   }>
 }
 
@@ -175,6 +179,8 @@ export type PosDraft = {
     itemType: 'medicine' | 'product'
     itemId: string
     quantity: number
+    daysSupply?: number
+    counselingNote?: string
   }>
   createdAt: string
   updatedAt: string
