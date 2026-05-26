@@ -1232,6 +1232,7 @@ td span,
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
 }
 
 .table-wrap thead th {
@@ -4006,19 +4007,21 @@ button:disabled {
 @media (max-width: 900px) {
   .app-shell {
     display: block;
+    min-height: 100dvh;
   }
 
   .sidebar {
-    width: min(84vw, 310px);
+    width: min(88vw, 330px);
     height: 100dvh;
     min-height: 100dvh;
     left: 0;
     overflow: hidden;
+    padding: 16px;
     position: fixed;
     top: 0;
     transform: translateX(-105%);
     transition: transform 180ms ease;
-    z-index: 40;
+    z-index: 170;
   }
 
   .app-shell.sidebar-collapsed .sidebar {
@@ -4042,7 +4045,7 @@ button:disabled {
     right: 0;
     top: 0;
     transition: opacity 180ms ease;
-    z-index: 30;
+    z-index: 150;
   }
 
   .app-shell.sidebar-open .sidebar-backdrop {
@@ -4056,6 +4059,37 @@ button:disabled {
 
   .workspace {
     padding: 18px;
+  }
+
+  .drawer-handle {
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 12px;
+    box-shadow: 0 12px 24px rgba(18, 32, 37, 0.24);
+    cursor: pointer;
+    height: 46px;
+    left: max(12px, env(safe-area-inset-left)) !important;
+    top: max(14px, env(safe-area-inset-top)) !important;
+    transform: none;
+    width: 46px;
+    z-index: 140;
+  }
+
+  .drawer-handle.is-closed {
+    border-left: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 12px;
+  }
+
+  .drawer-handle.is-open {
+    display: none;
+  }
+
+  .drawer-handle:active,
+  .drawer-handle.is-dragging {
+    transform: scale(0.96);
+  }
+
+  .topbar {
+    padding-left: 68px;
   }
 
   .pos-appbar {
@@ -4107,7 +4141,7 @@ button:disabled {
   }
 
   .workspace {
-    padding: 16px;
+    padding: 12px;
   }
 
   .topbar,
@@ -4119,7 +4153,8 @@ button:disabled {
 
   .topbar {
     gap: 14px;
-    padding: 14px;
+    min-height: 68px;
+    padding: 12px 12px 12px 64px;
   }
 
   .topbar-title {
@@ -4146,7 +4181,6 @@ button:disabled {
     width: 100%;
   }
 
-  .metric-grid,
   .two-column,
   .cart-layout,
   .requisition-detail-grid,
@@ -4156,6 +4190,19 @@ button:disabled {
   .report-filters,
   .nav-list {
     grid-template-columns: 1fr;
+  }
+
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .metric {
+    min-height: 84px;
+    padding: 12px;
+  }
+
+  .metric strong {
+    font-size: 18px;
   }
 
   .pos-catalog-grid,
@@ -4172,8 +4219,81 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
+  .pos-catalog-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .pos-catalog-panel {
     min-height: auto;
+  }
+
+  .pos-window,
+  .content-section,
+  .topbar {
+    border-radius: 10px;
+  }
+
+  .content-section {
+    padding: 14px;
+  }
+
+  .table-wrap {
+    max-height: none;
+    margin-inline: -6px;
+    padding-inline: 6px;
+  }
+
+  table {
+    min-width: 680px;
+  }
+
+  .compact-table {
+    min-width: 560px;
+  }
+
+  .dashboard-scroll-list,
+  .dashboard-scroll-table,
+  .alert-list,
+  .audit-list,
+  .supplier-grid,
+  .branch-grid,
+  .patient-list,
+  .patient-timeline,
+  .patient-message-list,
+  .patient-reminder-list {
+    max-height: none;
+  }
+
+  .pos-terminal-grid {
+    gap: 12px;
+    padding: 10px;
+  }
+
+  .pos-catalog-grid {
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .pos-catalog-card {
+    border-radius: 10px;
+    gap: 8px;
+    min-height: 110px;
+    padding: 10px;
+  }
+
+  .pos-catalog-card div,
+  .pos-catalog-card footer {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .pos-cart-lines {
+    max-height: none;
+  }
+
+  .pos-sale-cart {
+    box-shadow: 0 12px 24px rgba(18, 32, 37, 0.09);
   }
 
   .pos-line-item,
@@ -4189,6 +4309,75 @@ button:disabled {
   .pos-total-panel section > div:last-child {
     justify-items: start;
     text-align: left;
+  }
+
+  .pos-line-item {
+    padding: 14px;
+  }
+
+  .pos-line-avatar {
+    height: 36px;
+    width: 36px;
+  }
+
+  .pos-total-panel section > div:first-child strong {
+    font-size: 26px;
+  }
+
+  .pos-modal-backdrop,
+  .modal-backdrop {
+    align-items: stretch;
+    display: flex;
+    padding: 10px;
+  }
+
+  .pos-modal-panel,
+  .modal-panel {
+    align-self: flex-end;
+    border-radius: 16px 16px 10px 10px;
+    max-height: calc(100dvh - 20px);
+    padding: 14px;
+    width: 100%;
+  }
+
+  .pos-modal-list {
+    max-height: none;
+  }
+
+  .pos-draft-item {
+    grid-template-columns: 1fr;
+  }
+
+  .pos-draft-item footer {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .pos-draft-item button {
+    width: 100%;
+  }
+
+  .patient-profile-header,
+  .patient-reminder-list article {
+    align-items: flex-start;
+  }
+
+  .patient-profile-header {
+    flex-direction: column;
+  }
+
+  .patient-message-list footer,
+  .patient-reminder-list footer {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .patient-message-list button,
+  .patient-message-list a,
+  .patient-reminder-list button,
+  .patient-reminder-list a {
+    justify-content: center;
+    width: 100%;
   }
 
   .scan-field > div {
@@ -4242,6 +4431,42 @@ button:disabled {
   .workspace-logo-editor .ghost-button {
     grid-column: 1 / -1;
     justify-content: center;
+  }
+}
+
+@media (max-width: 360px) {
+  .workspace {
+    padding: 10px;
+  }
+
+  .topbar {
+    padding-left: 60px;
+  }
+
+  .drawer-handle {
+    height: 42px;
+    width: 42px;
+  }
+
+  .metric-grid,
+  .pos-catalog-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pos-appbar,
+  .pos-terminal-grid,
+  .pos-customer-panel,
+  .pos-total-panel,
+  .pos-action-row {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .branch-switcher-trigger,
+  .ghost-button,
+  .primary-button,
+  .pos-action-row button {
+    min-height: 42px;
   }
 }
 
