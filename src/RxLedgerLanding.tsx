@@ -9,6 +9,8 @@ import {
   Activity,
   AlertTriangle,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Zap,
   Users,
   ScanLine,
@@ -553,6 +555,9 @@ function Testimonial() {
 
 /* ---------------- Pricing teaser ---------------- */
 function Pricing() {
+  const [expandedPlans, setExpandedPlans] = useState<Record<string, boolean>>({})
+  const previewFeatureCount = 3
+
   return (
     <section id="pricing" className="landing-container py-24">
       <div className="mx-auto max-w-3xl text-center">
@@ -562,55 +567,77 @@ function Pricing() {
         </h2>
         <p className="mt-3 text-ink-soft">{trialPolicy.summary}</p>
       </div>
-      <div className="mt-12 grid gap-5 md:grid-cols-3">
-        {subscriptionPlans.map((t) => (
-          <div
-            key={t.name}
-            className={`relative flex flex-col rounded-2xl border p-7 ${t.highlight ? "border-brand bg-card shadow-lg ring-1 ring-brand/20" : "border-border bg-card shadow-sm"}`}
-          >
-            {t.highlight && (
-              <span className="absolute -top-3 left-7 rounded-full bg-brand px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-primary-foreground">
-                {t.badge}
-              </span>
-            )}
-            <h3 className="font-display text-lg font-bold text-ink">{t.name}</h3>
-            <p className="mt-2 min-h-12 text-sm leading-relaxed text-ink-soft">{t.summary}</p>
-            <div className="mt-3 flex items-baseline gap-1">
-              <span className="font-display text-3xl font-extrabold tracking-tight text-ink">{t.price}</span>
-              <span className="text-sm text-ink-soft">{t.per}</span>
-            </div>
-            <div className="mt-5 rounded-lg border border-border bg-surface/60 p-3">
-              <p className="font-mono text-[10px] font-semibold uppercase tracking-widest text-ink-soft">Plan boundary</p>
-              <ul className="mt-2 space-y-1.5 text-xs text-ink-soft">
-                {t.limits.map((limit) => (
-                  <li key={limit} className="flex items-start gap-2">
-                    <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-brand" />
-                    <span>{limit}</span>
+      <div className="mt-12 grid items-start gap-5 md:grid-cols-3">
+        {subscriptionPlans.map((t) => {
+          const expanded = Boolean(expandedPlans[t.id])
+          const previewFeatures = t.features.slice(0, previewFeatureCount)
+          const hiddenFeatureCount = Math.max(0, t.features.length - previewFeatureCount)
+          return (
+            <div
+              key={t.name}
+              className={`relative flex flex-col rounded-2xl border p-6 md:min-h-[480px] ${t.highlight ? "border-brand bg-card shadow-lg ring-1 ring-brand/20" : "border-border bg-card shadow-sm"}`}
+            >
+              {t.highlight && (
+                <span className="absolute -top-3 left-7 rounded-full bg-brand px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-primary-foreground">
+                  {t.badge}
+                </span>
+              )}
+              <h3 className="font-display text-lg font-bold text-ink">{t.name}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-ink-soft">{t.summary}</p>
+              <div className="mt-3 flex items-baseline gap-1">
+                <span className="font-display text-3xl font-extrabold tracking-tight text-ink">{t.price}</span>
+                <span className="text-sm text-ink-soft">{t.per}</span>
+              </div>
+              <div className="mt-5 rounded-lg border border-border bg-surface/60 p-3">
+                <p className="font-mono text-[10px] font-semibold uppercase tracking-widest text-ink-soft">Plan boundary</p>
+                <ul className="mt-2 space-y-1.5 text-xs text-ink-soft">
+                  {t.limits.map((limit) => (
+                    <li key={limit} className="flex items-start gap-2">
+                      <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-brand" />
+                      <span>{limit}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <ul className="mt-5 space-y-2 text-sm text-ink-soft">
+                {previewFeatures.map((f) => (
+                  <li key={f} className="flex items-start gap-2">
+                    <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-brand" />
+                    <span>{f}</span>
+                  </li>
+                ))}
+                {expanded && t.features.slice(previewFeatureCount).map((f) => (
+                  <li key={f} className="flex items-start gap-2">
+                    <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-brand" />
+                    <span>{f}</span>
                   </li>
                 ))}
               </ul>
+              {(hiddenFeatureCount > 0 || t.upgradeFor.length > 0) && (
+                <button
+                  className="mt-4 inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-border bg-surface/60 px-3 text-xs font-semibold text-ink transition-colors hover:bg-surface"
+                  type="button"
+                  aria-expanded={expanded}
+                  onClick={() => setExpandedPlans((plans) => ({ ...plans, [t.id]: !expanded }))}
+                >
+                  {expanded ? "View less" : "View more"}
+                  {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+                </button>
+              )}
+              {expanded && t.upgradeFor.length > 0 && (
+                <div className="mt-5 border-t border-border pt-4">
+                  <p className="font-mono text-[10px] font-semibold uppercase tracking-widest text-ink-soft">Upgrade for</p>
+                  <ul className="mt-2 space-y-1.5 text-xs text-ink-soft">
+                    {t.upgradeFor.map((item) => <li key={item}>- {item}</li>)}
+                  </ul>
+                </div>
+              )}
+              <button className={`mt-auto inline-flex h-11 items-center justify-center rounded-lg px-5 text-sm font-semibold transition-all ${t.highlight ? "bg-brand text-primary-foreground hover:bg-brand/90" : "border border-border bg-background text-ink hover:bg-surface"}`}>
+                {t.cta}
+              </button>
             </div>
-            <ul className="mt-5 space-y-2 text-sm text-ink-soft">
-              {t.features.map((f) => (
-                <li key={f} className="flex items-start gap-2">
-                  <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-brand" />
-                  <span>{f}</span>
-                </li>
-              ))}
-            </ul>
-            {t.upgradeFor.length > 0 && (
-              <div className="mt-5 border-t border-border pt-4">
-                <p className="font-mono text-[10px] font-semibold uppercase tracking-widest text-ink-soft">Upgrade for</p>
-                <ul className="mt-2 space-y-1.5 text-xs text-ink-soft">
-                  {t.upgradeFor.map((item) => <li key={item}>- {item}</li>)}
-                </ul>
-              </div>
-            )}
-            <button className={`mt-7 inline-flex h-11 items-center justify-center rounded-lg px-5 text-sm font-semibold transition-all ${t.highlight ? "bg-brand text-primary-foreground hover:bg-brand/90" : "border border-border bg-background text-ink hover:bg-surface"}`}>
-              {t.cta}
-            </button>
-          </div>
-        ))}
+          )
+        })}
       </div>
       <div className="mt-6 rounded-2xl border border-border bg-surface/60 p-5 text-sm leading-relaxed text-ink-soft">
         <strong className="text-ink">Plan changes are safe.</strong> {planChangePolicy.dataRetention} {planChangePolicy.downgrade}
