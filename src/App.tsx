@@ -1277,7 +1277,7 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
     .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
 }
 
-type ExecuteAction = (action: string, payload: Record<string, unknown>, successMessage?: string) => Promise<void>
+type ExecuteAction = (action: string, payload: Record<string, unknown>, successMessage?: string) => Promise<boolean>
 
 function App() {
   const [db, setDb] = useState<Database>(createEmptyDatabase)
@@ -1409,13 +1409,15 @@ function App() {
       setSessionUserId(result.currentUser.id)
       setConnectionError('')
       if (successMessage) flash(successMessage)
+      return true
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to complete action'
       if (message.toLowerCase().includes('authentication')) {
         await forceSignOut('Session expired. Please sign in again.')
-        return
+        return false
       }
       flash(message)
+      return false
     }
   }
 
@@ -4110,9 +4112,10 @@ function POSView({
     }
   }
 
-  function saveDraft() {
+  async function saveDraft() {
     if (!canSell || !cart.length) return
-    void executeAction('savePosDraft', salePayload(), 'POS cart saved with a temporary booking code')
+    const saved = await executeAction('savePosDraft', salePayload(), 'POS cart saved as a 10-minute draft')
+    if (saved) resetSaleForm()
   }
 
   function resetSaleForm() {
@@ -4126,9 +4129,14 @@ function POSView({
     setSelectedDraftId('')
   }
 
-  function clearDraft(draftId = selectedDraftId) {
-    void executeAction('clearPosDraft', { branchId: activeBranch.id, draftId }, 'POS cart cleared')
-    if (!draftId || draftId === selectedDraftId) resetSaleForm()
+  function clearCart() {
+    resetSaleForm()
+    flash('POS cart cleared')
+  }
+
+  function deleteDraft(draftId: string) {
+    void executeAction('clearPosDraft', { branchId: activeBranch.id, draftId }, 'POS draft cleared')
+    if (draftId === selectedDraftId) resetSaleForm()
   }
 
   function loadDraft(draft: PosDraft) {
@@ -4438,7 +4446,7 @@ function POSView({
                 <Save size={16} />
                 Draft
               </button>
-              <button type="button" onClick={() => clearDraft()} disabled={!canSell || (!cartRows.length && !selectedDraftId && !currentDraft)}>
+              <button type="button" onClick={clearCart} disabled={!canSell || !cartRows.length}>
                 <XCircle size={16} />
                 Clear
               </button>
@@ -4537,7 +4545,7 @@ function POSView({
                     <b>{money.format(draftTotal)}</b>
                     <footer>
                       <button type="button" onClick={() => loadDraft(draft)}>Load</button>
-                      <button type="button" onClick={() => clearDraft(draft.id)}>Clear</button>
+                      <button type="button" onClick={() => deleteDraft(draft.id)}>Clear</button>
                     </footer>
                   </article>
                 )
