@@ -9,8 +9,6 @@ import {
   Activity,
   AlertTriangle,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
   Zap,
   Users,
   ScanLine,
@@ -613,24 +611,15 @@ function Pricing() {
                   </li>
                 ))}
               </ul>
-              {(hiddenFeatureCount > 0 || t.upgradeFor.length > 0) && (
+              {hiddenFeatureCount > 0 && (
                 <button
-                  className="mt-4 inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-border bg-surface/60 px-3 text-xs font-semibold text-ink transition-colors hover:bg-surface"
+                  className="mt-4 inline-flex w-fit text-sm font-semibold text-brand transition-colors hover:text-brand/80"
                   type="button"
                   aria-expanded={expanded}
                   onClick={() => setExpandedPlans((plans) => ({ ...plans, [t.id]: !expanded }))}
                 >
                   {expanded ? "View less" : "View more"}
-                  {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
                 </button>
-              )}
-              {expanded && t.upgradeFor.length > 0 && (
-                <div className="mt-5 border-t border-border pt-4">
-                  <p className="font-mono text-[10px] font-semibold uppercase tracking-widest text-ink-soft">Upgrade for</p>
-                  <ul className="mt-2 space-y-1.5 text-xs text-ink-soft">
-                    {t.upgradeFor.map((item) => <li key={item}>- {item}</li>)}
-                  </ul>
-                </div>
               )}
               <button className={`mt-auto inline-flex h-11 items-center justify-center rounded-lg px-5 text-sm font-semibold transition-all ${t.highlight ? "bg-brand text-primary-foreground hover:bg-brand/90" : "border border-border bg-background text-ink hover:bg-surface"}`}>
                 {t.cta}
