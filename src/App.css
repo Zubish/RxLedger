@@ -13,6 +13,10 @@
   --rx-muted: #68777e;
   --rx-surface: #fbfcf8;
   --rx-border: #dce6e7;
+  --rx-scroll-short: clamp(220px, 32dvh, 340px);
+  --rx-scroll-medium: clamp(280px, 46dvh, 520px);
+  --rx-scroll-deep: min(62dvh, 620px);
+  --rx-scroll-modal: min(70dvh, 640px);
 }
 
 .app-shell {
@@ -939,7 +943,7 @@ td span,
   top: calc(100% + 10px);
   z-index: 500;
   width: min(320px, 86vw);
-  max-height: min(360px, calc(100vh - 140px));
+  max-height: min(360px, calc(100dvh - 140px));
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
@@ -1010,6 +1014,7 @@ td span,
 .page-grid {
   display: grid;
   gap: 18px;
+  min-width: 0;
 }
 
 .metric-grid {
@@ -1092,6 +1097,7 @@ td span,
   border-radius: 8px;
   box-shadow: 0 12px 30px rgba(18, 32, 37, 0.035);
   padding: 18px;
+  min-height: 0;
   min-width: 0;
 }
 
@@ -1100,7 +1106,7 @@ td span,
 }
 
 .dashboard-scroll-list {
-  max-height: 260px;
+  max-height: var(--rx-scroll-short);
   overflow-y: auto;
   overscroll-behavior: contain;
   padding-right: 4px;
@@ -1108,7 +1114,7 @@ td span,
 }
 
 .dashboard-scroll-table {
-  max-height: 320px;
+  max-height: var(--rx-scroll-medium);
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
@@ -1130,6 +1136,7 @@ td span,
   grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
   gap: 18px;
   align-items: start;
+  min-width: 0;
 }
 
 .alert-list,
@@ -1144,7 +1151,7 @@ td span,
 .alert-list,
 .audit-list,
 .supplier-grid {
-  max-height: min(58vh, 560px);
+  max-height: var(--rx-scroll-medium);
   overflow-y: auto;
   overscroll-behavior: contain;
   padding-right: 4px;
@@ -1153,7 +1160,7 @@ td span,
 
 .branch-grid {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  max-height: clamp(250px, 34vh, 420px);
+  max-height: var(--rx-scroll-medium);
   overflow-y: auto;
   overscroll-behavior: contain;
   padding-right: 4px;
@@ -1224,7 +1231,7 @@ td span,
 
 .table-wrap {
   width: 100%;
-  max-height: min(64vh, 620px);
+  max-height: var(--rx-scroll-deep);
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
@@ -1961,9 +1968,11 @@ td strong {
 }
 
 .pos-cart-lines {
-  max-height: 260px;
+  max-height: var(--rx-scroll-short);
   min-height: 125px;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .pos-line-item {
@@ -2321,7 +2330,7 @@ td strong {
   box-shadow: 0 24px 70px rgba(7, 17, 20, 0.22);
   display: grid;
   gap: 16px;
-  max-height: min(760px, calc(100vh - 48px));
+  max-height: min(760px, calc(100dvh - 48px));
   overflow: hidden;
   padding: 18px;
   width: min(720px, 100%);
@@ -2457,9 +2466,11 @@ td strong {
 .pos-modal-list {
   display: grid;
   gap: 10px;
-  max-height: 560px;
+  max-height: var(--rx-scroll-modal);
   overflow: auto;
+  overscroll-behavior: contain;
   padding-right: 4px;
+  scrollbar-gutter: stable;
 }
 
 .pos-draft-item {
@@ -2567,20 +2578,23 @@ td strong {
 }
 
 .patients-layout {
+  align-items: start;
   display: grid;
-  gap: 16px;
-  grid-template-columns: minmax(240px, 0.38fr) minmax(0, 1fr);
-  min-height: 480px;
+  gap: 14px;
+  grid-template-columns: minmax(220px, 0.3fr) minmax(0, 1fr);
+  min-height: 0;
 }
 
 .patient-list {
   border: 1px solid #dfe7e8;
   border-radius: 8px;
   display: grid;
-  gap: 8px;
-  max-height: 560px;
+  gap: 6px;
+  max-height: var(--rx-scroll-medium);
   overflow: auto;
-  padding: 10px;
+  overscroll-behavior: contain;
+  padding: 8px;
+  scrollbar-gutter: stable;
 }
 
 .patient-list-item {
@@ -2590,9 +2604,14 @@ td strong {
   color: #172024;
   cursor: pointer;
   display: grid;
-  gap: 4px;
-  padding: 12px;
+  gap: 3px;
+  padding: 9px 10px;
   text-align: left;
+}
+
+.patient-list-item strong {
+  font-size: 13px;
+  line-height: 1.2;
 }
 
 .patient-list-item:hover,
@@ -2615,23 +2634,26 @@ td strong {
 .patient-profile-panel {
   border: 1px solid #dfe7e8;
   border-radius: 8px;
+  display: grid;
+  gap: 14px;
   min-width: 0;
-  padding: 16px;
+  padding: 14px;
 }
 
 .patient-profile-header {
   align-items: flex-start;
   border-bottom: 1px solid #edf1f2;
   display: flex;
-  gap: 16px;
+  gap: 12px;
   justify-content: space-between;
-  margin-bottom: 16px;
-  padding-bottom: 14px;
+  margin-bottom: 0;
+  padding-bottom: 12px;
 }
 
 .patient-profile-header h2 {
-  font-size: 24px;
-  margin: 2px 0 4px;
+  font-size: 20px;
+  line-height: 1.15;
+  margin: 1px 0 3px;
 }
 
 .patient-profile-header > strong {
@@ -2641,8 +2663,9 @@ td strong {
 
 .patient-profile-grid {
   display: grid;
-  gap: 16px;
+  gap: 14px;
   grid-template-columns: minmax(0, 1fr) minmax(260px, 0.8fr);
+  min-height: 0;
 }
 
 .patient-profile-grid h3 {
@@ -2655,9 +2678,11 @@ td strong {
 .patient-reminder-list {
   display: grid;
   gap: 10px;
-  max-height: 520px;
+  max-height: var(--rx-scroll-medium);
   overflow: auto;
+  overscroll-behavior: contain;
   padding-right: 4px;
+  scrollbar-gutter: stable;
 }
 
 .patient-timeline article,
@@ -2666,7 +2691,7 @@ td strong {
   background: #fbfdfd;
   border: 1px solid #e3eaeb;
   border-radius: 8px;
-  padding: 12px;
+  padding: 10px;
 }
 
 .patient-timeline article {
@@ -3036,7 +3061,7 @@ button:disabled {
 
 .modal-panel {
   width: min(560px, 100%);
-  max-height: min(86vh, 760px);
+  max-height: min(86dvh, 760px);
   overflow: auto;
   overscroll-behavior: contain;
   background: #ffffff;
@@ -3230,7 +3255,7 @@ button:disabled {
 .access-list {
   display: grid;
   gap: 8px;
-  max-height: clamp(260px, 38vh, 460px);
+  max-height: var(--rx-scroll-medium);
   overflow-y: auto;
   overscroll-behavior: contain;
   padding-right: 4px;
@@ -3887,7 +3912,7 @@ button:disabled {
 .chat-list {
   display: grid;
   gap: 10px;
-  max-height: 58vh;
+  max-height: var(--rx-scroll-deep);
   overflow: auto;
   overscroll-behavior: contain;
   padding-right: 4px;
@@ -4253,6 +4278,8 @@ button:disabled {
   .audit-list,
   .supplier-grid,
   .branch-grid,
+  .access-list,
+  .chat-list,
   .patient-list,
   .patient-timeline,
   .patient-message-list,
