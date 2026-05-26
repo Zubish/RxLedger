@@ -2943,6 +2943,51 @@ button:disabled {
   color: #172024;
 }
 
+.subscription-settings {
+  border: 1px solid var(--rx-border);
+  border-radius: 8px;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1.2fr) minmax(180px, 0.8fr);
+  padding: 14px;
+}
+
+.subscription-settings h3 {
+  font-size: 18px;
+  margin: 4px 0;
+}
+
+.subscription-settings p,
+.subscription-settings small,
+.subscription-plan-boundary span {
+  color: var(--rx-muted);
+}
+
+.subscription-plan-boundary {
+  background: #f6faf9;
+  border: 1px dashed #cfe0dc;
+  border-radius: 8px;
+  grid-column: 1 / -1;
+  padding: 12px;
+}
+
+.subscription-plan-boundary strong,
+.subscription-plan-boundary span {
+  display: block;
+}
+
+.subscription-plan-boundary ul {
+  color: #172024;
+  display: grid;
+  gap: 4px;
+  margin: 10px 0 0;
+  padding-left: 18px;
+}
+
+.subscription-settings .form-error span {
+  display: block;
+}
+
 .slug-available {
   border-color: #b9dacd;
   color: var(--rx-green-deep);
@@ -4433,6 +4478,10 @@ button:disabled {
   .topbar-actions button,
   .workspace-logo-editor {
     width: 100%;
+  }
+
+  .subscription-settings {
+    grid-template-columns: 1fr;
   }
 
   .workspace-logo-editor {

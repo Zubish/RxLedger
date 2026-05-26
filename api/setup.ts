@@ -32,6 +32,7 @@ export default async function handler(req: HandlerRequest, res: HandlerResponse)
     const { salt, hash } = hashPassword(body.password)
     const adminId = id('usr')
     const createdAt = nowIso()
+    const trialEndsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
     const companyCode = generateCompanyCode(body.pharmacyName)
     const admin: User = {
       id: adminId,
@@ -78,6 +79,9 @@ export default async function handler(req: HandlerRequest, res: HandlerResponse)
         primaryAdminId: adminId,
         nearExpiryDays: 90,
         approvalThreshold: 25000,
+        subscriptionPlanId: 'smart-pharmacy',
+        trialStartedAt: createdAt,
+        trialEndsAt,
       },
     }
     db.branches = [{

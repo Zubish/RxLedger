@@ -76,6 +76,7 @@ import {
   storeCompanySlug,
 } from './api'
 import RxLedgerLanding from './RxLedgerLanding'
+import { planById, planChangeBlockers, subscriptionPlans, trialPolicy, type SubscriptionPlanId } from './subscriptionPlans'
 import './App.css'
 
 const SIDEBAR_WIDTH = 280
@@ -408,6 +409,9 @@ type AppSettings = {
   primaryAdminId?: string
   nearExpiryDays: number
   approvalThreshold: number
+  subscriptionPlanId?: SubscriptionPlanId
+  trialStartedAt?: string
+  trialEndsAt?: string
 }
 
 type Database = {
@@ -657,6 +661,9 @@ function createEmptyDatabase(): Database {
       logoDataUrl: '',
       nearExpiryDays: 90,
       approvalThreshold: 25_000,
+      subscriptionPlanId: trialPolicy.includedPlan,
+      trialStartedAt: new Date().toISOString(),
+      trialEndsAt: new Date(Date.now() + trialPolicy.durationDays * 24 * 60 * 60 * 1000).toISOString(),
     },
   }
 }
@@ -5873,6 +5880,15 @@ function BranchesView({
 
 function SettingsView({ db, canAdmin, executeAction }: { db: Database; canAdmin: boolean; executeAction: ExecuteAction }) {
   const [form, setForm] = useState(db.settings)
+  const currentPlanId = db.settings.subscriptionPlanId ?? trialPolicy.includedPlan
+  const selectedPlanId = form.subscriptionPlanId ?? currentPlanId
+  const selectedPlan = planById(selectedPlanId)
+  const activeUsage = useMemo(() => ({
+    activeBranches: db.branches.filter((branch) => branch.active).length,
+    activeStaff: db.users.filter((user) => user.status === 'active').length,
+  }), [db.branches, db.users])
+  const planBlockers = selectedPlanId === currentPlanId ? [] : planChangeBlockers(activeUsage, selectedPlanId)
+  const trialEnds = form.trialEndsAt ? formatDate(form.trialEndsAt) : ''
 
   async function uploadLogo(file: File) {
     if (file.size > 500_000) {
@@ -5890,6 +5906,10 @@ function SettingsView({ db, canAdmin, executeAction }: { db: Database; canAdmin:
 
   function submit(event: FormEvent) {
     event.preventDefault()
+    if (planBlockers.length) {
+      window.alert(planBlockers.join('\n'))
+      return
+    }
     void executeAction('updateSettings', form, 'Settings saved')
   }
 
@@ -5926,8 +5946,43 @@ function SettingsView({ db, canAdmin, executeAction }: { db: Database; canAdmin:
         <label>Default branch name<input value={form.branchName} onChange={(event) => setForm({ ...form, branchName: event.target.value })} disabled={!canAdmin} /></label>
         <label>Near-expiry days<input type="number" min="1" value={numberInputValue(form.nearExpiryDays)} onChange={(event) => setForm({ ...form, nearExpiryDays: Number(event.target.value) })} disabled={!canAdmin} /></label>
         <label>Approval threshold (NGN)<input type="number" min="0" value={numberInputValue(form.approvalThreshold)} onChange={(event) => setForm({ ...form, approvalThreshold: Number(event.target.value) })} disabled={!canAdmin} /></label>
+        <div className="subscription-settings full">
+          <div>
+            <span className="eyebrow">Subscription</span>
+            <h3>{selectedPlan.name}</h3>
+            <p>{selectedPlan.summary}</p>
+            {trialEnds && <small>Trial data is preserved. Current trial ends {trialEnds}.</small>}
+          </div>
+          <label>
+            Plan
+            <select
+              value={selectedPlanId}
+              onChange={(event) => setForm({ ...form, subscriptionPlanId: event.target.value as SubscriptionPlanId })}
+              disabled={!canAdmin}
+            >
+              {subscriptionPlans.map((plan) => (
+                <option key={plan.id} value={plan.id}>{plan.name} - {plan.price}{plan.per}</option>
+              ))}
+            </select>
+          </label>
+          <div className="subscription-plan-boundary">
+            <strong>Plan boundary</strong>
+            <span>{activeUsage.activeBranches} active branch{activeUsage.activeBranches === 1 ? '' : 'es'} / {activeUsage.activeStaff} active staff</span>
+            <ul>
+              {selectedPlan.limits.map((limit) => <li key={limit}>{limit}</li>)}
+            </ul>
+          </div>
+          {planBlockers.length > 0 ? (
+            <div className="form-error">
+              {planBlockers.map((blocker) => <span key={blocker}>{blocker}</span>)}
+              <span>Archive, export, or deactivate extra usage before moving to this lower plan. No historical data is deleted.</span>
+            </div>
+          ) : (
+            <div className="empty-state">Plan changes keep stock, sales, patient, branch, and audit history in the workspace.</div>
+          )}
+        </div>
         <div className="form-actions full">
-          <button className="primary-button" type="submit" disabled={!canAdmin}>
+          <button className="primary-button" type="submit" disabled={!canAdmin || planBlockers.length > 0}>
             <Settings size={17} />
             Save settings
           </button>

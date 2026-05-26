@@ -31,6 +31,8 @@ type ActionBody = {
   payload?: Record<string, unknown>
 }
 
+type SubscriptionPlanId = NonNullable<Database['settings']['subscriptionPlanId']>
+
 export default async function handler(req: HandlerRequest, res: HandlerResponse) {
   if (!requireMethod(req, res, ['POST'])) return
   try {
@@ -141,6 +143,23 @@ function requireString(value: unknown, label: string) {
 
 function optionalString(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+function normalizeSubscriptionPlanId(value: unknown, fallback: SubscriptionPlanId): SubscriptionPlanId {
+  return value === 'single-branch' || value === 'smart-pharmacy' || value === 'enterprise' ? value : fallback
+}
+
+function subscriptionPlanBlockers(db: Database, targetPlanId: SubscriptionPlanId) {
+  if (targetPlanId === 'enterprise') return []
+  const activeBranches = db.branches.filter((branch) => branch.active).length
+  const activeStaff = db.users.filter((user) => user.status === 'active').length
+  const branchLimit = targetPlanId === 'single-branch' ? 1 : 5
+  const staffLimit = targetPlanId === 'single-branch' ? 5 : 25
+  const planName = targetPlanId === 'single-branch' ? 'Single Branch' : 'Smart Pharmacy'
+  const blockers: string[] = []
+  if (activeBranches > branchLimit) blockers.push(`${planName} allows ${branchLimit} active branch${branchLimit === 1 ? '' : 'es'}.`)
+  if (activeStaff > staffLimit) blockers.push(`${planName} allows up to ${staffLimit} active staff.`)
+  return blockers
 }
 
 function requireNumber(value: unknown, label: string) {
@@ -1118,6 +1137,12 @@ function updateSettings(db: Database, actorId: string, actorRole: Role, payload:
   const actor = db.users.find((user) => user.id === actorId)
   if (!actor || !canAdmin({ ...actor, role: actorRole }, getPrimaryAdminId(db))) throw new Error('Only the permanent admin can update settings')
   const before = { ...db.settings }
+  const currentPlanId = db.settings.subscriptionPlanId ?? 'smart-pharmacy'
+  const subscriptionPlanId = normalizeSubscriptionPlanId(payload?.subscriptionPlanId, currentPlanId)
+  const blockers = subscriptionPlanId === currentPlanId ? [] : subscriptionPlanBlockers(db, subscriptionPlanId)
+  if (blockers.length) {
+    throw new Error(`${blockers.join(' ')} No historical stock, sales, patient, branch, or audit data will be deleted; archive or deactivate extra usage before downgrading.`)
+  }
   db.settings = {
     pharmacyName: optionalString(payload?.pharmacyName) || db.settings.pharmacyName,
     softwareName: optionalString(payload?.softwareName) || db.settings.softwareName,
@@ -1131,6 +1156,9 @@ function updateSettings(db: Database, actorId: string, actorRole: Role, payload:
     primaryAdminId: db.settings.primaryAdminId || actorId,
     nearExpiryDays: Number(payload?.nearExpiryDays) || db.settings.nearExpiryDays,
     approvalThreshold: Number(payload?.approvalThreshold) || db.settings.approvalThreshold,
+    subscriptionPlanId,
+    trialStartedAt: db.settings.trialStartedAt,
+    trialEndsAt: db.settings.trialEndsAt,
   }
   addAudit(db, actorId, 'Updated system settings', 'settings', 'main', before, db.settings)
 }

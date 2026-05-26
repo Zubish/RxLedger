@@ -1,6 +1,7 @@
 export type Role = 'admin' | 'pharmacist' | 'inventory' | 'cashier' | 'viewer'
 export type UserStatus = 'pending' | 'active' | 'suspended'
 export type LedgerType = 'stock-in' | 'stock-out' | 'adjustment' | 'write-off' | 'supplier-return' | 'customer-return'
+export type SubscriptionPlanId = 'single-branch' | 'smart-pharmacy' | 'enterprise'
 
 export type User = {
   id: string
@@ -290,6 +291,9 @@ export type AppSettings = {
   primaryAdminId?: string
   nearExpiryDays: number
   approvalThreshold: number
+  subscriptionPlanId?: SubscriptionPlanId
+  trialStartedAt?: string
+  trialEndsAt?: string
 }
 
 export type Database = {

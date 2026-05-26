@@ -6,6 +6,7 @@ import { createHash, pbkdf2Sync, randomBytes, timingSafeEqual } from 'node:crypt
 type Role = 'admin' | 'pharmacist' | 'inventory' | 'cashier' | 'viewer'
 type UserStatus = 'pending' | 'active' | 'suspended'
 type LedgerType = 'stock-in' | 'stock-out' | 'adjustment' | 'write-off' | 'supplier-return' | 'customer-return'
+type SubscriptionPlanId = 'single-branch' | 'smart-pharmacy' | 'enterprise'
 
 type User = {
   id: string
@@ -330,6 +331,9 @@ type Database = {
     primaryAdminId?: string
     nearExpiryDays: number
     approvalThreshold: number
+    subscriptionPlanId?: SubscriptionPlanId
+    trialStartedAt?: string
+    trialEndsAt?: string
   }
 }
 
@@ -389,6 +393,9 @@ export function createEmptyDatabase(): Database {
       logoDataUrl: '',
       nearExpiryDays: 90,
       approvalThreshold: 25000,
+      subscriptionPlanId: 'smart-pharmacy',
+      trialStartedAt: nowIso(),
+      trialEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     },
   }
 }
@@ -800,6 +807,9 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
       mainBranchAddress: rawSettings.mainBranchAddress || '',
       logoDataUrl: rawSettings.logoDataUrl || '',
       primaryAdminId,
+      subscriptionPlanId: rawSettings.subscriptionPlanId === 'single-branch' || rawSettings.subscriptionPlanId === 'enterprise' ? rawSettings.subscriptionPlanId : 'smart-pharmacy',
+      trialStartedAt: rawSettings.trialStartedAt || empty.settings.trialStartedAt,
+      trialEndsAt: rawSettings.trialEndsAt || empty.settings.trialEndsAt,
     },
   }
 }
