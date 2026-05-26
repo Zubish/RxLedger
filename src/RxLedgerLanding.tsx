@@ -573,7 +573,7 @@ function Pricing() {
           return (
             <div
               key={t.name}
-              className={`relative flex flex-col rounded-2xl border p-6 md:min-h-[480px] ${t.highlight ? "border-brand bg-card shadow-lg ring-1 ring-brand/20" : "border-border bg-card shadow-sm"}`}
+              className={`relative flex flex-col rounded-2xl border p-6 md:min-h-[440px] ${t.highlight ? "border-brand bg-card shadow-lg ring-1 ring-brand/20" : "border-border bg-card shadow-sm"}`}
             >
               {t.highlight && (
                 <span className="absolute -top-3 left-7 rounded-full bg-brand px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-primary-foreground">
@@ -613,7 +613,7 @@ function Pricing() {
               </ul>
               {hiddenFeatureCount > 0 && (
                 <button
-                  className="mt-4 inline-flex w-fit text-sm font-semibold text-brand transition-colors hover:text-brand/80"
+                  className="mt-3 inline-flex w-fit text-sm font-semibold text-brand transition-colors hover:text-brand/80"
                   type="button"
                   aria-expanded={expanded}
                   onClick={() => setExpandedPlans((plans) => ({ ...plans, [t.id]: !expanded }))}
@@ -621,7 +621,7 @@ function Pricing() {
                   {expanded ? "View less" : "View more"}
                 </button>
               )}
-              <button className={`mt-auto inline-flex h-11 items-center justify-center rounded-lg px-5 text-sm font-semibold transition-all ${t.highlight ? "bg-brand text-primary-foreground hover:bg-brand/90" : "border border-border bg-background text-ink hover:bg-surface"}`}>
+              <button className={`mt-5 inline-flex h-11 items-center justify-center rounded-lg px-5 text-sm font-semibold transition-all ${t.highlight ? "bg-brand text-primary-foreground hover:bg-brand/90" : "border border-border bg-background text-ink hover:bg-surface"}`}>
                 {t.cta}
               </button>
             </div>
