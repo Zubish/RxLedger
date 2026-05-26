@@ -744,8 +744,13 @@ td span,
 }
 
 .workspace {
+  grid-column: 2;
   min-width: 0;
   padding: 24px;
+}
+
+.app-shell.sidebar-collapsed .workspace {
+  grid-column: 1;
 }
 
 @media (min-width: 1440px) {

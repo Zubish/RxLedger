@@ -1499,10 +1499,16 @@ function App() {
     await forceSignOut()
   }
 
+  function shouldAutoCollapseSidebar() {
+    return typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches
+  }
+
   function navigate(view: View) {
     setActiveView(view)
-    setSidebarOpen(false)
-    setSidebarCollapsed(true)
+    if (shouldAutoCollapseSidebar()) {
+      setSidebarOpen(false)
+      setSidebarCollapsed(true)
+    }
   }
 
   function switchActiveBranch(branchId: string) {
