@@ -98,6 +98,15 @@ Before adding a new `max-height` or `overflow`, prefer these variables and check
 - Completing a sale removes the selected draft and deducts inventory.
 - Pharmacists and allowed branch roles can prepare/save drafts; only cashiers complete sales.
 
+## Subscription Rules
+
+- Subscription plan definitions live in `src/subscriptionPlans.ts` and should be the source of truth for landing pricing and future billing enforcement.
+- Free trial is 30 days and exposes the Smart Pharmacy plan. Trial data is never deleted when the trial ends.
+- Customers can upgrade immediately without data migration because the workspace data stays in place.
+- Customers can downgrade only when active usage fits the lower plan limits. For example, Single Branch allows 1 active branch and 5 active staff; Smart Pharmacy allows 5 active branches and 25 active staff.
+- Downgrading must never delete stock, sales, patient, branch, or audit history. Extra branches/staff should be archived, exported, or made inactive before the lower plan becomes active.
+- High-support or high-value features belong in Enterprise: unlimited branches/staff, custom integrations, SLA, dedicated onboarding, custom reports, and future AI/clinical automation.
+
 ## Patient Workflow Rules
 
 - Patients are derived from POS sales data, not a separate manual CRM table yet.

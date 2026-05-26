@@ -20,6 +20,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import "./rxledger-landing.css";
+import { planChangePolicy, subscriptionPlans, trialPolicy } from "./subscriptionPlans";
 
 type LandingProps = {
   onCreateWorkspace: () => void;
@@ -552,35 +553,42 @@ function Testimonial() {
 
 /* ---------------- Pricing teaser ---------------- */
 function Pricing() {
-  const tiers = [
-    { name: "Single branch", price: "₦25,000", per: "/mo", features: ["1 branch", "Up to 5 staff", "Inventory + POS", "Audit trail"], highlight: false },
-    { name: "Multi-branch", price: "₦65,000", per: "/mo", features: ["Up to 5 branches", "Unlimited staff", "Inter-branch transfers", "Role-based access", "Priority support"], highlight: true },
-    { name: "Enterprise", price: "Talk to us", per: "", features: ["Unlimited branches", "SLA + onboarding", "Custom integrations", "Dedicated success rep"], highlight: false },
-  ];
   return (
     <section id="pricing" className="landing-container py-24">
-      <div className="mx-auto max-w-2xl text-center">
+      <div className="mx-auto max-w-3xl text-center">
         <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-brand">Pricing</span>
         <h2 className="mt-3 font-display text-3xl font-bold tracking-tight text-ink md:text-4xl">
           Honest pricing. Start free for 30 days.
         </h2>
-        <p className="mt-3 text-ink-soft">No card to start. Upgrade only when RxLedger is paying for itself.</p>
+        <p className="mt-3 text-ink-soft">{trialPolicy.summary}</p>
       </div>
       <div className="mt-12 grid gap-5 md:grid-cols-3">
-        {tiers.map((t) => (
+        {subscriptionPlans.map((t) => (
           <div
             key={t.name}
             className={`relative flex flex-col rounded-2xl border p-7 ${t.highlight ? "border-brand bg-card shadow-lg ring-1 ring-brand/20" : "border-border bg-card shadow-sm"}`}
           >
             {t.highlight && (
               <span className="absolute -top-3 left-7 rounded-full bg-brand px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-primary-foreground">
-                Most pharmacies
+                {t.badge}
               </span>
             )}
             <h3 className="font-display text-lg font-bold text-ink">{t.name}</h3>
+            <p className="mt-2 min-h-12 text-sm leading-relaxed text-ink-soft">{t.summary}</p>
             <div className="mt-3 flex items-baseline gap-1">
               <span className="font-display text-3xl font-extrabold tracking-tight text-ink">{t.price}</span>
               <span className="text-sm text-ink-soft">{t.per}</span>
+            </div>
+            <div className="mt-5 rounded-lg border border-border bg-surface/60 p-3">
+              <p className="font-mono text-[10px] font-semibold uppercase tracking-widest text-ink-soft">Plan boundary</p>
+              <ul className="mt-2 space-y-1.5 text-xs text-ink-soft">
+                {t.limits.map((limit) => (
+                  <li key={limit} className="flex items-start gap-2">
+                    <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-brand" />
+                    <span>{limit}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
             <ul className="mt-5 space-y-2 text-sm text-ink-soft">
               {t.features.map((f) => (
@@ -590,11 +598,22 @@ function Pricing() {
                 </li>
               ))}
             </ul>
+            {t.upgradeFor.length > 0 && (
+              <div className="mt-5 border-t border-border pt-4">
+                <p className="font-mono text-[10px] font-semibold uppercase tracking-widest text-ink-soft">Upgrade for</p>
+                <ul className="mt-2 space-y-1.5 text-xs text-ink-soft">
+                  {t.upgradeFor.map((item) => <li key={item}>- {item}</li>)}
+                </ul>
+              </div>
+            )}
             <button className={`mt-7 inline-flex h-11 items-center justify-center rounded-lg px-5 text-sm font-semibold transition-all ${t.highlight ? "bg-brand text-primary-foreground hover:bg-brand/90" : "border border-border bg-background text-ink hover:bg-surface"}`}>
-              {t.name === "Enterprise" ? "Contact sales" : "Start free trial"}
+              {t.cta}
             </button>
           </div>
         ))}
+      </div>
+      <div className="mt-6 rounded-2xl border border-border bg-surface/60 p-5 text-sm leading-relaxed text-ink-soft">
+        <strong className="text-ink">Plan changes are safe.</strong> {planChangePolicy.dataRetention} {planChangePolicy.downgrade}
       </div>
     </section>
   );
@@ -604,7 +623,8 @@ function Pricing() {
 function FAQ() {
   const qs = [
     { q: "Do I need to install anything?", a: "No. RxLedger is a web workspace — open it from any browser at the counter or back office. We do recommend a thermal receipt printer for POS." },
-    { q: "How does the free trial work?", a: "30 days, no card. You get the full Multi-branch tier. After 30 days you choose a plan, or your workspace gracefully pauses — your data is never deleted." },
+    { q: "How does the free trial work?", a: "30 days, no card. You get Smart Pharmacy features during trial. After 30 days you choose a plan, or your workspace gracefully pauses. Your data is never deleted." },
+    { q: "Can I switch plans later?", a: "Yes. Upgrades are immediate. Downgrades are allowed when your active branches and staff fit the lower plan; extra records can be archived or exported first, but stock, sales, patient, branch, and audit history stays preserved." },
     { q: "Is my pharmacy's data private?", a: "Yes. Each workspace is fully isolated. Company lists stay private — staff only see their pharmacy after entering the access code from their admin." },
     { q: "Can I migrate from spreadsheets or another POS?", a: "Yes. Send us your stock and price lists in CSV or Excel — our onboarding team imports them and verifies opening balances with you before you go live." },
     { q: "Does it work offline?", a: "POS continues to ring sales if your internet drops; transactions sync the moment connectivity returns. Inventory edits require connection to preserve the audit trail." },
