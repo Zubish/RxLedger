@@ -1500,6 +1500,7 @@ function App() {
   function navigate(view: View) {
     setActiveView(view)
     setSidebarOpen(false)
+    setSidebarCollapsed(true)
   }
 
   function switchActiveBranch(branchId: string) {
