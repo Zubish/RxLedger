@@ -2,6 +2,8 @@
 
 This blueprint is the working guide for future RxLedger changes. Read it before changing layout, navigation, POS logic, patient workflow, branch access, or reporting behavior.
 
+For reusable skills that apply beyond RxLedger, also read [SKILL_LIBRARY.md](SKILL_LIBRARY.md). The blueprint is RxLedger-specific; the skill library is cross-industry.
+
 ## Product Shape
 
 RxLedger is a pharmacy operations workspace, not a marketing site once a user is authenticated. The app should feel calm, dense, professional, and built for repeated counter/back-office use.

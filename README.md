@@ -43,6 +43,8 @@ RxLedger currently treats the main account as the company dashboard. Stock belon
 
 For future implementation and design guidance, see [docs/APP_BLUEPRINT.md](docs/APP_BLUEPRINT.md). It captures the app structure, brand rules, scroll policy, and critical workflow rules for POS, patients, branches, and verification.
 
+For reusable product, UI/UX, engineering, mobile, data, QA, deployment, and cross-industry adaptation skills learned from this project, see [docs/SKILL_LIBRARY.md](docs/SKILL_LIBRARY.md).
+
 Scrollable panels should scroll independently, like an analytics dashboard with many components. The sidebar/control panel, dropdown lists, dashboard cards, tables, and chat timelines should contain their own scrolling when the pointer is over them; the main workspace should only scroll when the pointer is on the main page.
 
 Only Admin users can see global medication cost/value across all branches. Non-admin users must see medication cost/value only for the active branch workspace they are viewing. Branch switching should show a loading transition so each branch feels like a separate operating entity.
