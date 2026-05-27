@@ -1344,6 +1344,32 @@ td strong {
   font-size: 14px;
 }
 
+.receive-conversion-note {
+  align-items: center;
+  background: #f3faf7;
+  border: 1px solid #d7e4e3;
+  border-radius: 8px;
+  color: #182126;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
+.receive-conversion-note div {
+  display: grid;
+  gap: 3px;
+}
+
+.receive-conversion-note span {
+  color: #54636a;
+  font-size: 12px;
+}
+
+.receive-conversion-note strong {
+  font-size: 13px;
+}
+
 .requisition-summary-card,
 .requisition-open-row {
   color: inherit;
@@ -4217,7 +4243,8 @@ button:disabled {
 
   .topbar,
   .section-heading,
-  .availability {
+  .availability,
+  .receive-conversion-note {
     align-items: flex-start;
     flex-direction: column;
   }

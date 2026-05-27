@@ -604,6 +604,28 @@ function sellableUnitLabel(medicine: Medicine) {
   return packSize > 1 ? `${packSize} ${unit} per ${medicine.unit || 'pack'}` : unit
 }
 
+function medicineSellableUnit(medicine?: Medicine) {
+  return medicine?.sellableUnit || medicine?.unit || 'unit'
+}
+
+function medicineContainerPackage(medicine?: Medicine) {
+  return medicine?.unit || 'container'
+}
+
+function medicineUnitsPerContainer(medicine?: Medicine) {
+  return Math.max(1, Number(medicine?.packSize) || 1)
+}
+
+function medicineStockLabel(medicine: Medicine, quantity: number) {
+  return `${number.format(quantity)} ${medicineSellableUnit(medicine)}`
+}
+
+function medicineUnitCostFromContainerCost(medicine: Medicine | undefined, containerCost: number) {
+  if (!medicine) return Math.max(0, Number(containerCost) || 0)
+  const cost = Math.max(0, Number(containerCost) || 0)
+  return cost > 0 ? cost / medicineUnitsPerContainer(medicine) : medicine.costPrice || 0
+}
+
 function MedicineIdentity({ medicine }: { medicine: Medicine }) {
   return (
     <span className="medicine-identity">
@@ -1238,7 +1260,7 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
       id: `expired-${row.batch.id}`,
       tone: 'danger',
       title: `${medicineOptionLabel(row.medicine)} has expired stock`,
-      detail: `${getBranchName(db, row.batch.branchId)} / ${row.batch.batchNumber} has ${number.format(row.quantity)} ${row.medicine.unit} in ${row.batch.location}.`,
+      detail: `${getBranchName(db, row.batch.branchId)} / ${row.batch.batchNumber} has ${medicineStockLabel(row.medicine, row.quantity)} in ${row.batch.location}.`,
       view: 'reports',
       branchId: row.batch.branchId,
     })
@@ -1249,7 +1271,7 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
       id: `near-${row.batch.id}`,
       tone: 'warning',
       title: `${medicineOptionLabel(row.medicine)} expires in ${row.daysToExpiry} days`,
-      detail: `${getBranchName(db, row.batch.branchId)} / ${row.batch.batchNumber}, ${number.format(row.quantity)} ${row.medicine.unit} available.`,
+      detail: `${getBranchName(db, row.batch.branchId)} / ${row.batch.batchNumber}, ${medicineStockLabel(row.medicine, row.quantity)} available.`,
       view: 'reports',
       branchId: row.batch.branchId,
     })
@@ -1260,7 +1282,7 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
       id: `out-${medicine.id}`,
       tone: 'danger',
       title: `${medicineOptionLabel(medicine)} is out of stock`,
-      detail: `${activeBranch?.name ?? 'Current branch'} / reorder level is ${number.format(medicine.reorderLevel)} ${medicine.unit}.`,
+      detail: `${activeBranch?.name ?? 'Current branch'} / reorder level is ${medicineStockLabel(medicine, medicine.reorderLevel)}.`,
       view: 'medicines',
       branchId: activeBranch?.id,
     })
@@ -1273,7 +1295,7 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
         id: `low-${medicine.id}`,
         tone: 'info',
         title: `${medicineOptionLabel(medicine)} is low on stock`,
-        detail: `${activeBranch?.name ?? 'Current branch'} / available: ${number.format(stockTotals.get(medicine.id) ?? 0)}. Reorder level: ${number.format(medicine.reorderLevel)}.`,
+        detail: `${activeBranch?.name ?? 'Current branch'} / available: ${medicineStockLabel(medicine, stockTotals.get(medicine.id) ?? 0)}. Reorder level: ${medicineStockLabel(medicine, medicine.reorderLevel)}.`,
         view: 'medicines',
         branchId: activeBranch?.id,
       })
@@ -2464,13 +2486,13 @@ function Dashboard({
             <AlertItem tone="warning" title={`${pendingUsers} staff access request${pendingUsers > 1 ? 's' : ''} pending`} detail="An admin should approve users and assign the correct role before they can sign in." />
           )}
           {expired.map((row) => (
-            <AlertItem key={row.batch.id} tone="danger" title={<MedicineIdentity medicine={row.medicine} />} detail={`Expired batch ${row.batch.batchNumber} has ${number.format(row.quantity)} ${row.medicine.unit} in ${row.batch.location}`} />
+            <AlertItem key={row.batch.id} tone="danger" title={<MedicineIdentity medicine={row.medicine} />} detail={`Expired batch ${row.batch.batchNumber} has ${medicineStockLabel(row.medicine, row.quantity)} in ${row.batch.location}`} />
           ))}
           {nearExpiry.slice(0, 5).map((row) => (
-            <AlertItem key={row.batch.id} tone="warning" title={<MedicineIdentity medicine={row.medicine} />} detail={`Batch ${row.batch.batchNumber} expires in ${row.daysToExpiry} days. ${number.format(row.quantity)} ${row.medicine.unit} available`} />
+            <AlertItem key={row.batch.id} tone="warning" title={<MedicineIdentity medicine={row.medicine} />} detail={`Batch ${row.batch.batchNumber} expires in ${row.daysToExpiry} days. ${medicineStockLabel(row.medicine, row.quantity)} available`} />
           ))}
           {lowStock.map((medicine) => (
-            <AlertItem key={medicine.id} tone="info" title={<MedicineIdentity medicine={medicine} />} detail={`At or below reorder level. Available: ${number.format(alertStockTotals.get(medicine.id) ?? 0)}. Reorder level: ${number.format(medicine.reorderLevel)}`} />
+            <AlertItem key={medicine.id} tone="info" title={<MedicineIdentity medicine={medicine} />} detail={`At or below reorder level. Available: ${medicineStockLabel(medicine, alertStockTotals.get(medicine.id) ?? 0)}. Reorder level: ${medicineStockLabel(medicine, medicine.reorderLevel)}`} />
           ))}
           {!pendingUsers && !expired.length && !nearExpiry.length && !lowStock.length && (
             <AlertItem tone="good" title="No active inventory alerts" detail="Stock levels, expiry windows, and access approvals are currently clear." />
@@ -2849,8 +2871,8 @@ function Medicines({
         genericName: getImportValue(row, ['generic name', 'generic']),
         form: getImportValue(row, ['form', 'dosage form', 'formulation']) || 'Tablet',
         strength: getImportValue(row, ['strength']),
-        unit: getImportValue(row, ['unit', 'container unit', 'pack unit', 'unit of measure', 'uom']) || 'Pack',
-        packSize: Number(getImportValue(row, ['pack size', 'units per pack', 'units per container', 'quantity per pack'])) || 1,
+        unit: getImportValue(row, ['container package', 'container unit', 'unit', 'pack unit', 'unit of measure', 'uom']) || 'Pack',
+        packSize: Number(getImportValue(row, ['units per container', 'pack size', 'units per pack', 'quantity per pack'])) || 1,
         sellableUnit: getImportValue(row, ['sellable unit', 'least sellable unit', 'retail unit']) || 'Unit',
         costPrice: Number(getImportValue(row, ['cost price', 'cost', 'unit cost'])) || 0,
         sellingPrice: Number(getImportValue(row, ['selling price', 'sale price', 'retail price'])) || 0,
@@ -2965,8 +2987,8 @@ function Medicines({
                 <th>NAFDAC</th>
                 <th>Barcode</th>
                 <th>Stock</th>
-                <th>Cost price</th>
-                <th>Selling price</th>
+                <th>Cost / least unit</th>
+                <th>Selling / least unit</th>
                 <th>Cost value</th>
                 <th>Status</th>
                 <th></th>
@@ -2995,7 +3017,7 @@ function Medicines({
                         defaultValue={medicine.costPrice || ''}
                         onBlur={(event) => updateMedicinePricing(medicine, { costPrice: Number(event.currentTarget.value) || 0 })}
                         disabled={!canManagePrices || !activeBranch}
-                        aria-label={`Cost price for ${medicine.brandName}`}
+                        aria-label={`Cost price per least sellable unit for ${medicine.brandName}`}
                       />
                     </td>
                     <td>
@@ -3006,7 +3028,7 @@ function Medicines({
                         defaultValue={medicine.sellingPrice || getMedicineSellingPrice(stockRows, medicine.id) || ''}
                         onBlur={(event) => updateMedicinePricing(medicine, { sellingPrice: Number(event.currentTarget.value) || 0 })}
                         disabled={!canManagePrices || !activeBranch}
-                        aria-label={`Selling price for ${medicine.brandName}`}
+                        aria-label={`Selling price per least sellable unit for ${medicine.brandName}`}
                       />
                     </td>
                     <td>{money.format(stockCostTotals.get(medicine.id) ?? 0)}</td>
@@ -3066,11 +3088,11 @@ function Medicines({
                   <label>NAFDAC number<input value={draft.nafdacNumber} onChange={(event) => updateDraft(draft.rowId, { nafdacNumber: event.target.value })} disabled={!canWrite} /></label>
                   <label>Form<input value={draft.form} onChange={(event) => updateDraft(draft.rowId, { form: event.target.value })} disabled={!canWrite} /></label>
                   <label>Strength<input value={draft.strength} onChange={(event) => updateDraft(draft.rowId, { strength: event.target.value })} disabled={!canWrite} /></label>
-                  <label>Container unit<input value={draft.unit} onChange={(event) => updateDraft(draft.rowId, { unit: event.target.value })} placeholder="Pack, bottle, sachet" disabled={!canWrite} /></label>
+                  <label>Container package<input value={draft.unit} onChange={(event) => updateDraft(draft.rowId, { unit: event.target.value })} placeholder="Pack, bottle, carton" disabled={!canWrite} /></label>
                   <label>Units per container<input type="number" min="1" value={numberInputValue(draft.packSize)} onChange={(event) => updateDraft(draft.rowId, { packSize: Number(event.target.value) })} disabled={!canWrite} /></label>
-                  <label>Least sellable unit<input value={draft.sellableUnit} onChange={(event) => updateDraft(draft.rowId, { sellableUnit: event.target.value })} placeholder="Tablet, bottle, capsule" disabled={!canWrite} /></label>
-                  <label>Cost price<input type="number" min="0" value={numberInputValue(draft.costPrice)} onChange={(event) => updateDraft(draft.rowId, { costPrice: Number(event.target.value) })} disabled={!canWrite || !canManagePrices} /></label>
-                  <label>Selling price<input type="number" min="0" value={numberInputValue(draft.sellingPrice)} onChange={(event) => updateDraft(draft.rowId, { sellingPrice: Number(event.target.value) })} disabled={!canWrite || !canManagePrices} /></label>
+                  <label>Least sellable unit<input value={draft.sellableUnit} onChange={(event) => updateDraft(draft.rowId, { sellableUnit: event.target.value })} placeholder="Tablet, sachet, capsule" disabled={!canWrite} /></label>
+                  <label>Cost price / least unit<input type="number" min="0" value={numberInputValue(draft.costPrice)} onChange={(event) => updateDraft(draft.rowId, { costPrice: Number(event.target.value) })} disabled={!canWrite || !canManagePrices} /></label>
+                  <label>Selling price / least unit<input type="number" min="0" value={numberInputValue(draft.sellingPrice)} onChange={(event) => updateDraft(draft.rowId, { sellingPrice: Number(event.target.value) })} disabled={!canWrite || !canManagePrices} /></label>
                   <label>Category<input value={draft.category} onChange={(event) => updateDraft(draft.rowId, { category: event.target.value })} disabled={!canWrite} /></label>
                   <label>Manufacturer<input value={draft.manufacturer} onChange={(event) => updateDraft(draft.rowId, { manufacturer: event.target.value })} disabled={!canWrite} /></label>
                   <label>Reorder level<input type="number" min="0" value={numberInputValue(draft.reorderLevel)} onChange={(event) => updateDraft(draft.rowId, { reorderLevel: Number(event.target.value) })} disabled={!canWrite} /></label>
@@ -3182,7 +3204,7 @@ function Medicines({
                         <div className="requisition-release-row" key={item.id}>
                           <span>
                             {medicine?.brandName ?? item.medicineId} / {batch?.batchNumber ?? item.batchId}
-                            <small>Requested {number.format(item.quantity)} / available {number.format(available)}</small>
+                            <small>Requested {number.format(item.quantity)} / available {number.format(available)} {medicine ? medicineSellableUnit(medicine) : 'least units'}</small>
                           </span>
                           <label>
                             Release qty
@@ -3445,7 +3467,31 @@ function ReceiveStock({ db, activeBranch, canWrite, executeAction, flash }: { db
       return { unitCost: product?.costPrice || 0, sellingPrice: product?.sellingPrice || 0 }
     }
     const medicine = db.medicines.find((item) => item.id === itemId)
-    return { unitCost: medicine?.costPrice || 0, sellingPrice: medicine?.sellingPrice || 0 }
+    return {
+      unitCost: medicine ? (medicine.costPrice || 0) * medicineUnitsPerContainer(medicine) : 0,
+      sellingPrice: medicine?.sellingPrice || 0,
+    }
+  }
+
+  function selectedMedicineForLine(line: ReceiveLine) {
+    if (line.itemType !== 'medicine') return undefined
+    return db.medicines.find((medicine) => medicine.id === line.itemId)
+  }
+
+  function receiveLineSummary(line: ReceiveLine) {
+    const medicine = selectedMedicineForLine(line)
+    if (!medicine) return undefined
+    const containers = Math.max(0, Number(line.quantity) || 0)
+    const unitsPerContainer = medicineUnitsPerContainer(medicine)
+    const totalLeastUnits = containers * unitsPerContainer
+    const unitCost = medicineUnitCostFromContainerCost(medicine, line.unitCost)
+    return {
+      containerPackage: medicineContainerPackage(medicine),
+      leastUnit: medicineSellableUnit(medicine),
+      totalLeastUnits,
+      unitCost,
+      unitsPerContainer,
+    }
   }
 
   function selectItem(rowId: string, itemType: ReceiveLine['itemType'], itemId: string) {
@@ -3508,7 +3554,11 @@ function ReceiveStock({ db, activeBranch, canWrite, executeAction, flash }: { db
       flash('Receiving blocked: expiry date must be today or later')
       return
     }
-    if (items.some((line) => Number(line.sellingPrice) > 0 && Number(line.sellingPrice) < Number(line.unitCost))) {
+    if (items.some((line) => {
+      const medicine = line.itemType === 'medicine' ? db.medicines.find((item) => item.id === line.itemId) : undefined
+      const comparableUnitCost = medicine ? medicineUnitCostFromContainerCost(medicine, Number(line.unitCost)) : Number(line.unitCost)
+      return Number(line.sellingPrice) > 0 && Number(line.sellingPrice) < comparableUnitCost
+    })) {
       flash('Receiving blocked: selling price cannot be lower than unit cost')
       return
     }
@@ -3547,6 +3597,8 @@ function ReceiveStock({ db, activeBranch, canWrite, executeAction, flash }: { db
             const productOptions = db.products.filter((product) => product.active)
             const selectedItemId = line.itemId || (line.itemType === 'product' ? productOptions[0]?.id : medicineOptions[0]?.id) || ''
             const hasItemOptions = line.itemType === 'product' ? productOptions.length > 0 : medicineOptions.length > 0
+            const selectedMedicine = selectedMedicineForLine({ ...line, itemId: selectedItemId })
+            const lineSummary = receiveLineSummary({ ...line, itemId: selectedItemId })
             return (
               <div className="line-card" key={line.rowId}>
                 <div className="line-card-heading">
@@ -3560,10 +3612,22 @@ function ReceiveStock({ db, activeBranch, canWrite, executeAction, flash }: { db
                   <label className="full">Item<select required value={selectedItemId} onChange={(event) => selectItem(line.rowId, line.itemType, event.target.value)} disabled={!canWrite || !hasItemOptions}><option value="">Select item</option>{line.itemType === 'product' ? productOptions.map((product) => <option key={product.id} value={product.id}>{product.name} / {product.sku}</option>) : medicineOptions.map((medicine) => <option key={medicine.id} value={medicine.id}>{medicineOptionLabel(medicine)}</option>)}</select></label>
                   <label>Batch/Lot number<input required={line.itemType === 'medicine'} value={line.batchNumber} onChange={(event) => updateLine(line.rowId, { batchNumber: event.target.value })} placeholder={line.itemType === 'product' ? 'Optional for Mart items' : ''} disabled={!canWrite} /></label>
                   <label>Expiry date<input required={line.itemType === 'medicine'} type="date" value={line.expiryDate} onChange={(event) => updateLine(line.rowId, { expiryDate: event.target.value })} disabled={!canWrite} /></label>
-                  <label>Quantity<input required type="number" min="1" value={numberInputValue(line.quantity)} onChange={(event) => updateLine(line.rowId, { quantity: Number(event.target.value) })} disabled={!canWrite} /></label>
-                  <label>Unit cost<input type="number" min="0" value={numberInputValue(line.unitCost)} onChange={(event) => updateLine(line.rowId, { unitCost: Number(event.target.value) })} disabled={!canWrite} /></label>
-                  <label>Selling price<input type="number" min="0" value={numberInputValue(line.sellingPrice)} onChange={(event) => updateLine(line.rowId, { sellingPrice: Number(event.target.value) })} disabled={!canWrite} /></label>
+                  <label>{line.itemType === 'medicine' ? `Containers received${selectedMedicine ? ` (${medicineContainerPackage(selectedMedicine)})` : ''}` : 'Quantity received'}<input required type="number" min="1" value={numberInputValue(line.quantity)} onChange={(event) => updateLine(line.rowId, { quantity: Number(event.target.value) })} disabled={!canWrite} /></label>
+                  <label>{line.itemType === 'medicine' ? 'Cost per container' : 'Unit cost'}<input type="number" min="0" value={numberInputValue(line.unitCost)} onChange={(event) => updateLine(line.rowId, { unitCost: Number(event.target.value) })} disabled={!canWrite} /></label>
+                  <label>{line.itemType === 'medicine' ? 'Selling price / least unit' : 'Selling price'}<input type="number" min="0" value={numberInputValue(line.sellingPrice)} onChange={(event) => updateLine(line.rowId, { sellingPrice: Number(event.target.value) })} disabled={!canWrite} /></label>
                   <label>Stock location<input value={line.location} onChange={(event) => updateLine(line.rowId, { location: event.target.value })} disabled={!canWrite} /></label>
+                  {lineSummary && (
+                    <div className="receive-conversion-note full">
+                      <div>
+                        <strong>{number.format(line.quantity || 0)} {lineSummary.containerPackage} x {number.format(lineSummary.unitsPerContainer)} {lineSummary.leastUnit}</strong>
+                        <span>= {number.format(lineSummary.totalLeastUnits)} {lineSummary.leastUnit} posted to stock</span>
+                      </div>
+                      <div>
+                        <strong>{money.format(lineSummary.unitCost)}</strong>
+                        <span>cost per {lineSummary.leastUnit}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )
@@ -3657,7 +3721,7 @@ function IssueStock({
         <form className="form-grid" onSubmit={submit}>
           <label className="scan-field full">Scan barcode or SKU<div><Barcode size={17} /><input value={scan} onChange={(event) => setScan(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); applyScan() } }} placeholder="Scan, then press Enter" disabled={!canWrite || !db.medicines.length} /><button className="ghost-button" type="button" onClick={applyScan} disabled={!canWrite || !db.medicines.length}><Search size={16} />Lookup</button></div></label>
           <label className="full">Medicine<select required value={selectedMedicineId} onChange={(event) => setForm({ ...form, medicineId: event.target.value })} disabled={!canWrite || !db.medicines.length}><option value="">Select medicine</option>{db.medicines.map((medicine) => <option key={medicine.id} value={medicine.id}>{medicineOptionLabel(medicine)}</option>)}</select></label>
-          <label>Quantity<input type="number" min="1" value={numberInputValue(form.quantity)} onChange={(event) => setForm({ ...form, quantity: Number(event.target.value) })} disabled={!canWrite} /></label>
+          <label>Quantity / least unit<input type="number" min="1" value={numberInputValue(form.quantity)} onChange={(event) => setForm({ ...form, quantity: Number(event.target.value) })} disabled={!canWrite} /></label>
           <label>Reason<select value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} disabled={!canWrite}><option>Dispense</option><option>Internal use</option><option>Donation</option><option>Damage</option><option>Other</option></select></label>
           <label className="full">Reference note<input value={form.reference} onChange={(event) => setForm({ ...form, reference: event.target.value })} placeholder="Receipt, request, or memo reference" disabled={!canWrite} /></label>
           <div className="availability full">
@@ -4785,12 +4849,12 @@ function Adjustments({ activeBranch, stockRows, canAdjust, executeAction, flash 
       </div>
       {!canAdjust && <div className="form-error">You only have view access in {activeBranch.name}, or your role cannot post adjustments.</div>}
       <form className="form-grid" onSubmit={submit}>
-        <label className="full">Batch<select required value={selectedBatchId} onChange={(event) => setForm({ ...form, batchId: event.target.value })} disabled={!canAdjust || !positiveRows.length}><option value="">Select batch</option>{positiveRows.map((row) => <option key={row.batch.id} value={row.batch.id}>{medicineOptionLabel(row.medicine)} / {row.batch.batchNumber} / Qty {row.quantity}</option>)}</select></label>
+        <label className="full">Batch<select required value={selectedBatchId} onChange={(event) => setForm({ ...form, batchId: event.target.value })} disabled={!canAdjust || !positiveRows.length}><option value="">Select batch</option>{positiveRows.map((row) => <option key={row.batch.id} value={row.batch.id}>{medicineOptionLabel(row.medicine)} / {row.batch.batchNumber} / Qty {medicineStockLabel(row.medicine, row.quantity)}</option>)}</select></label>
         <label>Transaction type<select value={form.mode} onChange={(event) => setForm({ ...form, mode: event.target.value as LedgerType })} disabled={!canAdjust}><option value="write-off">Write-off</option><option value="supplier-return">Supplier return</option><option value="customer-return">Customer return</option><option value="adjustment">Positive adjustment</option></select></label>
-        <label>Quantity<input type="number" min="1" value={numberInputValue(form.quantity)} onChange={(event) => setForm({ ...form, quantity: Number(event.target.value) })} disabled={!canAdjust} /></label>
+        <label>Quantity / least unit<input type="number" min="1" value={numberInputValue(form.quantity)} onChange={(event) => setForm({ ...form, quantity: Number(event.target.value) })} disabled={!canAdjust} /></label>
         <label className="full">Reason<textarea required value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} disabled={!canAdjust} /></label>
         <label className="full">Reference<input value={form.reference} onChange={(event) => setForm({ ...form, reference: event.target.value })} disabled={!canAdjust} /></label>
-        {selected && <div className="availability full"><MedicineIdentity medicine={selected.medicine} /><span>{selected.batch.batchNumber} / available {number.format(selected.quantity)} / expires {selected.batch.expiryDate}</span></div>}
+        {selected && <div className="availability full"><MedicineIdentity medicine={selected.medicine} /><span>{selected.batch.batchNumber} / available {medicineStockLabel(selected.medicine, selected.quantity)} / expires {selected.batch.expiryDate}</span></div>}
         <div className="form-actions full">
           <button className="primary-button" type="submit" disabled={!canAdjust || !selected}>
             <RotateCcw size={17} />
@@ -4873,6 +4937,7 @@ function Reports({ db, stockRows, stockTotals, activeBranch }: { db: Database; s
             Strength: medicine?.strength ?? '-',
             Category: medicine?.category || product?.category || '-',
             Batch: batch?.batchNumber ?? entry.batchNumber ?? '-',
+            Unit: medicine ? medicineSellableUnit(medicine) : product?.unit ?? '-',
             Branch: branchName,
             From: from,
             To: to,
@@ -4905,8 +4970,9 @@ function Reports({ db, stockRows, stockTotals, activeBranch }: { db: Database; s
             Category: medicine?.category || product?.category || '-',
             Batch: batch?.batchNumber ?? item.batchNumber ?? item.batchId,
             Expiry: batch?.expiryDate ?? item.expiryDate ?? '-',
+            Unit: medicine ? medicineSellableUnit(medicine) : product?.unit ?? '-',
             Quantity: item.quantity,
-            'Unit Cost': item.unitCost,
+            'Cost / Least Unit': item.unitCost,
             Branch: getBranchName(db, batch?.branchId ?? item.branchId ?? 'main'),
           }
         }))
@@ -4924,6 +4990,7 @@ function Reports({ db, stockRows, stockTotals, activeBranch }: { db: Database; s
           Batch: row.batch.batchNumber,
           Expiry: row.batch.expiryDate,
           Days: row.daysToExpiry,
+          Unit: medicineSellableUnit(row.medicine),
           Quantity: row.quantity,
           Status: row.status,
           Branch: row.branch?.name ?? row.batch.branchId,
@@ -4940,6 +5007,7 @@ function Reports({ db, stockRows, stockTotals, activeBranch }: { db: Database; s
           Form: medicine.form,
           Strength: medicine.strength,
           Category: medicine.category || '-',
+          Unit: medicineSellableUnit(medicine),
           Available: stockTotals.get(medicine.id) ?? 0,
           'Reorder Level': medicine.reorderLevel,
           Manufacturer: medicine.manufacturer,
@@ -4984,8 +5052,9 @@ function Reports({ db, stockRows, stockTotals, activeBranch }: { db: Database; s
         Category: row.medicine.category || '-',
         Batch: row.batch.batchNumber,
         Expiry: row.batch.expiryDate,
+        Unit: medicineSellableUnit(row.medicine),
         Quantity: row.quantity,
-        'Unit Cost': row.batch.unitCost,
+        'Cost / Least Unit': row.batch.unitCost,
         'Cost Value': row.costValue,
         Supplier: row.supplier?.name ?? '-',
         Branch: row.branch?.name ?? row.batch.branchId,
@@ -6001,6 +6070,7 @@ function StockTable({ rows, compact = false }: { rows: StockRow[]; compact?: boo
             <th>Medicine</th>
             <th>Batch</th>
             <th>Expiry</th>
+            <th>Unit</th>
             <th>Qty</th>
             {!compact && <th>Branch</th>}
             <th>Location</th>
@@ -6016,6 +6086,7 @@ function StockTable({ rows, compact = false }: { rows: StockRow[]; compact?: boo
                 </td>
                 <td>{row.batch.batchNumber}</td>
                 <td>{row.batch.expiryDate}</td>
+                <td>{medicineSellableUnit(row.medicine)}</td>
                 <td>{number.format(row.quantity)}</td>
                 {!compact && <td>{row.branch?.name ?? row.batch.branchId}</td>}
                 <td>{row.batch.location}</td>
@@ -6024,7 +6095,7 @@ function StockTable({ rows, compact = false }: { rows: StockRow[]; compact?: boo
             ))
           ) : (
             <tr>
-              <td colSpan={compact ? 5 : 7}>No stock rows yet.</td>
+              <td colSpan={compact ? 6 : 8}>No stock rows yet.</td>
             </tr>
           )}
         </tbody>

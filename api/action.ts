@@ -587,12 +587,14 @@ function receiveStock(db: Database, actorId: string, actorRole: Role, payload: R
     const medicineId = requireString(input.medicineId || input.itemId, 'Medicine')
     const medicine = db.medicines.find((item) => item.id === medicineId)
     if (!medicine) throw new Error('Medicine not found')
-    const packQuantity = requireNumber(input.quantity, 'Quantity')
-    if (packQuantity <= 0) throw new Error('Quantity must be greater than zero')
-    const quantity = packQuantity * Math.max(1, Number(medicine.packSize) || 1)
+    const containerQuantity = requireNumber(input.quantity, 'Container quantity')
+    if (containerQuantity <= 0) throw new Error('Container quantity must be greater than zero')
+    const unitsPerContainer = Math.max(1, Number(medicine.packSize) || 1)
+    const quantity = containerQuantity * unitsPerContainer
     const expiryDate = requireString(input.expiryDate, 'Expiry date')
     if (expiryDate < today()) throw new Error('Expiry date must be today or a future date')
-    const unitCost = Number(input.unitCost) || medicine.costPrice || 0
+    const containerCost = Number(input.unitCost) || (medicine.costPrice > 0 ? medicine.costPrice * unitsPerContainer : 0)
+    const unitCost = containerCost > 0 ? containerCost / unitsPerContainer : medicine.costPrice || 0
     const sellingPrice = Number(input.sellingPrice) || medicine.sellingPrice || 0
     if (sellingPrice > 0 && sellingPrice < unitCost) throw new Error('Selling price cannot be lower than unit cost')
     const beforeMedicine = { ...medicine }
