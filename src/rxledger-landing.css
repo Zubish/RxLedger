@@ -204,4 +204,50 @@
     color: #ffffff !important;
   }
 
+  .rxledger-landing .landing-testimonial-section {
+    background-color: var(--ink);
+    isolation: isolate;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .rxledger-landing .landing-testimonial-section::before {
+    background-image: url("/testimonial-pharmacist.jpg");
+    background-position: 68% center;
+    background-size: cover;
+    content: "";
+    inset: 0;
+    opacity: 0.62;
+    position: absolute;
+    z-index: -2;
+  }
+
+  .rxledger-landing .landing-testimonial-section::after {
+    background:
+      linear-gradient(90deg, oklch(0.16 0.02 220 / 94%) 0%, oklch(0.16 0.02 220 / 86%) 36%, oklch(0.16 0.02 220 / 56%) 68%, oklch(0.16 0.02 220 / 36%) 100%),
+      linear-gradient(180deg, oklch(0.16 0.02 220 / 78%) 0%, oklch(0.16 0.02 220 / 44%) 48%, oklch(0.16 0.02 220 / 82%) 100%);
+    content: "";
+    inset: 0;
+    position: absolute;
+    z-index: -1;
+  }
+
+  .rxledger-landing .landing-testimonial-section blockquote,
+  .rxledger-landing .landing-testimonial-section p {
+    text-shadow: 0 2px 18px rgb(0 0 0 / 45%);
+  }
+
+  @media (max-width: 640px) {
+    .rxledger-landing .landing-testimonial-section::before {
+      background-position: 58% center;
+      opacity: 0.48;
+    }
+
+    .rxledger-landing .landing-testimonial-section::after {
+      background:
+        linear-gradient(90deg, oklch(0.16 0.02 220 / 96%) 0%, oklch(0.16 0.02 220 / 88%) 58%, oklch(0.16 0.02 220 / 64%) 100%),
+        linear-gradient(180deg, oklch(0.16 0.02 220 / 82%) 0%, oklch(0.16 0.02 220 / 58%) 48%, oklch(0.16 0.02 220 / 88%) 100%);
+    }
+  }
+
 }

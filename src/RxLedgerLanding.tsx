@@ -518,8 +518,8 @@ function Testimonial() {
   };
 
   return (
-    <section className="bg-ink py-24 text-primary-foreground">
-      <div className="landing-container">
+    <section className="landing-testimonial-section py-24 text-primary-foreground">
+      <div className="landing-container relative z-10 max-w-4xl">
         <Zap className="size-6 text-brand-soft" />
         <blockquote
           className={`mt-6 min-h-48 font-display text-2xl font-medium leading-snug tracking-tight transition-all duration-700 ease-in-out md:min-h-36 md:text-3xl ${isVisible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"}`}
