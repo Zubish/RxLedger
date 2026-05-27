@@ -217,15 +217,15 @@
     background-size: cover;
     content: "";
     inset: 0;
-    opacity: 0.62;
+    opacity: 0.86;
     position: absolute;
     z-index: -2;
   }
 
   .rxledger-landing .landing-testimonial-section::after {
     background:
-      linear-gradient(90deg, oklch(0.16 0.02 220 / 94%) 0%, oklch(0.16 0.02 220 / 86%) 36%, oklch(0.16 0.02 220 / 56%) 68%, oklch(0.16 0.02 220 / 36%) 100%),
-      linear-gradient(180deg, oklch(0.16 0.02 220 / 78%) 0%, oklch(0.16 0.02 220 / 44%) 48%, oklch(0.16 0.02 220 / 82%) 100%);
+      linear-gradient(90deg, oklch(0.16 0.02 220 / 78%) 0%, oklch(0.16 0.02 220 / 66%) 34%, oklch(0.16 0.02 220 / 34%) 68%, oklch(0.16 0.02 220 / 14%) 100%),
+      linear-gradient(180deg, oklch(0.16 0.02 220 / 54%) 0%, oklch(0.16 0.02 220 / 20%) 48%, oklch(0.16 0.02 220 / 58%) 100%);
     content: "";
     inset: 0;
     position: absolute;
@@ -234,19 +234,19 @@
 
   .rxledger-landing .landing-testimonial-section blockquote,
   .rxledger-landing .landing-testimonial-section p {
-    text-shadow: 0 2px 18px rgb(0 0 0 / 45%);
+    text-shadow: 0 2px 16px rgb(0 0 0 / 58%);
   }
 
   @media (max-width: 640px) {
     .rxledger-landing .landing-testimonial-section::before {
       background-position: 58% center;
-      opacity: 0.48;
+      opacity: 0.76;
     }
 
     .rxledger-landing .landing-testimonial-section::after {
       background:
-        linear-gradient(90deg, oklch(0.16 0.02 220 / 96%) 0%, oklch(0.16 0.02 220 / 88%) 58%, oklch(0.16 0.02 220 / 64%) 100%),
-        linear-gradient(180deg, oklch(0.16 0.02 220 / 82%) 0%, oklch(0.16 0.02 220 / 58%) 48%, oklch(0.16 0.02 220 / 88%) 100%);
+        linear-gradient(90deg, oklch(0.16 0.02 220 / 86%) 0%, oklch(0.16 0.02 220 / 74%) 58%, oklch(0.16 0.02 220 / 42%) 100%),
+        linear-gradient(180deg, oklch(0.16 0.02 220 / 64%) 0%, oklch(0.16 0.02 220 / 38%) 48%, oklch(0.16 0.02 220 / 72%) 100%);
     }
   }
 
