@@ -205,48 +205,89 @@
   }
 
   .rxledger-landing .landing-testimonial-section {
-    background-color: var(--ink);
+    background-color: var(--surface);
     isolation: isolate;
+    min-height: 640px;
     overflow: hidden;
     position: relative;
   }
 
-  .rxledger-landing .landing-testimonial-section::before {
-    background-image: url("/testimonial-pharmacist.jpg");
-    background-position: 68% center;
+  .rxledger-landing .landing-testimonial-bg-stack,
+  .rxledger-landing .landing-testimonial-bg,
+  .rxledger-landing .landing-testimonial-overlay {
+    inset: 0;
+    position: absolute;
+  }
+
+  .rxledger-landing .landing-testimonial-bg-stack {
+    z-index: 0;
+  }
+
+  .rxledger-landing .landing-testimonial-bg {
+    background-position: 66% center;
     background-size: cover;
-    content: "";
-    inset: 0;
-    opacity: 0.86;
-    position: absolute;
-    z-index: -2;
+    opacity: 0;
+    transform: scale(1.02);
+    transition: opacity 900ms ease, transform 1600ms ease;
   }
 
-  .rxledger-landing .landing-testimonial-section::after {
+  .rxledger-landing .landing-testimonial-bg.is-active {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .rxledger-landing .landing-testimonial-overlay {
     background:
-      linear-gradient(90deg, oklch(0.16 0.02 220 / 78%) 0%, oklch(0.16 0.02 220 / 66%) 34%, oklch(0.16 0.02 220 / 34%) 68%, oklch(0.16 0.02 220 / 14%) 100%),
-      linear-gradient(180deg, oklch(0.16 0.02 220 / 54%) 0%, oklch(0.16 0.02 220 / 20%) 48%, oklch(0.16 0.02 220 / 58%) 100%);
-    content: "";
-    inset: 0;
-    position: absolute;
-    z-index: -1;
+      linear-gradient(90deg, oklch(0.995 0.003 150 / 34%) 0%, oklch(0.995 0.003 150 / 14%) 43%, oklch(0.16 0.02 220 / 4%) 100%),
+      linear-gradient(180deg, oklch(0.16 0.02 220 / 8%) 0%, oklch(0.16 0.02 220 / 0%) 46%, oklch(0.16 0.02 220 / 12%) 100%);
+    z-index: 1;
   }
 
-  .rxledger-landing .landing-testimonial-section blockquote,
-  .rxledger-landing .landing-testimonial-section p {
-    text-shadow: 0 2px 16px rgb(0 0 0 / 58%);
+  .rxledger-landing .landing-testimonial-panel {
+    background: oklch(0.995 0.003 150 / 74%);
+    border: 1px solid oklch(0.92 0.01 200 / 68%);
+    border-radius: 24px;
+    box-shadow: 0 30px 80px rgb(0 0 0 / 22%);
+    color: var(--ink);
+    display: flex;
+    flex-direction: column;
+    height: 420px;
+    max-width: 920px;
+    padding: clamp(1.35rem, 3vw, 3rem);
+    backdrop-filter: blur(6px);
+  }
+
+  .rxledger-landing .landing-testimonial-panel blockquote {
+    color: var(--ink);
+    min-height: 9.5rem;
+    text-shadow: 0 1px 0 rgb(255 255 255 / 35%);
+  }
+
+  .rxledger-landing .landing-testimonial-panel .text-brand-soft {
+    color: var(--brand);
   }
 
   @media (max-width: 640px) {
-    .rxledger-landing .landing-testimonial-section::before {
-      background-position: 58% center;
-      opacity: 0.76;
+    .rxledger-landing .landing-testimonial-section {
+      min-height: 690px;
     }
 
-    .rxledger-landing .landing-testimonial-section::after {
+    .rxledger-landing .landing-testimonial-bg {
+      background-position: 57% center;
+    }
+
+    .rxledger-landing .landing-testimonial-overlay {
       background:
-        linear-gradient(90deg, oklch(0.16 0.02 220 / 86%) 0%, oklch(0.16 0.02 220 / 74%) 58%, oklch(0.16 0.02 220 / 42%) 100%),
-        linear-gradient(180deg, oklch(0.16 0.02 220 / 64%) 0%, oklch(0.16 0.02 220 / 38%) 48%, oklch(0.16 0.02 220 / 72%) 100%);
+        linear-gradient(180deg, oklch(0.995 0.003 150 / 12%) 0%, oklch(0.16 0.02 220 / 2%) 46%, oklch(0.16 0.02 220 / 14%) 100%);
+    }
+
+    .rxledger-landing .landing-testimonial-panel {
+      border-radius: 18px;
+      height: 540px;
+    }
+
+    .rxledger-landing .landing-testimonial-panel blockquote {
+      min-height: 17rem;
     }
   }
 

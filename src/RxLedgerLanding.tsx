@@ -481,6 +481,12 @@ const testimonials = [
   },
 ];
 
+const testimonialImages = [
+  "/testimonial-pharmacist.jpg",
+  "/testimonial-pharmacy-shelves.jpg",
+  "/testimonial-pharmacy-counter.jpg",
+];
+
 /* ---------------- Testimonial ---------------- */
 function Testimonial() {
   const [activeIndex, setActiveIndex] = useState(0);
@@ -493,7 +499,7 @@ function Testimonial() {
       swapTimer = window.setTimeout(() => {
         setActiveIndex((current) => (current + 1) % testimonials.length);
         setIsVisible(true);
-      }, 700);
+      }, 400);
     }, 5000);
 
     return () => {
@@ -514,37 +520,49 @@ function Testimonial() {
     window.setTimeout(() => {
       setActiveIndex(index);
       setIsVisible(true);
-    }, 700);
+    }, 400);
   };
 
   return (
-    <section className="landing-testimonial-section py-24 text-primary-foreground">
-      <div className="landing-container relative z-10 max-w-4xl">
-        <Zap className="size-6 text-brand-soft" />
-        <blockquote
-          className={`mt-6 min-h-48 font-display text-2xl font-medium leading-snug tracking-tight transition-all duration-700 ease-in-out md:min-h-36 md:text-3xl ${isVisible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"}`}
-          aria-live="polite"
-        >
-          {active.quote}
-        </blockquote>
-        <div className="mt-8 flex items-center gap-4">
-          <div className="grid size-12 place-items-center rounded-full bg-white/10 font-display text-sm font-bold">{active.initials}</div>
-          <div>
-            <p className="font-semibold">{active.name}</p>
-            <p className="font-mono text-xs text-primary-foreground/60">{active.role}</p>
+    <section className="landing-testimonial-section py-20">
+      <div className="landing-testimonial-bg-stack" aria-hidden="true">
+        {testimonialImages.map((image, index) => (
+          <div
+            key={image}
+            className={`landing-testimonial-bg ${activeIndex === index ? "is-active" : ""}`}
+            style={{ backgroundImage: `url(${image})` }}
+          />
+        ))}
+      </div>
+      <div className="landing-testimonial-overlay" aria-hidden="true" />
+      <div className="landing-container relative z-10">
+        <div className="landing-testimonial-panel">
+          <Zap className="size-6 text-brand" />
+          <blockquote
+            className={`mt-6 font-display text-2xl font-semibold leading-snug tracking-tight text-ink transition-all duration-500 ease-in-out md:text-3xl ${isVisible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-80"}`}
+            aria-live="polite"
+          >
+            {active.quote}
+          </blockquote>
+          <div className="mt-8 flex items-center gap-4">
+            <div className="grid size-12 place-items-center rounded-full bg-ink font-display text-sm font-bold text-primary-foreground shadow-sm">{active.initials}</div>
+            <div>
+              <p className="font-semibold text-ink">{active.name}</p>
+              <p className="font-mono text-xs text-ink-soft">{active.role}</p>
+            </div>
           </div>
-        </div>
-        <div className="mt-7 flex gap-2" aria-label="Testimonial slides">
-          {testimonials.map((testimonial, index) => (
-            <button
-              key={testimonial.name}
-              type="button"
-              className={`h-1.5 rounded-full transition-all ${activeIndex === index ? "w-8 bg-brand-soft" : "w-2 bg-white/25 hover:bg-white/45"}`}
-              aria-label={`Show testimonial from ${testimonial.name}`}
-              aria-pressed={activeIndex === index}
-              onClick={() => showTestimonial(index)}
-            />
-          ))}
+          <div className="mt-7 flex gap-2" aria-label="Testimonial slides">
+            {testimonials.map((testimonial, index) => (
+              <button
+                key={testimonial.name}
+                type="button"
+                className={`h-1.5 rounded-full transition-all ${activeIndex === index ? "w-8 bg-brand" : "w-2 bg-ink/25 hover:bg-ink/45"}`}
+                aria-label={`Show testimonial from ${testimonial.name}`}
+                aria-pressed={activeIndex === index}
+                onClick={() => showTestimonial(index)}
+              />
+            ))}
+          </div>
         </div>
       </div>
     </section>
