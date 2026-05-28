@@ -846,32 +846,12 @@ function buildPatientProfiles(db: Database, branchId?: string) {
     totalSpent: number
     lastVisit: string
   }>()
-  const nameIndex = new Map<string, string>()
   db.sales
     .filter((sale) => !branchId || sale.branchId === branchId)
     .forEach((sale) => {
       const phone = normalizePhone(sale.customerPhone)
-      const name = sale.customerName.trim().toLowerCase()
-      const nameKey = name ? `name:${name}` : ''
-      const phoneKey = phone ? `phone:${phone}` : ''
-      let key = phoneKey || (nameKey ? nameIndex.get(nameKey) || nameKey : '')
-      if (!key) return
-      if (phoneKey && nameKey) {
-        const existingNameKey = nameIndex.get(nameKey)
-        if (existingNameKey && existingNameKey !== phoneKey && map.has(existingNameKey) && !map.has(phoneKey)) {
-          const profile = map.get(existingNameKey)
-          if (profile) {
-            map.delete(existingNameKey)
-            profile.key = phoneKey
-            profile.phone = sale.customerPhone || profile.phone
-            map.set(phoneKey, profile)
-          }
-        }
-        nameIndex.set(nameKey, phoneKey)
-        key = phoneKey
-      } else if (nameKey) {
-        nameIndex.set(nameKey, key)
-      }
+      if (!phone) return
+      const key = `phone:${phone}`
       const existing = map.get(key)
       const total = sale.total ?? sale.subtotal
       if (existing) {
@@ -892,7 +872,6 @@ function buildPatientProfiles(db: Database, branchId?: string) {
         totalSpent: total,
         lastVisit: sale.soldAt,
       })
-      if (nameKey) nameIndex.set(nameKey, key)
     })
   return [...map.values()].map((profile) => ({
     ...profile,
@@ -4123,12 +4102,25 @@ function POSView({
   const patientProfiles = useMemo(() => buildPatientProfiles(db, activeBranch.id), [activeBranch.id, db])
   const selectedPatient = useMemo(() => {
     const phone = normalizePhone(customerPhone)
-    const name = customerName.trim().toLowerCase()
-    return patientProfiles.find((profile) => (
-      (phone && normalizePhone(profile.phone) === phone) ||
-      (name && profile.name.toLowerCase() === name)
-    ))
+    if (!phone) return undefined
+    return patientProfiles.find((profile) => normalizePhone(profile.phone) === phone)
+  }, [customerPhone, patientProfiles])
+  const nameMatches = useMemo(() => {
+    const queryText = customerName.trim().toLowerCase()
+    if (queryText.length < 2) return []
+    const activePhone = normalizePhone(customerPhone)
+    return patientProfiles
+      .filter((profile) => profile.name.toLowerCase().includes(queryText) && normalizePhone(profile.phone) !== activePhone)
+      .slice(0, 5)
   }, [customerName, customerPhone, patientProfiles])
+  const phoneMatches = useMemo(() => {
+    const phone = normalizePhone(customerPhone)
+    if (phone.length < 4) return []
+    if (selectedPatient && normalizePhone(selectedPatient.phone) === phone) return []
+    return patientProfiles
+      .filter((profile) => normalizePhone(profile.phone).includes(phone))
+      .slice(0, 5)
+  }, [customerPhone, patientProfiles, selectedPatient])
 
   function defaultMedicinePrice(medicineId: string) {
     return stockRows
@@ -4242,6 +4234,12 @@ function POSView({
         quantity: Math.max(0, Math.min(Number(updates.quantity ?? item.quantity) || 0, available || 0)),
       }
     }))
+  }
+
+  function selectPatientProfile(profile: ReturnType<typeof buildPatientProfiles>[number]) {
+    setCustomerName(profile.name === 'Walk-in patient' ? '' : profile.name)
+    setCustomerPhone(profile.phone)
+    flash(`${profile.name} selected for this sale`)
   }
 
   function salePayload() {
@@ -4600,19 +4598,39 @@ function POSView({
             </div>
 
             <div className="pos-customer-panel">
-              <label>
-                <span><User2 size={15} /> Customer</span>
-                <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Enter customer name" disabled={!canSell} />
-              </label>
-              <label>
-                <span><Phone size={15} /> Phone</span>
-                <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="Enter customer phone number" disabled={!canSell} />
-              </label>
+              <div className="pos-customer-field">
+                <label htmlFor="pos-customer-name"><User2 size={15} /> Customer</label>
+                <input id="pos-customer-name" value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Enter customer name" disabled={!canSell} />
+                {nameMatches.length > 0 && (
+                  <div className="pos-patient-suggestions">
+                    {nameMatches.map((profile) => (
+                      <button key={profile.key} type="button" onClick={() => selectPatientProfile(profile)} disabled={!canSell}>
+                        <strong>{profile.name}</strong>
+                        <span>{profile.phone} / {profile.sales.length} visit{profile.sales.length === 1 ? '' : 's'}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="pos-customer-field">
+                <label htmlFor="pos-customer-phone"><Phone size={15} /> Phone</label>
+                <input id="pos-customer-phone" value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="Enter customer phone number" disabled={!canSell} />
+                {phoneMatches.length > 0 && (
+                  <div className="pos-patient-suggestions">
+                    {phoneMatches.map((profile) => (
+                      <button key={profile.key} type="button" onClick={() => selectPatientProfile(profile)} disabled={!canSell}>
+                        <strong>{profile.name}</strong>
+                        <span>{profile.phone} / last seen {new Date(profile.lastVisit).toLocaleDateString()}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               {selectedPatient && (
-                <div className="pos-patient-snapshot">
+                <button className="pos-patient-snapshot" type="button" onClick={() => selectPatientProfile(selectedPatient)} disabled={!canSell}>
                   <strong>{selectedPatient.name}</strong>
-                  <span>{selectedPatient.sales.length} previous visit{selectedPatient.sales.length === 1 ? '' : 's'} / last seen {new Date(selectedPatient.lastVisit).toLocaleDateString()}</span>
-                </div>
+                  <span>{selectedPatient.phone} / {selectedPatient.sales.length} previous visit{selectedPatient.sales.length === 1 ? '' : 's'} / last seen {new Date(selectedPatient.lastVisit).toLocaleDateString()}</span>
+                </button>
               )}
               <div className="pos-payment-block">
                 <span><Wallet size={15} /> Payment method</span>

@@ -1739,6 +1739,7 @@ td strong {
   display: grid;
   gap: 20px;
   grid-template-columns: minmax(0, 1fr) minmax(380px, 420px);
+  align-items: start;
   padding: 24px;
 }
 
@@ -1935,7 +1936,12 @@ td strong {
 
 .pos-sale-cart {
   box-shadow: 0 18px 34px rgba(18, 32, 37, 0.12);
-  overflow: hidden;
+  max-height: calc(100dvh - 118px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  position: sticky;
+  scrollbar-gutter: stable;
+  top: 24px;
 }
 
 .pos-cart-header {
@@ -2142,12 +2148,14 @@ td strong {
 }
 
 .pos-customer-panel label,
+.pos-customer-field,
 .pos-payment-block {
   display: grid;
   gap: 7px;
 }
 
 .pos-customer-panel label > span,
+.pos-customer-field label,
 .pos-payment-block > span {
   align-items: center;
   color: #52636c;
@@ -2202,13 +2210,22 @@ td strong {
 }
 
 .pos-patient-snapshot {
+  appearance: none;
   background: #effaf5;
   border: 1px solid #c7e5d8;
   border-radius: 8px;
+  cursor: pointer;
   display: grid;
   gap: 3px;
   grid-column: 1 / -1;
   padding: 10px 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.pos-patient-snapshot:hover {
+  border-color: #2fa37d;
+  box-shadow: 0 8px 18px rgba(18, 32, 37, 0.08);
 }
 
 .pos-patient-snapshot strong {
@@ -2219,6 +2236,45 @@ td strong {
 .pos-patient-snapshot span {
   color: #52636c;
   font-size: 12px;
+}
+
+.pos-patient-suggestions {
+  background: #ffffff;
+  border: 1px solid #d7e4e3;
+  border-radius: 8px;
+  box-shadow: 0 10px 22px rgba(18, 32, 37, 0.08);
+  display: grid;
+  gap: 4px;
+  max-height: 180px;
+  overflow: auto;
+  padding: 5px;
+  scrollbar-gutter: stable;
+}
+
+.pos-patient-suggestions button {
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  color: #172024;
+  cursor: pointer;
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  text-align: left;
+}
+
+.pos-patient-suggestions button:hover {
+  background: #effaf5;
+}
+
+.pos-patient-suggestions strong {
+  color: #172024;
+  font-size: 12px;
+}
+
+.pos-patient-suggestions span {
+  color: #52636c;
+  font-size: 11px;
 }
 
 .pos-payment-block {
@@ -4117,7 +4173,10 @@ button:disabled {
   }
 
   .pos-sale-cart {
+    max-height: none;
+    overflow: visible;
     position: static;
+    top: auto;
   }
 
   .landing-hero {
