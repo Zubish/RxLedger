@@ -198,6 +198,7 @@ type Sale = {
   paymentMethod: 'cash' | 'card' | 'transfer' | 'mixed'
   reference: string
   note: string
+  followUpMessage?: string
   soldAt: string
   subtotal: number
   discount: number
@@ -216,6 +217,7 @@ type Sale = {
     refillDueAt?: string
     counselingNote?: string
     followUpMessage?: string
+    labelInstruction?: string
   }>
 }
 
@@ -229,12 +231,14 @@ type PosDraft = {
   paymentMethod: Sale['paymentMethod']
   discount: number
   note: string
+  followUpMessage?: string
   items: Array<{
     itemType: 'medicine' | 'product'
     itemId: string
     quantity: number
     daysSupply?: number
     counselingNote?: string
+    labelInstruction?: string
   }>
   createdAt: string
   updatedAt: string
@@ -704,6 +708,7 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
       subtotal,
       discount,
       total: Number(sale.total) || Math.max(0, subtotal - discount),
+      followUpMessage: sale.followUpMessage || undefined,
       items: (sale.items ?? []).map((item) => ({
         itemType: item.itemType || 'medicine',
         medicineId: item.medicineId || '',
@@ -717,6 +722,7 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
         refillDueAt: item.refillDueAt || undefined,
         counselingNote: item.counselingNote || undefined,
         followUpMessage: item.followUpMessage || undefined,
+        labelInstruction: item.labelInstruction || undefined,
       })),
     }
   })
@@ -763,12 +769,14 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
     sales,
     posDrafts: (raw.posDrafts ?? empty.posDrafts).filter((draft) => draft.expiresAt > nowIso()).map((draft) => ({
       ...draft,
+      followUpMessage: draft.followUpMessage || undefined,
       items: (draft.items ?? []).map((item) => ({
         itemType: item.itemType === 'product' ? 'product' : 'medicine',
         itemId: item.itemId || '',
         quantity: Number(item.quantity) || 0,
         daysSupply: Number(item.daysSupply) || undefined,
         counselingNote: item.counselingNote || undefined,
+        labelInstruction: item.labelInstruction || undefined,
       })),
     })),
     chatMessages: (raw.chatMessages ?? empty.chatMessages).map((message) => ({

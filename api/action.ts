@@ -903,6 +903,7 @@ function normalizeDraftItems(payload: unknown): PosDraft['items'] {
       quantity: requireNumber(input.quantity, 'Quantity'),
       daysSupply: daysSupply || undefined,
       counselingNote: optionalString(input.counselingNote),
+      labelInstruction: optionalString(input.labelInstruction),
     }
   }).filter((item) => item.quantity > 0)
 }
@@ -927,6 +928,7 @@ function savePosDraft(db: Database, actorId: string, actorRole: Role, payload: R
     paymentMethod: (optionalString(payload?.paymentMethod) || existing?.paymentMethod || 'cash') as Sale['paymentMethod'],
     discount: Math.max(0, Number(payload?.discount) || 0),
     note: optionalString(payload?.note) || existing?.note || '',
+    followUpMessage: optionalString(payload?.followUpMessage) || existing?.followUpMessage || '',
     items,
     createdAt: existing?.createdAt || now,
     updatedAt: now,
@@ -983,7 +985,7 @@ function recordSale(db: Database, actorId: string, actorRole: Role, payload: Rec
         lineTotal: quantity * product.sellingPrice,
         daysSupply: input.daysSupply,
         counselingNote: input.counselingNote,
-        followUpMessage: input.counselingNote,
+        labelInstruction: input.labelInstruction,
       })
       ledgerEntries.push({
         id: id('led'),
@@ -1035,7 +1037,7 @@ function recordSale(db: Database, actorId: string, actorRole: Role, payload: Rec
         daysSupply: input.daysSupply,
         refillDueAt: input.daysSupply ? addDays(nowIso(), input.daysSupply) : undefined,
         counselingNote: input.counselingNote,
-        followUpMessage: input.counselingNote,
+        labelInstruction: input.labelInstruction,
       })
       ledgerEntries.push({
         id: id('led'),
@@ -1068,6 +1070,7 @@ function recordSale(db: Database, actorId: string, actorRole: Role, payload: Rec
     paymentMethod: (optionalString(payload?.paymentMethod) || draft?.paymentMethod || 'cash') as Sale['paymentMethod'],
     reference,
     note: optionalString(payload?.note) || draft?.note || '',
+    followUpMessage: optionalString(payload?.followUpMessage) || draft?.followUpMessage || '',
     soldAt: nowIso(),
     subtotal,
     discount,

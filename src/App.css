@@ -2159,11 +2159,46 @@ td strong {
   text-transform: uppercase;
 }
 
-.pos-customer-panel input {
+.pos-customer-panel input,
+.pos-customer-panel textarea {
   background: #ffffff;
   border: 1px solid #d7e4e3;
   border-radius: 8px;
   min-height: 36px;
+}
+
+.pos-customer-panel textarea {
+  color: #172024;
+  font: inherit;
+  line-height: 1.4;
+  padding: 9px 10px;
+  resize: vertical;
+}
+
+.pos-followup-suggestion {
+  align-items: center;
+  background: #effaf5;
+  border: 1px solid #c7e5d8;
+  border-radius: 8px;
+  display: flex;
+  gap: 10px;
+  grid-column: 1 / -1;
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
+.pos-followup-suggestion span {
+  color: #52636c;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.pos-followup-suggestion button {
+  background: transparent;
+  border: 0;
+  color: #006b45;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .pos-patient-snapshot {
@@ -4244,7 +4279,8 @@ button:disabled {
   .topbar,
   .section-heading,
   .availability,
-  .receive-conversion-note {
+  .receive-conversion-note,
+  .pos-followup-suggestion {
     align-items: flex-start;
     flex-direction: column;
   }

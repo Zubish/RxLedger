@@ -145,6 +145,7 @@ export type Sale = {
   paymentMethod: 'cash' | 'card' | 'transfer' | 'mixed'
   reference: string
   note: string
+  followUpMessage?: string
   soldAt: string
   subtotal: number
   discount: number
@@ -163,6 +164,7 @@ export type Sale = {
     refillDueAt?: string
     counselingNote?: string
     followUpMessage?: string
+    labelInstruction?: string
   }>
 }
 
@@ -176,12 +178,14 @@ export type PosDraft = {
   paymentMethod: Sale['paymentMethod']
   discount: number
   note: string
+  followUpMessage?: string
   items: Array<{
     itemType: 'medicine' | 'product'
     itemId: string
     quantity: number
     daysSupply?: number
     counselingNote?: string
+    labelInstruction?: string
   }>
   createdAt: string
   updatedAt: string

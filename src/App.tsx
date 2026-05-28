@@ -252,6 +252,7 @@ type Sale = {
   paymentMethod: 'cash' | 'card' | 'transfer' | 'mixed'
   reference: string
   note: string
+  followUpMessage?: string
   soldAt: string
   subtotal: number
   discount: number
@@ -270,6 +271,7 @@ type Sale = {
     refillDueAt?: string
     counselingNote?: string
     followUpMessage?: string
+    labelInstruction?: string
   }>
 }
 
@@ -283,12 +285,14 @@ type PosDraft = {
   paymentMethod: Sale['paymentMethod']
   discount: number
   note: string
+  followUpMessage?: string
   items: Array<{
     itemType: 'medicine' | 'product'
     itemId: string
     quantity: number
     daysSupply?: number
     counselingNote?: string
+    labelInstruction?: string
   }>
   createdAt: string
   updatedAt: string
@@ -757,13 +761,6 @@ function formatDate(value?: string) {
   return new Date(`${value.slice(0, 10)}T00:00:00`).toLocaleDateString()
 }
 
-function patientKeyForSale(sale: Sale) {
-  const phone = normalizePhone(sale.customerPhone)
-  if (phone) return `phone:${phone}`
-  const name = sale.customerName.trim().toLowerCase()
-  return name ? `name:${name}` : ''
-}
-
 function patientDisplayName(sale: Sale) {
   return sale.customerName.trim() || (sale.customerPhone.trim() ? sale.customerPhone.trim() : 'Walk-in patient')
 }
@@ -774,27 +771,70 @@ function getSaleItemLabel(db: Database, item: Sale['items'][number]) {
   return db.medicines.find((medicine) => medicine.id === item.medicineId)?.brandName || 'Medicine'
 }
 
-function defaultCounselingText(db: Database, itemType: 'medicine' | 'product', itemId: string) {
+type MedicineCounselingRule = {
+  keys: string[]
+  label: string
+  followUp: string
+}
+
+const medicineCounselingRules: MedicineCounselingRule[] = [
+  {
+    keys: ['cataflam', 'diclofenac', 'nsaid'],
+    label: 'Take as prescribed, preferably with or after food. Avoid if you have stomach ulcer/bleeding, NSAID allergy, or were told to avoid painkillers after surgery. Contact the pharmacist if stomach pain, black stool, chest pain, swelling, or breathing trouble occurs.',
+    followUp: 'Take Cataflam or diclofenac only as prescribed. Do not combine with other painkillers unless advised, and contact the pharmacy or your prescriber if you have ulcer symptoms, unusual bleeding, swelling, chest pain, or breathing difficulty.',
+  },
+  {
+    keys: ['amoxicillin', 'augmentin', 'ciprofloxacin', 'azithromycin', 'antibiotic'],
+    label: 'Take exactly as prescribed and complete the full course. Do not skip doses. Report rash, severe diarrhea, breathing difficulty, or swelling immediately.',
+    followUp: 'Please complete the antibiotic course exactly as directed, even if you feel better. Contact the pharmacy if you develop rash, severe diarrhea, swelling, or breathing difficulty.',
+  },
+  {
+    keys: ['metformin', 'diabet'],
+    label: 'Take with meals unless otherwise directed. Do not skip meals. Monitor blood sugar as advised and report severe weakness, vomiting, or unusual breathing.',
+    followUp: 'Remember to take your diabetes medicine with meals unless your prescriber advised differently. Keep monitoring your blood sugar and contact the pharmacy if you feel unwell.',
+  },
+  {
+    keys: ['amlodipine', 'hypertension', 'blood pressure', 'bp'],
+    label: 'Take at the same time daily. Do not stop suddenly unless your prescriber advises. Monitor blood pressure and report severe dizziness or swelling.',
+    followUp: 'Please take your blood pressure medicine at the same time daily and keep monitoring your readings. Contact the pharmacy if you notice severe dizziness or swelling.',
+  },
+  {
+    keys: ['paracetamol', 'acetaminophen', 'pcm'],
+    label: 'Take only as directed. Do not exceed the recommended daily dose. Avoid combining with other paracetamol-containing products.',
+    followUp: 'Use paracetamol only as directed and avoid taking it with other products that also contain paracetamol.',
+  },
+]
+
+function medicineInstructionSource(medicine: Medicine) {
+  return `${medicine.brandName} ${medicine.genericName} ${medicine.category} ${medicine.form}`.toLowerCase()
+}
+
+function medicineCounselingRule(medicine: Medicine) {
+  const source = medicineInstructionSource(medicine)
+  return medicineCounselingRules.find((rule) => rule.keys.some((key) => source.includes(key)))
+}
+
+function defaultLabelInstruction(db: Database, itemType: 'medicine' | 'product', itemId: string) {
   if (itemType === 'product') return ''
   const medicine = db.medicines.find((item) => item.id === itemId)
   if (!medicine) return ''
   const medicineName = [medicine.brandName, medicine.strength].filter(Boolean).join(' ')
-  const category = `${medicine.category} ${medicine.genericName} ${medicine.form}`.toLowerCase()
-  const notes = [
-    `Take ${medicineName} exactly as directed by the pharmacist.`,
-    'Do not stop early unless a pharmacist or doctor advises you.',
-  ]
-  if (category.includes('antibiotic') || category.includes('amoxic') || category.includes('cipro')) {
-    notes.push('Complete the full course, even if you feel better.')
-  }
-  if (category.includes('metformin') || category.includes('diabet')) {
-    notes.push('Take with meals and monitor your blood sugar as advised.')
-  }
-  if (category.includes('hypertension') || category.includes('amlodipine') || category.includes('bp')) {
-    notes.push('Take at the same time daily and keep monitoring your blood pressure.')
-  }
-  notes.push('Contact the pharmacy if you notice unusual side effects.')
-  return notes.join(' ')
+  return medicineCounselingRule(medicine)?.label || `Take ${medicineName} exactly as prescribed. Contact the pharmacy if you notice unusual side effects.`
+}
+
+function medicineFollowUpInstruction(medicine: Medicine) {
+  return medicineCounselingRule(medicine)?.followUp || `Take ${medicine.brandName} exactly as prescribed and contact the pharmacy if you notice unusual side effects.`
+}
+
+function buildPurchaseFollowUpMessage(db: Database, items: Array<{ itemType: 'medicine' | 'product'; itemId: string }>) {
+  const medicineMessages = items
+    .filter((item) => item.itemType === 'medicine')
+    .map((item) => db.medicines.find((medicine) => medicine.id === item.itemId))
+    .filter((medicine): medicine is Medicine => Boolean(medicine))
+    .map((medicine) => medicineFollowUpInstruction(medicine))
+  const uniqueMessages = Array.from(new Set(medicineMessages)).slice(0, 3)
+  if (!uniqueMessages.length) return ''
+  return `${uniqueMessages.join(' ')} Please follow the medication label and contact the pharmacy if you need clarification.`
 }
 
 function buildPatientProfiles(db: Database, branchId?: string) {
@@ -806,11 +846,32 @@ function buildPatientProfiles(db: Database, branchId?: string) {
     totalSpent: number
     lastVisit: string
   }>()
+  const nameIndex = new Map<string, string>()
   db.sales
     .filter((sale) => !branchId || sale.branchId === branchId)
     .forEach((sale) => {
-      const key = patientKeyForSale(sale)
+      const phone = normalizePhone(sale.customerPhone)
+      const name = sale.customerName.trim().toLowerCase()
+      const nameKey = name ? `name:${name}` : ''
+      const phoneKey = phone ? `phone:${phone}` : ''
+      let key = phoneKey || (nameKey ? nameIndex.get(nameKey) || nameKey : '')
       if (!key) return
+      if (phoneKey && nameKey) {
+        const existingNameKey = nameIndex.get(nameKey)
+        if (existingNameKey && existingNameKey !== phoneKey && map.has(existingNameKey) && !map.has(phoneKey)) {
+          const profile = map.get(existingNameKey)
+          if (profile) {
+            map.delete(existingNameKey)
+            profile.key = phoneKey
+            profile.phone = sale.customerPhone || profile.phone
+            map.set(phoneKey, profile)
+          }
+        }
+        nameIndex.set(nameKey, phoneKey)
+        key = phoneKey
+      } else if (nameKey) {
+        nameIndex.set(nameKey, key)
+      }
       const existing = map.get(key)
       const total = sale.total ?? sale.subtotal
       if (existing) {
@@ -831,6 +892,7 @@ function buildPatientProfiles(db: Database, branchId?: string) {
         totalSpent: total,
         lastVisit: sale.soldAt,
       })
+      if (nameKey) nameIndex.set(nameKey, key)
     })
   return [...map.values()].map((profile) => ({
     ...profile,
@@ -885,6 +947,14 @@ function refillMessage(pharmacyName: string, row: ReturnType<typeof buildRefillR
     row.patientName,
     `your ${row.medicineName} may be due for refill ${row.daysUntilDue < 0 ? 'now' : row.daysUntilDue === 0 ? 'today' : `on ${formatDate(row.refillDueAt)}`}. Kindly visit or contact the pharmacy.`,
   )
+}
+
+function saleFollowUpBody(db: Database, sale: Sale) {
+  if (sale.followUpMessage?.trim()) return sale.followUpMessage.trim()
+  const legacyNotes = sale.items
+    .filter((item) => item.itemType === 'medicine' && (item.followUpMessage || item.counselingNote))
+    .map((item) => `${getSaleItemLabel(db, item)}: ${item.followUpMessage || item.counselingNote}`)
+  return legacyNotes.join(' ')
 }
 
 function whatsappHref(phone: string, message: string) {
@@ -3922,6 +3992,7 @@ function POSView({
     quantity: number
     daysSupply?: number
     counselingNote?: string
+    labelInstruction?: string
   }
   type SaleOption = {
     itemType: 'medicine' | 'product'
@@ -3943,6 +4014,7 @@ function POSView({
     quantity: item.quantity,
     daysSupply: item.daysSupply,
     counselingNote: item.counselingNote,
+    labelInstruction: item.labelInstruction,
   })) ?? [])
   const [customerName, setCustomerName] = useState(currentDraft?.customerName ?? '')
   const [customerPhone, setCustomerPhone] = useState(currentDraft?.customerPhone ?? '')
@@ -3951,6 +4023,7 @@ function POSView({
   const [discountMode, setDiscountMode] = useState<'amount' | 'percent'>('amount')
   const [cashPaid, setCashPaid] = useState(0)
   const [note, setNote] = useState(currentDraft?.note ?? '')
+  const [followUpMessage, setFollowUpMessage] = useState(currentDraft?.followUpMessage ?? '')
   const [selectedDraftId, setSelectedDraftId] = useState(currentDraft?.id ?? '')
   const [draftsOpen, setDraftsOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -4106,7 +4179,7 @@ function POSView({
         itemId,
         quantity: 1,
         daysSupply: itemType === 'medicine' ? 30 : undefined,
-        counselingNote: defaultCounselingText(db, itemType, itemId),
+        labelInstruction: defaultLabelInstruction(db, itemType, itemId),
       }]
     })
     flash(`${option.title} added to POS cart`)
@@ -4156,6 +4229,7 @@ function POSView({
 
   const tillTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   const vatIncluded = total > 0 ? total - (total / 1.075) : 0
+  const suggestedFollowUpMessage = buildPurchaseFollowUpMessage(db, cart)
 
   function updateCart(rowId: string, updates: Partial<CartItem>) {
     setCart((current) => current.map((item) => {
@@ -4179,12 +4253,14 @@ function POSView({
       paymentMethod,
       discount: safeDiscount,
       note,
+      followUpMessage: followUpMessage.trim() || suggestedFollowUpMessage,
       items: cart.map((item) => ({
         itemType: item.itemType,
         itemId: item.itemId,
         quantity: item.quantity,
         daysSupply: item.daysSupply,
         counselingNote: item.counselingNote,
+        labelInstruction: item.labelInstruction,
       })),
     }
   }
@@ -4202,6 +4278,7 @@ function POSView({
     setDiscount(0)
     setCashPaid(0)
     setNote('')
+    setFollowUpMessage('')
     setScan('')
     setSelectedDraftId('')
   }
@@ -4225,6 +4302,7 @@ function POSView({
       quantity: item.quantity,
       daysSupply: item.daysSupply,
       counselingNote: item.counselingNote,
+      labelInstruction: item.labelInstruction,
     })))
     setCustomerName(draft.customerName)
     setCustomerPhone(draft.customerPhone)
@@ -4233,11 +4311,77 @@ function POSView({
     setDiscountMode('amount')
     setCashPaid(0)
     setNote(draft.note)
+    setFollowUpMessage(draft.followUpMessage ?? '')
     setDraftsOpen(false)
     flash(`Draft ${draft.bookingCode} loaded`)
   }
 
-  function submit(event: FormEvent) {
+  function buildMedicationLabels() {
+    return cartRows
+      .filter((item) => item.itemType === 'medicine' && item.option)
+      .map((item) => {
+        const medicine = db.medicines.find((entry) => entry.id === item.itemId)
+        const instruction = item.labelInstruction?.trim() || (medicine ? defaultLabelInstruction(db, 'medicine', medicine.id) : '')
+        return {
+          medicineName: item.option?.title ?? medicine?.brandName ?? 'Medicine',
+          medicineMeta: medicine ? [medicine.genericName, medicine.strength, medicine.form].filter(Boolean).join(' / ') : item.option?.meta ?? '',
+          quantity: item.quantity,
+          unit: medicine ? medicineSellableUnit(medicine) : 'unit',
+          instruction,
+        }
+      })
+      .filter((label) => label.instruction)
+  }
+
+  function printMedicationLabels(labels: ReturnType<typeof buildMedicationLabels>) {
+    const win = window.open('', '_blank', 'width=900,height=700')
+    if (!win) {
+      flash('Medication labels are ready, but the browser blocked the print window')
+      return
+    }
+    const patient = customerName.trim() || customerPhone.trim() || 'Walk-in patient'
+    const labelCards = labels.map((label) => `
+      <article>
+        <header>
+          <strong>${escapeHtml(db.settings.accountName)}</strong>
+          <span>${escapeHtml(activeBranch.name)}</span>
+        </header>
+        <h2>${escapeHtml(label.medicineName)}</h2>
+        <p class="meta">${escapeHtml(label.medicineMeta)}</p>
+        <p><b>Patient:</b> ${escapeHtml(patient)}</p>
+        <p><b>Qty:</b> ${number.format(label.quantity)} ${escapeHtml(label.unit)}</p>
+        <p class="instruction">${escapeHtml(label.instruction)}</p>
+      </article>
+    `).join('')
+    win.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>Medication labels</title>
+          <style>
+            body { color: #172024; font-family: Arial, sans-serif; margin: 16px; }
+            .labels { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            article { border: 1px solid #172024; border-radius: 8px; min-height: 210px; padding: 12px; page-break-inside: avoid; }
+            header { border-bottom: 1px solid #d7e4e3; display: flex; justify-content: space-between; gap: 8px; margin-bottom: 8px; padding-bottom: 6px; }
+            h2 { font-size: 18px; margin: 0 0 4px; }
+            p { font-size: 12px; line-height: 1.35; margin: 5px 0; }
+            .meta { color: #52636c; }
+            .instruction { border-top: 1px solid #d7e4e3; font-size: 13px; margin-top: 8px; padding-top: 8px; }
+            @media print { body { margin: 0; } button { display: none; } article { break-inside: avoid; } }
+          </style>
+        </head>
+        <body>
+          <button onclick="window.print()">Print labels</button>
+          <section class="labels">${labelCards}</section>
+          <script>window.setTimeout(() => window.print(), 300)</script>
+        </body>
+      </html>
+    `)
+    win.document.close()
+    win.focus()
+  }
+
+  async function submit(event: FormEvent) {
     event.preventDefault()
     if (!canCompleteSale || !cart.length) return
     if (cartRows.some((item) => item.quantity < 1)) {
@@ -4252,8 +4396,10 @@ function POSView({
       flash('Every POS item needs a saved selling price')
       return
     }
-    void executeAction('recordSale', salePayload(), 'Sale completed and inventory deducted')
-    resetSaleForm()
+    const labels = buildMedicationLabels()
+    const completed = await executeAction('recordSale', salePayload(), 'Sale completed and inventory deducted')
+    if (completed && labels.length) printMedicationLabels(labels)
+    if (completed) resetSaleForm()
   }
 
   function printSalesHistory() {
@@ -4442,8 +4588,8 @@ function POSView({
                           <input type="number" min="0" value={numberInputValue(item.daysSupply)} onChange={(event) => updateCart(item.rowId, { daysSupply: Number(event.target.value) })} disabled={!canSell} />
                         </label>
                         <label>
-                          <span>Counseling follow-up</span>
-                          <textarea value={item.counselingNote ?? ''} onChange={(event) => updateCart(item.rowId, { counselingNote: event.target.value })} disabled={!canSell} rows={2} />
+                          <span>Medication label</span>
+                          <textarea value={item.labelInstruction ?? ''} onChange={(event) => updateCart(item.rowId, { labelInstruction: event.target.value })} disabled={!canSell} rows={3} />
                         </label>
                       </div>
                     )}
@@ -4499,6 +4645,16 @@ function POSView({
                 <span><StickyNote size={15} /> Note</span>
                 <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Add optional sale note" disabled={!canSell} />
               </label>
+              <label className="full">
+                <span><MessageSquare size={15} /> Purchase follow-up</span>
+                <textarea value={followUpMessage} onChange={(event) => setFollowUpMessage(event.target.value)} placeholder={suggestedFollowUpMessage || 'One follow-up message for this purchase'} disabled={!canSell} rows={3} />
+              </label>
+              {suggestedFollowUpMessage && (
+                <div className="pos-followup-suggestion">
+                  <span>{suggestedFollowUpMessage}</span>
+                  <button type="button" onClick={() => setFollowUpMessage(suggestedFollowUpMessage)} disabled={!canSell}>Use suggested</button>
+                </div>
+              )}
             </div>
 
             <div className="pos-total-panel">
@@ -4648,14 +4804,12 @@ function PatientsView({ db, activeBranch, flash }: { db: Database; activeBranch?
     return text.includes(query.toLowerCase())
   })
   const selectedProfile = filteredProfiles.find((profile) => profile.key === selectedKey) ?? filteredProfiles[0]
-  const selectedMessages = selectedProfile?.sales.flatMap((sale) => sale.items
-    .filter((item) => item.counselingNote || item.followUpMessage)
-    .map((item) => ({
+  const selectedMessages = selectedProfile?.sales
+    .map((sale) => ({
       sale,
-      item,
-      medicineName: getSaleItemLabel(db, item),
-      body: item.followUpMessage || item.counselingNote || '',
-    }))) ?? []
+      body: saleFollowUpBody(db, sale),
+    }))
+    .filter((message) => message.body) ?? []
 
   async function copyMessage(message: string) {
     try {
@@ -4738,12 +4892,12 @@ function PatientsView({ db, activeBranch, flash }: { db: Database; activeBranch?
                   <section>
                     <h3>Follow-up Messages</h3>
                     <div className="patient-message-list">
-                      {selectedMessages.map(({ sale, item, medicineName, body }) => {
-                        const message = patientCareMessage(db.settings.accountName, selectedProfile.name, `${medicineName}: ${body}`)
+                      {selectedMessages.map(({ sale, body }) => {
+                        const message = patientCareMessage(db.settings.accountName, selectedProfile.name, body)
                         const href = whatsappHref(selectedProfile.phone, message)
                         return (
-                          <article key={`${sale.id}-${medicineName}-${item.batchId || item.productId || item.medicineId}`}>
-                            <strong>{medicineName}</strong>
+                          <article key={sale.id}>
+                            <strong>{new Date(sale.soldAt).toLocaleDateString()} / {sale.reference}</strong>
                             <p>{message}</p>
                             <footer>
                               <button type="button" onClick={() => { void copyMessage(message) }}><ClipboardList size={14} /> Copy</button>
