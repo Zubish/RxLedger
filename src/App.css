@@ -1739,7 +1739,6 @@ td strong {
   display: grid;
   gap: 20px;
   grid-template-columns: minmax(0, 1fr) minmax(380px, 420px);
-  align-items: start;
   padding: 24px;
 }
 
@@ -1936,12 +1935,7 @@ td strong {
 
 .pos-sale-cart {
   box-shadow: 0 18px 34px rgba(18, 32, 37, 0.12);
-  max-height: calc(100dvh - 118px);
-  overflow: auto;
-  overscroll-behavior: contain;
-  position: sticky;
-  scrollbar-gutter: stable;
-  top: 24px;
+  overflow: hidden;
 }
 
 .pos-cart-header {
@@ -4173,10 +4167,7 @@ button:disabled {
   }
 
   .pos-sale-cart {
-    max-height: none;
-    overflow: visible;
     position: static;
-    top: auto;
   }
 
   .landing-hero {
