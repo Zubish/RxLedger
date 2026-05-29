@@ -1,8 +1,8 @@
 # RxLedger
 
-RxLedger is a pharmacy operations platform for community pharmacies, multi-branch pharmacy groups, and medical sites that need better control of stock, sales, staff access, and patient continuity.
+RxLedger is a pharmacy operations platform for community pharmacies, multi-branch pharmacy groups, and medical sites that need better control of stock, sales, pricing, staff access, and patient continuity.
 
-It helps pharmacies move away from scattered notebooks, memory-based stock decisions, paper sales records, and disconnected branch workflows. RxLedger brings inventory, POS, patient history, refill follow-up, staff roles, branch operations, reports, and audit trails into one workspace.
+It helps pharmacies move away from scattered notebooks, memory-based stock decisions, paper sales records, and disconnected branch workflows. RxLedger brings inventory, POS, commercial packaging logic, patient history, refill follow-up, pricing control, staff roles, branch operations, reports, and audit trails into one workspace.
 
 ## What RxLedger Does
 
@@ -15,6 +15,7 @@ RxLedger helps a pharmacy know:
 - Who performed each important action.
 - Which patients bought medicines and when they may need follow-up.
 - Which staff members can access each branch workspace.
+- How container cost, least sellable units, markup, and selling price relate.
 
 The product is designed for real pharmacy work at the counter, in the store, and across branches.
 
@@ -40,6 +41,10 @@ Patient history is built from real sales activity. Staff can search by name, pho
 
 RxLedger supports refill reminders and post-purchase counseling workflows. Pharmacies can use patient purchase history to follow up on chronic medicines, missed refills, and medicine instructions.
 
+### Weak Pricing Control
+
+RxLedger understands how stock is received in containers and sold in smaller units. Pharmacies can review the real cost per least sellable unit, calculate selling prices from markup rules, and keep discount or override decisions accountable.
+
 ### Branch Confusion
 
 For multi-site pharmacies, RxLedger keeps stock and staff activity tied to the right branch. Branch switching feels like entering a specific workspace, so users know which location they are operating from.
@@ -56,7 +61,7 @@ RxLedger tracks medicines and retail products with stock quantities, batches, ex
 
 ### Receiving Stock
 
-Pharmacies can record new stock received from suppliers, including invoice details, batch numbers, expiry dates, quantities, and cost information.
+Pharmacies can record new stock received from suppliers, including invoice details, batch numbers, expiry dates, quantities, and cost information. For multi-line invoices, RxLedger can preview the calculated least-unit cost, selling price, retail value, and warnings before stock is posted.
 
 ### POS Sales
 
@@ -96,6 +101,7 @@ RxLedger is built around a few clear principles:
 
 - Pharmacy work should be fast at the counter.
 - Stock records should be branch-aware and batch-aware.
+- Pricing should respect real packaging, least sellable units, and margin controls.
 - Patient history should be easy to retrieve.
 - Saved data should not disappear when plans, roles, or workflows change.
 - Staff permissions should match real responsibilities.

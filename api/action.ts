@@ -32,6 +32,8 @@ type ActionBody = {
 }
 
 type SubscriptionPlanId = NonNullable<Database['settings']['subscriptionPlanId']>
+type PricingRoundingRule = NonNullable<Database['settings']['pricingRoundingRule']>
+const pricingRoundingRules: PricingRoundingRule[] = [0, 1, 5, 10, 50, 100]
 
 export default async function handler(req: HandlerRequest, res: HandlerResponse) {
   if (!requireMethod(req, res, ['POST'])) return
@@ -166,6 +168,83 @@ function requireNumber(value: unknown, label: string) {
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) throw new Error(`${label} must be a valid number`)
   return parsed
+}
+
+function normalizeMarkupMap(value: unknown) {
+  if (!value || typeof value !== 'object') return {}
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+    .map(([key, amount]) => [key.trim().toLowerCase(), Math.max(0, Number(amount) || 0)])
+    .filter(([key]) => key))
+}
+
+function pricingPolicy(settings: Database['settings']) {
+  const roundingRule = pricingRoundingRules.includes(settings.pricingRoundingRule ?? 10) ? settings.pricingRoundingRule ?? 10 : 10
+  return {
+    enabled: Boolean(settings.autoPricingEnabled),
+    globalMarkupPercent: Math.max(0, Number(settings.globalMarkupPercent) || 0),
+    roundingRule,
+    categoryMarkupPercentages: normalizeMarkupMap(settings.categoryMarkupPercentages),
+    productMarkupPercentages: normalizeMarkupMap(settings.productMarkupPercentages),
+    cashierDiscountLimitPercent: Math.max(0, Number(settings.cashierDiscountLimitPercent ?? 5) || 0),
+    managerDiscountLimitPercent: Math.max(0, Number(settings.managerDiscountLimitPercent ?? 10) || 0),
+  }
+}
+
+function roundSellingPrice(value: number, rule: PricingRoundingRule) {
+  const price = Math.max(0, Number(value) || 0)
+  if (!rule) return Math.round(price * 100) / 100
+  return Math.ceil(price / rule) * rule
+}
+
+function productSpecificKeys(itemType: 'medicine' | 'product', item: Medicine | Product) {
+  if (itemType === 'medicine') {
+    const medicine = item as Medicine
+    return [
+      `${itemType}:${medicine.id}`,
+      medicine.id,
+      medicine.sku,
+      medicine.brandName,
+      medicine.genericName,
+      medicine.nafdacNumber,
+    ].map((key) => key.trim().toLowerCase()).filter(Boolean)
+  }
+  const product = item as Product
+  return [
+    `${itemType}:${product.id}`,
+    product.id,
+    product.sku,
+    product.name,
+  ].map((key) => key.trim().toLowerCase()).filter(Boolean)
+}
+
+function markupForItem(db: Database, itemType: 'medicine' | 'product', itemId: string) {
+  const policy = pricingPolicy(db.settings)
+  const item = itemType === 'medicine'
+    ? db.medicines.find((medicine) => medicine.id === itemId)
+    : db.products.find((product) => product.id === itemId)
+  if (!item) return policy.globalMarkupPercent
+  for (const key of productSpecificKeys(itemType, item)) {
+    const value = policy.productMarkupPercentages[key]
+    if (value !== undefined) return value
+  }
+  const category = item.category.trim().toLowerCase()
+  if (category && policy.categoryMarkupPercentages[category] !== undefined) return policy.categoryMarkupPercentages[category]
+  return policy.globalMarkupPercent
+}
+
+function calculatedSellingPrice(db: Database, itemType: 'medicine' | 'product', itemId: string, unitCost: number) {
+  const policy = pricingPolicy(db.settings)
+  const markupPercent = markupForItem(db, itemType, itemId)
+  return roundSellingPrice(Math.max(0, unitCost) * (1 + markupPercent / 100), policy.roundingRule)
+}
+
+function discountLimitPercent(db: Database, actor: User) {
+  if (canAdmin(actor, getPrimaryAdminId(db)) || actor.role === 'admin') return 100
+  const policy = pricingPolicy(db.settings)
+  if (db.branches.some((branch) => canManageBranch(actor, branch.id, getPrimaryAdminId(db)))) return policy.managerDiscountLimitPercent
+  if (actor.role === 'pharmacist' || actor.role === 'inventory') return policy.managerDiscountLimitPercent
+  if (actor.role === 'cashier') return policy.cashierDiscountLimitPercent
+  return 0
 }
 
 function getPrimaryAdminId(db: Database) {
@@ -382,8 +461,21 @@ function saveMedicineRecord(db: Database, actorId: string, actor: User, actorRol
   if (duplicateProductBarcode) throw new Error(`Barcode already belongs to ${duplicateProductBarcode.name}`)
   const duplicateSku = db.medicines.find((medicine) => medicine.id !== record.id && medicine.sku.toLowerCase() === record.sku.toLowerCase())
   if (duplicateSku) throw new Error(`SKU already belongs to ${duplicateSku.brandName}`)
+  const identityKey = medicineDuplicateKey(record)
+  const likelyDuplicate = db.medicines.find((medicine) => medicine.id !== record.id && medicineDuplicateKey(medicine) === identityKey)
+  if (likelyDuplicate) throw new Error(`Likely duplicate medicine: ${likelyDuplicate.brandName} has the same generic, form, strength, and NAFDAC/brand identity`)
   db.medicines = before ? db.medicines.map((medicine) => (medicine.id === record.id ? record : medicine)) : [record, ...db.medicines]
   addAudit(db, actorId, before ? 'Updated medicine record' : 'Created medicine record', 'medicine', record.id, before, record)
+}
+
+function medicineDuplicateKey(medicine: Medicine) {
+  return [
+    medicine.brandName,
+    medicine.genericName,
+    medicine.form,
+    medicine.strength,
+    medicine.nafdacNumber || medicine.sku,
+  ].map((part) => part.trim().toLowerCase()).join('|')
 }
 
 function upsertProduct(db: Database, actorId: string, actorRole: Role, payload: Record<string, unknown> | undefined) {
@@ -392,11 +484,14 @@ function upsertProduct(db: Database, actorId: string, actorRole: Role, payload: 
   if (!actor || !productManager) throw new Error('You do not have permission to save products')
   const input = (payload?.record ?? {}) as Partial<Product>
   const costPrice = Number(input.costPrice) || 0
-  const sellingPrice = Number(input.sellingPrice) || 0
+  const provisionalId = input.id || id('prd')
+  const sellingPrice = pricingPolicy(db.settings).enabled
+    ? roundSellingPrice(costPrice * (1 + pricingPolicy(db.settings).globalMarkupPercent / 100), pricingPolicy(db.settings).roundingRule)
+    : Number(input.sellingPrice) || 0
   if (sellingPrice > 0 && sellingPrice < costPrice) throw new Error('Selling price must be equal to or greater than cost price')
   const barcodes = Array.isArray(input.barcodes) ? input.barcodes.map(String).map((item) => item.trim()).filter(Boolean) : []
   const record: Product = {
-    id: input.id || id('prd'),
+    id: provisionalId,
     sku: requireString(input.sku, 'SKU'),
     name: requireString(input.name, 'Product name'),
     category: optionalString(input.category) || 'General retail',
@@ -541,7 +636,9 @@ function receiveStock(db: Database, actorId: string, actorRole: Role, payload: R
       const expiryDate = optionalString(input.expiryDate)
       if (expiryDate && expiryDate < today()) throw new Error('Expiry date must be today or a future date')
       const unitCost = Number(input.unitCost) || product.costPrice || 0
-      const sellingPrice = Number(input.sellingPrice) || product.sellingPrice || 0
+      const sellingPrice = pricingPolicy(db.settings).enabled
+        ? calculatedSellingPrice(db, 'product', productId, unitCost)
+        : Number(input.sellingPrice) || product.sellingPrice || 0
       if (sellingPrice > 0 && sellingPrice < unitCost) throw new Error('Selling price cannot be lower than unit cost')
       const beforeProduct = { ...product }
       product.quantity += quantity
@@ -595,7 +692,9 @@ function receiveStock(db: Database, actorId: string, actorRole: Role, payload: R
     if (expiryDate < today()) throw new Error('Expiry date must be today or a future date')
     const containerCost = Number(input.unitCost) || (medicine.costPrice > 0 ? medicine.costPrice * unitsPerContainer : 0)
     const unitCost = containerCost > 0 ? containerCost / unitsPerContainer : medicine.costPrice || 0
-    const sellingPrice = Number(input.sellingPrice) || medicine.sellingPrice || 0
+    const sellingPrice = pricingPolicy(db.settings).enabled
+      ? calculatedSellingPrice(db, 'medicine', medicineId, unitCost)
+      : Number(input.sellingPrice) || medicine.sellingPrice || 0
     if (sellingPrice > 0 && sellingPrice < unitCost) throw new Error('Selling price cannot be lower than unit cost')
     const beforeMedicine = { ...medicine }
     if (unitCost > 0) medicine.costPrice = unitCost
@@ -918,6 +1017,7 @@ function savePosDraft(db: Database, actorId: string, actorRole: Role, payload: R
   const existing = activeDraft(db, actorId, branchId)
   const now = nowIso()
   const expiresAt = new Date(Date.now() + 10 * 60_000).toISOString()
+  const draftDiscount = Math.max(0, Number(payload?.discount) || 0)
   const draft: PosDraft = {
     id: existing?.id || id('draft'),
     userId: actorId,
@@ -926,7 +1026,7 @@ function savePosDraft(db: Database, actorId: string, actorRole: Role, payload: R
     customerName: optionalString(payload?.customerName) || existing?.customerName || '',
     customerPhone: optionalString(payload?.customerPhone) || existing?.customerPhone || '',
     paymentMethod: (optionalString(payload?.paymentMethod) || existing?.paymentMethod || 'cash') as Sale['paymentMethod'],
-    discount: Math.max(0, Number(payload?.discount) || 0),
+    discount: draftDiscount,
     note: optionalString(payload?.note) || existing?.note || '',
     followUpMessage: optionalString(payload?.followUpMessage) || existing?.followUpMessage || '',
     items,
@@ -1055,7 +1155,12 @@ function recordSale(db: Database, actorId: string, actorRole: Role, payload: Rec
     }
   }
   const subtotal = saleItems.reduce((sum, item) => sum + item.lineTotal, 0)
-  const discount = Math.min(Math.max(0, Number(payload?.discount ?? draft?.discount) || 0), subtotal)
+  const requestedDiscount = Math.min(Math.max(0, Number(payload?.discount ?? draft?.discount) || 0), subtotal)
+  const maxDiscount = subtotal * (discountLimitPercent(db, { ...actor, role: actorRole }) / 100)
+  if (requestedDiscount > maxDiscount) {
+    throw new Error(`Discount exceeds your ${discountLimitPercent(db, { ...actor, role: actorRole })}% limit`)
+  }
+  const discount = requestedDiscount
   const reference = receiptReference()
   ledgerEntries.forEach((entry) => {
     if (entry.reason === 'POS sale') entry.reference = reference
@@ -1093,6 +1198,10 @@ function updateSellingPrice(db: Database, actorId: string, actorRole: Role, payl
   if (!priceManager) throw new Error('You do not have permission to update selling prices')
   const sellingPrice = requireNumber(payload?.sellingPrice, 'Selling price')
   const costPrice = Number(payload?.costPrice)
+  const overrideReason = optionalString(payload?.overrideReason)
+  if (pricingPolicy(db.settings).enabled && (!canAdmin(actor, getPrimaryAdminId(db)) || !overrideReason)) {
+    throw new Error('Auto pricing is enabled. Only the permanent admin can override a selling price, and a reason is required.')
+  }
   if (sellingPrice < 0) throw new Error('Selling price cannot be negative')
   if (!canAdmin(actor, getPrimaryAdminId(db)) && !hasActiveBranchAssignment(actor, branchId)) throw new Error('You do not have access to this branch')
   const medicine = db.medicines.find((item) => item.id === medicineId)
@@ -1108,7 +1217,7 @@ function updateSellingPrice(db: Database, actorId: string, actorRole: Role, payl
     batch.sellingPrice = sellingPrice
     if (nextCostPrice > 0) batch.unitCost = nextCostPrice
   })
-  addAudit(db, actorId, `Updated pricing for ${medicine.brandName}`, 'medicine', medicineId, { medicine: beforeMedicine, batches: before }, { branchId, costPrice: nextCostPrice, sellingPrice })
+  addAudit(db, actorId, `Updated pricing for ${medicine.brandName}${overrideReason ? ` / Override: ${overrideReason}` : ''}`, 'medicine', medicineId, { medicine: beforeMedicine, batches: before }, { branchId, costPrice: nextCostPrice, sellingPrice, overrideReason: overrideReason || undefined })
 }
 
 function adjustStock(db: Database, actorId: string, actorRole: Role, payload: Record<string, unknown> | undefined) {
@@ -1161,6 +1270,15 @@ function updateSettings(db: Database, actorId: string, actorRole: Role, payload:
     primaryAdminId: db.settings.primaryAdminId || actorId,
     nearExpiryDays: Number(payload?.nearExpiryDays) || db.settings.nearExpiryDays,
     approvalThreshold: Number(payload?.approvalThreshold) || db.settings.approvalThreshold,
+    autoPricingEnabled: Boolean(payload?.autoPricingEnabled),
+    globalMarkupPercent: Math.max(0, Number(payload?.globalMarkupPercent) || 0),
+    pricingRoundingRule: pricingRoundingRules.includes(Number(payload?.pricingRoundingRule) as PricingRoundingRule) ? Number(payload?.pricingRoundingRule) as PricingRoundingRule : 10,
+    categoryMarkupPercentages: normalizeMarkupMap(payload?.categoryMarkupPercentages),
+    productMarkupPercentages: normalizeMarkupMap(payload?.productMarkupPercentages),
+    cashierDiscountLimitPercent: Math.max(0, Math.min(100, Number(payload?.cashierDiscountLimitPercent ?? 5) || 0)),
+    managerDiscountLimitPercent: Math.max(0, Math.min(100, Number(payload?.managerDiscountLimitPercent ?? 10) || 0)),
+    unusualMarkupPercent: Math.max(0, Number(payload?.unusualMarkupPercent ?? 80) || 0),
+    costChangeWarningPercent: Math.max(0, Number(payload?.costChangeWarningPercent ?? 30) || 0),
     subscriptionPlanId,
     trialStartedAt: db.settings.trialStartedAt,
     trialEndsAt: db.settings.trialEndsAt,

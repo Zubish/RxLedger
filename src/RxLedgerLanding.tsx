@@ -275,7 +275,7 @@ function FeatureBento() {
       <div className="max-w-2xl">
         <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-brand">The platform</span>
         <h2 className="mt-3 font-display text-3xl font-bold tracking-tight text-ink md:text-4xl">
-          Engineered for pharmacy excellence.
+          Commercial memory for modern pharmacy work.
         </h2>
         <p className="mt-3 text-ink-soft">
           The rigor of a clinical ledger with the speed of a modern POS — built for the daily realities of
@@ -318,19 +318,25 @@ function FeatureBento() {
         <FeatureCard tone="light">
           <FeatureIcon><Receipt className="size-5" /></FeatureIcon>
           <p className="mt-4 font-mono text-[10px] uppercase tracking-widest text-brand">POS checkout</p>
-          <h3 className="mt-1 font-display text-lg font-bold text-ink">Saved prices. Clean receipts.</h3>
+          <h3 className="mt-1 font-display text-lg font-bold text-ink">Customer memory, clean receipts.</h3>
           <p className="mt-2 text-sm text-ink-soft">
             Discounts, refunds, and split items handled fast — every sale tied to the staff who rang it.
+          </p>
+          <p className="mt-2 text-sm text-ink-soft">
+            Patient details, label instructions, and follow-up notes can stay attached to the sale.
           </p>
         </FeatureCard>
 
         {/* Audit */}
         <FeatureCard tone="light">
           <FeatureIcon><ShieldCheck className="size-5" /></FeatureIcon>
-          <p className="mt-4 font-mono text-[10px] uppercase tracking-widest text-brand">Audit trail</p>
-          <h3 className="mt-1 font-display text-lg font-bold text-ink">Who changed what, when.</h3>
+          <p className="mt-4 font-mono text-[10px] uppercase tracking-widest text-brand">Pricing control</p>
+          <h3 className="mt-1 font-display text-lg font-bold text-ink">Margins protected by default.</h3>
           <p className="mt-2 text-sm text-ink-soft">
             Every dispense, transfer, and price edit logged with timestamp and staff ID — court-ready by default.
+          </p>
+          <p className="mt-2 text-sm text-ink-soft">
+            Auto pricing links least-unit cost to markup rules, rounding, warnings, and admin overrides.
           </p>
         </FeatureCard>
 
@@ -373,8 +379,8 @@ function FeatureIcon({ children, dark = false }: { children: ReactNode; dark?: b
 function DayInLife() {
   const steps = [
     { time: "08:00", icon: <Sunrise className="size-4" />, title: "Open & reconcile", body: "Confirm yesterday's close, verify till float, and pick up alerts from overnight." },
-    { time: "11:30", icon: <ScanLine className="size-4" />, title: "Receive new stock", body: "Scan invoice items. Batches are tagged by expiry so FEFO kicks in automatically." },
-    { time: "13:10", icon: <Receipt className="size-4" />, title: "Sell at the POS", body: "Pharmacist rings up at saved prices. Receipts print clean, audit log writes itself." },
+    { time: "11:30", icon: <ScanLine className="size-4" />, title: "Receive new stock", body: "Review invoice lines, packaging units, final unit cost, selling price, and warnings before posting stock." },
+    { time: "13:10", icon: <Receipt className="size-4" />, title: "Sell at the POS", body: "Pharmacist rings up items, attaches the customer, prints labels, and keeps follow-up in one sale record." },
     { time: "15:45", icon: <ArrowLeftRight className="size-4" />, title: "Inter-branch transfer", body: "Low stock at Surulere? Move from Lekki in two taps — both ledgers update at once." },
     { time: "20:30", icon: <ClipboardCheck className="size-4" />, title: "Day-end reconciliation", body: "Cash, card, transfer matched against the ledger. Close the day in under five minutes." },
     { time: "20:45", icon: <Moon className="size-4" />, title: "Lock & sleep", body: "Roles revoke automatically. The next shift wakes to a clean, verified ledger." },

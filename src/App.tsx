@@ -200,6 +200,7 @@ type LedgerType =
   | 'write-off'
   | 'supplier-return'
   | 'customer-return'
+type PricingRoundingRule = 0 | 1 | 5 | 10 | 50 | 100
 
 type LedgerEntry = {
   id: string
@@ -413,6 +414,15 @@ type AppSettings = {
   primaryAdminId?: string
   nearExpiryDays: number
   approvalThreshold: number
+  autoPricingEnabled?: boolean
+  globalMarkupPercent?: number
+  pricingRoundingRule?: PricingRoundingRule
+  categoryMarkupPercentages?: Record<string, number>
+  productMarkupPercentages?: Record<string, number>
+  cashierDiscountLimitPercent?: number
+  managerDiscountLimitPercent?: number
+  unusualMarkupPercent?: number
+  costChangeWarningPercent?: number
   subscriptionPlanId?: SubscriptionPlanId
   trialStartedAt?: string
   trialEndsAt?: string
@@ -520,6 +530,7 @@ const movementFilterOptions = [
   { value: 'pos', label: 'POS' },
   { value: 'internal-transfer', label: 'Internal Transfer' },
 ]
+const pricingRoundingRules: PricingRoundingRule[] = [0, 1, 5, 10, 50, 100]
 
 const today = () => new Date().toISOString().slice(0, 10)
 const money = new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' })
@@ -630,6 +641,119 @@ function medicineUnitCostFromContainerCost(medicine: Medicine | undefined, conta
   return cost > 0 ? cost / medicineUnitsPerContainer(medicine) : medicine.costPrice || 0
 }
 
+function medicineDuplicateKey(medicine: Medicine) {
+  return [
+    medicine.brandName,
+    medicine.genericName,
+    medicine.form,
+    medicine.strength,
+    medicine.nafdacNumber || medicine.sku,
+  ].map((part) => part.trim().toLowerCase()).join('|')
+}
+
+function normalizeMarkupMap(value: unknown) {
+  if (!value || typeof value !== 'object') return {}
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+    .map(([key, amount]) => [key.trim().toLowerCase(), Math.max(0, Number(amount) || 0)])
+    .filter(([key]) => key))
+}
+
+function pricingPolicy(settings: AppSettings) {
+  const roundingRule = pricingRoundingRules.includes(settings.pricingRoundingRule ?? 10) ? settings.pricingRoundingRule ?? 10 : 10
+  return {
+    enabled: Boolean(settings.autoPricingEnabled),
+    globalMarkupPercent: Math.max(0, Number(settings.globalMarkupPercent) || 0),
+    roundingRule,
+    categoryMarkupPercentages: normalizeMarkupMap(settings.categoryMarkupPercentages),
+    productMarkupPercentages: normalizeMarkupMap(settings.productMarkupPercentages),
+    cashierDiscountLimitPercent: Math.max(0, Number(settings.cashierDiscountLimitPercent ?? 5) || 0),
+    managerDiscountLimitPercent: Math.max(0, Number(settings.managerDiscountLimitPercent ?? 10) || 0),
+    unusualMarkupPercent: Math.max(0, Number(settings.unusualMarkupPercent ?? 80) || 0),
+    costChangeWarningPercent: Math.max(0, Number(settings.costChangeWarningPercent ?? 30) || 0),
+  }
+}
+
+function roundSellingPrice(value: number, rule: PricingRoundingRule) {
+  const price = Math.max(0, Number(value) || 0)
+  if (!rule) return Math.round(price * 100) / 100
+  return Math.ceil(price / rule) * rule
+}
+
+function productSpecificKeys(itemType: 'medicine' | 'product', item: Medicine | Product) {
+  if (itemType === 'medicine') {
+    const medicine = item as Medicine
+    return [
+      `${itemType}:${medicine.id}`,
+      medicine.id,
+      medicine.sku,
+      medicine.brandName,
+      medicine.genericName,
+      medicine.nafdacNumber,
+    ].map((key) => key.trim().toLowerCase()).filter(Boolean)
+  }
+  const product = item as Product
+  return [
+    `${itemType}:${product.id}`,
+    product.id,
+    product.sku,
+    product.name,
+  ].map((key) => key.trim().toLowerCase()).filter(Boolean)
+}
+
+function markupForItem(db: Database, itemType: 'medicine' | 'product', itemId: string) {
+  const policy = pricingPolicy(db.settings)
+  const item = itemType === 'medicine'
+    ? db.medicines.find((medicine) => medicine.id === itemId)
+    : db.products.find((product) => product.id === itemId)
+  if (!item) return { percent: policy.globalMarkupPercent, source: 'Global markup' }
+  for (const key of productSpecificKeys(itemType, item)) {
+    const value = policy.productMarkupPercentages[key]
+    if (value !== undefined) return { percent: value, source: 'Product override' }
+  }
+  const category = item.category.trim().toLowerCase()
+  if (category && policy.categoryMarkupPercentages[category] !== undefined) {
+    return { percent: policy.categoryMarkupPercentages[category], source: 'Category markup' }
+  }
+  return { percent: policy.globalMarkupPercent, source: 'Global markup' }
+}
+
+function calculatedSellingPrice(db: Database, itemType: 'medicine' | 'product', itemId: string, unitCost: number) {
+  const policy = pricingPolicy(db.settings)
+  const markup = markupForItem(db, itemType, itemId)
+  const raw = Math.max(0, unitCost) * (1 + markup.percent / 100)
+  return {
+    price: roundSellingPrice(raw, policy.roundingRule),
+    rawPrice: raw,
+    markupPercent: markup.percent,
+    source: markup.source,
+  }
+}
+
+function discountLimitPercent(db: Database, user: User) {
+  if (isSuperAdmin(db, user) || user.role === 'admin') return 100
+  const policy = pricingPolicy(db.settings)
+  if (db.branches.some((branch) => canManageBranch(db, user, branch.id))) return policy.managerDiscountLimitPercent
+  if (user.role === 'pharmacist' || user.role === 'inventory') return policy.managerDiscountLimitPercent
+  if (user.role === 'cashier') return policy.cashierDiscountLimitPercent
+  return 0
+}
+
+function markupMapToText(map?: Record<string, number>) {
+  return Object.entries(map ?? {}).map(([key, value]) => `${key} = ${value}`).join('\n')
+}
+
+function textToMarkupMap(value: string) {
+  return Object.fromEntries(value
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [key = '', amount = ''] = line.split(/[=:,]/)
+      return [key.trim().toLowerCase(), Math.max(0, Number(amount.trim()) || 0)] as const
+    })
+    .filter(([key]) => key))
+}
+
 function MedicineIdentity({ medicine }: { medicine: Medicine }) {
   return (
     <span className="medicine-identity">
@@ -687,6 +811,15 @@ function createEmptyDatabase(): Database {
       logoDataUrl: '',
       nearExpiryDays: 90,
       approvalThreshold: 25_000,
+      autoPricingEnabled: false,
+      globalMarkupPercent: 30,
+      pricingRoundingRule: 10,
+      categoryMarkupPercentages: {},
+      productMarkupPercentages: {},
+      cashierDiscountLimitPercent: 5,
+      managerDiscountLimitPercent: 10,
+      unusualMarkupPercent: 80,
+      costChangeWarningPercent: 30,
       subscriptionPlanId: trialPolicy.includedPlan,
       trialStartedAt: new Date().toISOString(),
       trialEndsAt: new Date(Date.now() + trialPolicy.durationDays * 24 * 60 * 60 * 1000).toISOString(),
@@ -2742,6 +2875,8 @@ function Medicines({
     .filter((request) => request.createdAt.slice(0, 10) === today())
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
   const selectedRequisition = db.requisitions.find((request) => request.id === selectedRequisitionId)
+  const autoPricingOn = pricingPolicy(db.settings).enabled
+  const canOverrideAutoPricing = isSuperAdmin(db, currentUser)
 
   function openRequestModal(medicineId: string) {
     setRequestMedicineId(medicineId)
@@ -2969,6 +3104,11 @@ function Medicines({
       flash(`Barcode already belongs to ${duplicateBarcode.brandName}`)
       return
     }
+    const duplicateIdentity = db.medicines.find((medicine) => records.some((record) => medicine.id !== record.id && medicineDuplicateKey(medicine) === medicineDuplicateKey(record)))
+    if (duplicateIdentity) {
+      flash(`Likely duplicate medicine: ${duplicateIdentity.brandName} already matches this brand/generic/form/strength identity`)
+      return
+    }
     void executeAction(records.length === 1 ? 'upsertMedicine' : 'upsertMedicines', records.length === 1 ? { record: records[0], branchId: activeBranch?.id } : { records, branchId: activeBranch?.id }, `${records.length} medicine record${records.length > 1 ? 's' : ''} saved`)
     resetDrafts()
   }
@@ -2989,11 +3129,17 @@ function Medicines({
       flash('Selling price must be equal to or greater than cost price')
       return
     }
+    const overrideReason = autoPricingOn ? window.prompt('Auto pricing is enabled. Enter the admin override reason for this manual price change.')?.trim() : ''
+    if (autoPricingOn && (!canOverrideAutoPricing || !overrideReason)) {
+      flash('Auto pricing override requires the permanent admin and a reason')
+      return
+    }
     void executeAction('updateSellingPrice', {
       medicineId: medicine.id,
       branchId: activeBranch.id,
       costPrice,
       sellingPrice,
+      overrideReason,
     }, `${medicine.brandName} pricing updated`)
   }
 
@@ -3065,7 +3211,7 @@ function Medicines({
                         min="0"
                         defaultValue={medicine.costPrice || ''}
                         onBlur={(event) => updateMedicinePricing(medicine, { costPrice: Number(event.currentTarget.value) || 0 })}
-                        disabled={!canManagePrices || !activeBranch}
+                        disabled={!canManagePrices || !activeBranch || (autoPricingOn && !canOverrideAutoPricing)}
                         aria-label={`Cost price per least sellable unit for ${medicine.brandName}`}
                       />
                     </td>
@@ -3076,7 +3222,7 @@ function Medicines({
                         min="0"
                         defaultValue={medicine.sellingPrice || getMedicineSellingPrice(stockRows, medicine.id) || ''}
                         onBlur={(event) => updateMedicinePricing(medicine, { sellingPrice: Number(event.currentTarget.value) || 0 })}
-                        disabled={!canManagePrices || !activeBranch}
+                        disabled={!canManagePrices || !activeBranch || (autoPricingOn && !canOverrideAutoPricing)}
                         aria-label={`Selling price per least sellable unit for ${medicine.brandName}`}
                       />
                     </td>
@@ -3141,7 +3287,7 @@ function Medicines({
                   <label>Units per container<input type="number" min="1" value={numberInputValue(draft.packSize)} onChange={(event) => updateDraft(draft.rowId, { packSize: Number(event.target.value) })} disabled={!canWrite} /></label>
                   <label>Least sellable unit<input value={draft.sellableUnit} onChange={(event) => updateDraft(draft.rowId, { sellableUnit: event.target.value })} placeholder="Tablet, sachet, capsule" disabled={!canWrite} /></label>
                   <label>Cost price / least unit<input type="number" min="0" value={numberInputValue(draft.costPrice)} onChange={(event) => updateDraft(draft.rowId, { costPrice: Number(event.target.value) })} disabled={!canWrite || !canManagePrices} /></label>
-                  <label>Selling price / least unit<input type="number" min="0" value={numberInputValue(draft.sellingPrice)} onChange={(event) => updateDraft(draft.rowId, { sellingPrice: Number(event.target.value) })} disabled={!canWrite || !canManagePrices} /></label>
+                  <label>Selling price / least unit<input type="number" min="0" value={numberInputValue(draft.sellingPrice)} onChange={(event) => updateDraft(draft.rowId, { sellingPrice: Number(event.target.value) })} disabled={!canWrite || !canManagePrices || autoPricingOn} /></label>
                   <label>Category<input value={draft.category} onChange={(event) => updateDraft(draft.rowId, { category: event.target.value })} disabled={!canWrite} /></label>
                   <label>Manufacturer<input value={draft.manufacturer} onChange={(event) => updateDraft(draft.rowId, { manufacturer: event.target.value })} disabled={!canWrite} /></label>
                   <label>Reorder level<input type="number" min="0" value={numberInputValue(draft.reorderLevel)} onChange={(event) => updateDraft(draft.rowId, { reorderLevel: Number(event.target.value) })} disabled={!canWrite} /></label>
@@ -3486,6 +3632,22 @@ function ReceiveStock({ db, activeBranch, canWrite, executeAction, flash }: { db
     sellingPrice: number
     location: string
   }
+  type ReceiveReviewLine = ReceiveLine & {
+    medicineId: string
+    productId: string
+    itemName: string
+    unitLabel: string
+    containers: number
+    unitsPerContainer: number
+    postedQuantity: number
+    leastUnitCost: number
+    calculatedSellingPrice: number
+    markupPercent: number
+    markupSource: string
+    lineCost: number
+    lineRetail: number
+    warnings: string[]
+  }
   const createLine = (): ReceiveLine => ({
     rowId: id('line'),
     itemType: 'medicine',
@@ -3503,11 +3665,29 @@ function ReceiveStock({ db, activeBranch, canWrite, executeAction, flash }: { db
     invoiceRef: '',
   })
   const [lines, setLines] = useState<ReceiveLine[]>([createLine()])
+  const [reviewOpen, setReviewOpen] = useState(false)
+  const [reviewLines, setReviewLines] = useState<ReceiveReviewLine[]>([])
   const selectedSupplierId = header.supplierId || db.suppliers[0]?.id || ''
   const hasReceivableItems = db.medicines.some((medicine) => medicine.active) || db.products.some((product) => product.active)
+  const policy = pricingPolicy(db.settings)
+
+  function lineUnitCost(line: Pick<ReceiveLine, 'itemType' | 'itemId' | 'unitCost'>) {
+    if (line.itemType === 'product') return Math.max(0, Number(line.unitCost) || 0)
+    const medicine = db.medicines.find((item) => item.id === line.itemId)
+    return medicineUnitCostFromContainerCost(medicine, Number(line.unitCost))
+  }
+
+  function applyAutoPrice(line: ReceiveLine) {
+    if (!policy.enabled || !line.itemId) return line
+    const unitCost = lineUnitCost(line)
+    return {
+      ...line,
+      sellingPrice: calculatedSellingPrice(db, line.itemType, line.itemId, unitCost).price,
+    }
+  }
 
   function updateLine(rowId: string, updates: Partial<ReceiveLine>) {
-    setLines((current) => current.map((line) => (line.rowId === rowId ? { ...line, ...updates } : line)))
+    setLines((current) => current.map((line) => (line.rowId === rowId ? applyAutoPrice({ ...line, ...updates }) : line)))
   }
 
   function itemPriceDefaults(itemType: ReceiveLine['itemType'], itemId: string) {
@@ -3547,7 +3727,7 @@ function ReceiveStock({ db, activeBranch, canWrite, executeAction, flash }: { db
     const defaults = itemPriceDefaults(itemType, itemId)
     setLines((current) => current.map((line) => (
       line.rowId === rowId
-        ? { ...line, itemType, itemId, unitCost: line.unitCost || defaults.unitCost, sellingPrice: line.sellingPrice || defaults.sellingPrice }
+        ? applyAutoPrice({ ...line, itemType, itemId, unitCost: line.unitCost || defaults.unitCost, sellingPrice: line.sellingPrice || defaults.sellingPrice })
         : line
     )))
   }
@@ -3569,48 +3749,78 @@ function ReceiveStock({ db, activeBranch, canWrite, executeAction, flash }: { db
     setLines((current) => current.map((line, index) => {
       if (index !== current.length - 1) return line
       const defaults = itemPriceDefaults(match.itemType, match.itemId)
-      return { ...line, itemType: match.itemType, itemId: match.itemId, unitCost: line.unitCost || defaults.unitCost, sellingPrice: line.sellingPrice || defaults.sellingPrice }
+      return applyAutoPrice({ ...line, itemType: match.itemType, itemId: match.itemId, unitCost: line.unitCost || defaults.unitCost, sellingPrice: line.sellingPrice || defaults.sellingPrice })
     }))
     flash(`${match.label} selected`)
   }
 
-  function submit(event: FormEvent) {
-    event.preventDefault()
-    if (!canWrite) return
+  function buildReviewLines() {
     if (!selectedSupplierId || !hasReceivableItems || !activeBranch.id) {
       flash('Add at least one Pharmacy or Mart item, supplier, and branch before receiving stock')
-      return
+      return []
     }
     const items = lines.map((line) => {
       const fallbackId = line.itemType === 'product' ? db.products.find((product) => product.active)?.id : db.medicines.find((medicine) => medicine.active)?.id
       const itemId = line.itemId || fallbackId || ''
+      const item = line.itemType === 'product'
+        ? db.products.find((product) => product.id === itemId)
+        : db.medicines.find((medicine) => medicine.id === itemId)
+      const unitCost = line.itemType === 'medicine'
+        ? medicineUnitCostFromContainerCost(item as Medicine | undefined, Number(line.unitCost))
+        : Math.max(0, Number(line.unitCost) || 0)
+      const priceCalc = calculatedSellingPrice(db, line.itemType, itemId, unitCost)
+      const sellingPrice = policy.enabled ? priceCalc.price : Math.max(0, Number(line.sellingPrice) || 0)
+      const containers = Math.max(0, Number(line.quantity) || 0)
+      const unitsPerContainer = line.itemType === 'medicine' ? medicineUnitsPerContainer(item as Medicine | undefined) : 1
+      const postedQuantity = containers * unitsPerContainer
+      const existingCost = item ? Math.max(0, Number(item.costPrice) || 0) : 0
+      const costDelta = existingCost > 0 && unitCost > 0 ? Math.abs(unitCost - existingCost) / existingCost * 100 : 0
+      const warnings = [
+        sellingPrice > 0 && sellingPrice < unitCost ? 'Selling price is below cost' : '',
+        priceCalc.markupPercent > policy.unusualMarkupPercent ? `Markup is above ${policy.unusualMarkupPercent}%` : '',
+        costDelta > policy.costChangeWarningPercent ? `Cost changed ${Math.round(costDelta)}% from catalog cost` : '',
+        line.itemType === 'medicine' && unitsPerContainer <= 1 && (item as Medicine | undefined)?.unit?.toLowerCase() !== (item as Medicine | undefined)?.sellableUnit?.toLowerCase() ? 'Units per container is 1; confirm package setup' : '',
+      ].filter(Boolean)
       return {
         ...line,
         itemId,
         medicineId: line.itemType === 'medicine' ? itemId : '',
         productId: line.itemType === 'product' ? itemId : '',
+        itemName: item ? (line.itemType === 'product' ? (item as Product).name : medicineOptionLabel(item as Medicine)) : 'Unknown item',
+        unitLabel: line.itemType === 'medicine' ? medicineSellableUnit(item as Medicine | undefined) : (item as Product | undefined)?.unit || 'unit',
+        containers,
+        unitsPerContainer,
+        postedQuantity,
+        leastUnitCost: unitCost,
+        sellingPrice,
+        calculatedSellingPrice: priceCalc.price,
+        markupPercent: priceCalc.markupPercent,
+        markupSource: priceCalc.source,
+        lineCost: postedQuantity * unitCost,
+        lineRetail: postedQuantity * sellingPrice,
+        warnings,
       }
     })
     if (items.some((line) => !line.itemId || Number(line.quantity) <= 0)) {
       flash('Item and quantity are required for every line')
-      return
+      return []
     }
     if (items.some((line) => line.itemType === 'medicine' && (!line.batchNumber || !line.expiryDate))) {
       flash('Batch number and expiry date are required for medicines')
-      return
+      return []
     }
     if (items.some((line) => line.expiryDate && line.expiryDate < today())) {
       flash('Receiving blocked: expiry date must be today or later')
-      return
+      return []
     }
-    if (items.some((line) => {
-      const medicine = line.itemType === 'medicine' ? db.medicines.find((item) => item.id === line.itemId) : undefined
-      const comparableUnitCost = medicine ? medicineUnitCostFromContainerCost(medicine, Number(line.unitCost)) : Number(line.unitCost)
-      return Number(line.sellingPrice) > 0 && Number(line.sellingPrice) < comparableUnitCost
-    })) {
+    if (items.some((line) => line.sellingPrice > 0 && line.sellingPrice < line.leastUnitCost)) {
       flash('Receiving blocked: selling price cannot be lower than unit cost')
-      return
+      return []
     }
+    return items
+  }
+
+  function postReviewedLines(items: ReceiveReviewLine[]) {
     void executeAction('receiveStock', {
       supplierId: selectedSupplierId,
       invoiceRef: header.invoiceRef,
@@ -3619,7 +3829,18 @@ function ReceiveStock({ db, activeBranch, canWrite, executeAction, flash }: { db
     }, `${items.length} stock line${items.length > 1 ? 's' : ''} received and posted`)
     setHeader({ ...header, invoiceRef: '' })
     setLines([createLine()])
+    setReviewLines([])
+    setReviewOpen(false)
     setScan('')
+  }
+
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    if (!canWrite) return
+    const items = buildReviewLines()
+    if (!items.length) return
+    setReviewLines(items)
+    setReviewOpen(true)
   }
 
   return (
@@ -3663,7 +3884,7 @@ function ReceiveStock({ db, activeBranch, canWrite, executeAction, flash }: { db
                   <label>Expiry date<input required={line.itemType === 'medicine'} type="date" value={line.expiryDate} onChange={(event) => updateLine(line.rowId, { expiryDate: event.target.value })} disabled={!canWrite} /></label>
                   <label>{line.itemType === 'medicine' ? `Containers received${selectedMedicine ? ` (${medicineContainerPackage(selectedMedicine)})` : ''}` : 'Quantity received'}<input required type="number" min="1" value={numberInputValue(line.quantity)} onChange={(event) => updateLine(line.rowId, { quantity: Number(event.target.value) })} disabled={!canWrite} /></label>
                   <label>{line.itemType === 'medicine' ? 'Cost per container' : 'Unit cost'}<input type="number" min="0" value={numberInputValue(line.unitCost)} onChange={(event) => updateLine(line.rowId, { unitCost: Number(event.target.value) })} disabled={!canWrite} /></label>
-                  <label>{line.itemType === 'medicine' ? 'Selling price / least unit' : 'Selling price'}<input type="number" min="0" value={numberInputValue(line.sellingPrice)} onChange={(event) => updateLine(line.rowId, { sellingPrice: Number(event.target.value) })} disabled={!canWrite} /></label>
+                  <label>{line.itemType === 'medicine' ? 'Selling price / least unit' : 'Selling price'}<input type="number" min="0" value={numberInputValue(line.sellingPrice)} onChange={(event) => updateLine(line.rowId, { sellingPrice: Number(event.target.value) })} disabled={!canWrite || policy.enabled} /></label>
                   <label>Stock location<input value={line.location} onChange={(event) => updateLine(line.rowId, { location: event.target.value })} disabled={!canWrite} /></label>
                   {lineSummary && (
                     <div className="receive-conversion-note full">
@@ -3675,6 +3896,12 @@ function ReceiveStock({ db, activeBranch, canWrite, executeAction, flash }: { db
                         <strong>{money.format(lineSummary.unitCost)}</strong>
                         <span>cost per {lineSummary.leastUnit}</span>
                       </div>
+                      {policy.enabled && (
+                        <div>
+                          <strong>{money.format(calculatedSellingPrice(db, line.itemType, selectedItemId, lineSummary.unitCost).price)}</strong>
+                          <span>auto selling price</span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -3693,6 +3920,78 @@ function ReceiveStock({ db, activeBranch, canWrite, executeAction, flash }: { db
           </button>
         </div>
       </form>
+      {reviewOpen && (
+        <div className="pos-modal-backdrop" role="presentation" onMouseDown={() => setReviewOpen(false)}>
+          <section className="pos-modal-panel receive-review-modal" role="dialog" aria-modal="true" aria-labelledby="receive-review-title" onMouseDown={(event) => event.stopPropagation()}>
+            <header className="pos-modal-header">
+              <div>
+                <span className="pos-modal-kicker">Calculation review</span>
+                <h3 id="receive-review-title">Confirm goods receiving note</h3>
+              </div>
+              <button type="button" onClick={() => setReviewOpen(false)} aria-label="Close receive review"><X size={18} /></button>
+            </header>
+            <div className="receive-review-summary">
+              <div><span>Invoice lines</span><strong>{number.format(reviewLines.length)}</strong></div>
+              <div><span>Total units</span><strong>{number.format(reviewLines.reduce((sum, line) => sum + line.postedQuantity, 0))}</strong></div>
+              <div><span>Cost value</span><strong>{money.format(reviewLines.reduce((sum, line) => sum + line.lineCost, 0))}</strong></div>
+              <div><span>Retail value</span><strong>{money.format(reviewLines.reduce((sum, line) => sum + line.lineRetail, 0))}</strong></div>
+            </div>
+            {policy.enabled && (
+              <div className="receive-review-policy">
+                <Sparkles size={16} />
+                Auto pricing is on. Selling prices below are calculated from least-unit cost, markup priority, and rounding.
+              </div>
+            )}
+            {reviewLines.some((line) => line.warnings.length) && (
+              <div className="receive-review-warnings">
+                <AlertTriangle size={17} />
+                <div>
+                  <strong>{reviewLines.reduce((sum, line) => sum + line.warnings.length, 0)} warning{reviewLines.reduce((sum, line) => sum + line.warnings.length, 0) === 1 ? '' : 's'} need review</strong>
+                  <span>Confirm the highlighted line values before posting stock.</span>
+                </div>
+              </div>
+            )}
+            <div className="receive-review-table table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Item</th>
+                    <th>Qty received</th>
+                    <th>Posted units</th>
+                    <th>Cost / unit</th>
+                    <th>Markup</th>
+                    <th>Selling / unit</th>
+                    <th>Warnings</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reviewLines.map((line) => (
+                    <tr key={line.rowId} className={line.warnings.length ? 'warn-row' : ''}>
+                      <td>
+                        <strong>{line.itemName}</strong>
+                        <span className="table-subtext">{line.batchNumber || 'No batch'} / {line.expiryDate || 'No expiry'} / {line.location}</span>
+                      </td>
+                      <td>{number.format(line.containers)} {line.itemType === 'medicine' ? medicineContainerPackage(db.medicines.find((medicine) => medicine.id === line.itemId)) : line.unitLabel}</td>
+                      <td>{number.format(line.postedQuantity)} {line.unitLabel}</td>
+                      <td>{money.format(line.leastUnitCost)}</td>
+                      <td>{line.markupPercent}% <span className="table-subtext">{line.markupSource}</span></td>
+                      <td><strong>{money.format(line.sellingPrice)}</strong></td>
+                      <td>{line.warnings.length ? line.warnings.map((warning) => <span className="warning-chip" key={warning}>{warning}</span>) : <span className="success-chip">Checked</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="form-actions">
+              <button className="ghost-button" type="button" onClick={() => setReviewOpen(false)}>Back to edit</button>
+              <button className="primary-button" type="button" onClick={() => postReviewedLines(reviewLines)} disabled={!reviewLines.length}>
+                <PackageCheck size={17} />
+                Confirm and post stock
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </section>
   )
 }
@@ -3819,6 +4118,7 @@ function ProductsView({ db, canWrite, executeAction, flash }: { db: Database; ca
   })
   const [form, setForm] = useState<ProductDraft>(createBlank)
   const [query, setQuery] = useState('')
+  const autoPricingOn = pricingPolicy(db.settings).enabled
   const visible = db.products
     .filter((product) => {
       const text = `${product.sku} ${product.name} ${product.category} ${product.unit} ${product.barcodes.join(' ')}`.toLowerCase()
@@ -3845,7 +4145,7 @@ function ProductsView({ db, canWrite, executeAction, flash }: { db: Database; ca
       category: form.category.trim() || 'General retail',
       unit: form.unit.trim() || 'Unit',
       costPrice: Math.max(0, Number(form.costPrice) || 0),
-      sellingPrice: Math.max(0, Number(form.sellingPrice) || 0),
+      sellingPrice: autoPricingOn ? calculatedSellingPrice(db, 'product', form.id, Math.max(0, Number(form.costPrice) || 0)).price : Math.max(0, Number(form.sellingPrice) || 0),
       quantity: Math.max(0, Number(form.quantity) || 0),
       barcodes: form.barcodes.split(',').map((item) => item.trim()).filter(Boolean),
       supplierId: form.supplierId,
@@ -3930,7 +4230,7 @@ function ProductsView({ db, canWrite, executeAction, flash }: { db: Database; ca
           <label>Unit<input value={form.unit} onChange={(event) => setForm({ ...form, unit: event.target.value })} disabled={!canWrite} /></label>
           <label>Quantity<input type="number" min="0" value={numberInputValue(form.quantity)} onChange={(event) => setForm({ ...form, quantity: Number(event.target.value) })} disabled={!canWrite} /></label>
           <label>Cost price<input type="number" min="0" value={numberInputValue(form.costPrice)} onChange={(event) => setForm({ ...form, costPrice: Number(event.target.value) })} disabled={!canWrite} /></label>
-          <label>Selling price<input type="number" min="0" value={numberInputValue(form.sellingPrice)} onChange={(event) => setForm({ ...form, sellingPrice: Number(event.target.value) })} disabled={!canWrite} /></label>
+          <label>Selling price<input type="number" min="0" value={numberInputValue(autoPricingOn ? calculatedSellingPrice(db, 'product', form.id, Number(form.costPrice) || 0).price : form.sellingPrice)} onChange={(event) => setForm({ ...form, sellingPrice: Number(event.target.value) })} disabled={!canWrite || autoPricingOn} /></label>
           <label>Supplier<select value={form.supplierId} onChange={(event) => setForm({ ...form, supplierId: event.target.value })} disabled={!canWrite}><option value="">No supplier</option>{db.suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label>
           <label className="full">Barcodes<input value={form.barcodes} onChange={(event) => setForm({ ...form, barcodes: event.target.value })} disabled={!canWrite} placeholder="Comma-separated barcodes" /></label>
           <label className="checkbox-row full"><input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} disabled={!canWrite} /> Active product</label>
@@ -4082,6 +4382,9 @@ function POSView({
   const subtotal = cartRows.reduce((sum, item) => sum + item.lineTotal, 0)
   const discountInput = Math.max(0, Number(discount) || 0)
   const safeDiscount = discountMode === 'percent' ? Math.min(subtotal, subtotal * Math.min(discountInput, 100) / 100) : Math.min(discountInput, subtotal)
+  const maxDiscountPercent = discountLimitPercent(db, currentUser)
+  const maxDiscountAmount = subtotal * (maxDiscountPercent / 100)
+  const discountTooHigh = safeDiscount > maxDiscountAmount
   const total = Math.max(0, subtotal - safeDiscount)
   const changeDue = Math.max(0, (Number(cashPaid) || 0) - total)
   const filteredSales = branchSales.filter((sale) => {
@@ -4265,6 +4568,10 @@ function POSView({
 
   async function saveDraft() {
     if (!canSell || !cart.length) return
+    if (discountTooHigh) {
+      flash(`Discount exceeds your ${maxDiscountPercent}% limit`)
+      return
+    }
     const saved = await executeAction('savePosDraft', salePayload(), 'POS cart saved as a 10-minute draft')
     if (saved) resetSaleForm()
   }
@@ -4382,6 +4689,10 @@ function POSView({
   async function submit(event: FormEvent) {
     event.preventDefault()
     if (!canCompleteSale || !cart.length) return
+    if (discountTooHigh) {
+      flash(`Discount exceeds your ${maxDiscountPercent}% limit`)
+      return
+    }
     if (cartRows.some((item) => item.quantity < 1)) {
       flash('Enter a quantity for every POS item')
       return
@@ -4654,6 +4965,7 @@ function POSView({
                   <button className={discountMode === 'amount' ? 'active' : ''} type="button" onClick={() => setDiscountMode('amount')} disabled={!canSell}>{String.fromCharCode(8358)}</button>
                   <button className={discountMode === 'percent' ? 'active' : ''} type="button" onClick={() => setDiscountMode('percent')} disabled={!canSell}>%</button>
                 </div>
+                <small className={discountTooHigh ? 'discount-limit-note danger' : 'discount-limit-note'}>Limit: {maxDiscountPercent}% / {money.format(maxDiscountAmount)}</small>
               </label>
               <label>
                 <span><Wallet size={15} /> Cash paid</span>
@@ -4817,6 +5129,16 @@ function PatientsView({ db, activeBranch, flash }: { db: Database; activeBranch?
   const profiles = useMemo(() => buildPatientProfiles(db, branchId), [branchId, db])
   const refillRows = useMemo(() => buildRefillRows(db, branchId), [branchId, db])
   const dueRows = refillRows.filter((row) => row.daysUntilDue <= 7)
+  const overdueRows = refillRows.filter((row) => row.daysUntilDue < 0)
+  const chronicPatients = profiles.filter((profile) => {
+    const medicineSaleCount = profile.sales.reduce((sum, sale) => sum + sale.items.filter((item) => item.itemType === 'medicine' && item.daysSupply).length, 0)
+    return medicineSaleCount >= 2 || profile.sales.length >= 3
+  })
+  const careQueue = [
+    { label: 'Overdue refills', value: overdueRows.length, tone: 'danger', detail: 'Patients whose therapy window has already passed.' },
+    { label: 'Due this week', value: dueRows.filter((row) => row.daysUntilDue >= 0).length, tone: 'warning', detail: 'Patients to call or message before they miss a refill.' },
+    { label: 'Chronic relationship list', value: chronicPatients.length, tone: 'good', detail: 'Repeat patients worth retaining with consistent follow-up.' },
+  ]
   const filteredProfiles = profiles.filter((profile) => {
     const text = `${profile.name} ${profile.phone} ${profile.sales.map((sale) => sale.reference).join(' ')}`.toLowerCase()
     return text.includes(query.toLowerCase())
@@ -4845,6 +5167,16 @@ function PatientsView({ db, activeBranch, flash }: { db: Database; activeBranch?
         <Metric icon={Bell} label="Refills due soon" value={compactNumber(dueRows.length)} tone={dueRows.length ? 'warning' : 'good'} />
         <Metric icon={MessageSquare} label="Follow-up notes" value={compactNumber(selectedMessages.length)} />
         <Metric icon={Phone} label="Phone-linked records" value={compactNumber(profiles.filter((profile) => profile.phone).length)} />
+      </section>
+
+      <section className="patient-care-queue">
+        {careQueue.map((item) => (
+          <article className={`care-queue-card ${item.tone}`} key={item.label}>
+            <span>{item.label}</span>
+            <strong>{compactNumber(item.value)}</strong>
+            <p>{item.detail}</p>
+          </article>
+        ))}
       </section>
 
       <section className="content-section">
@@ -6121,6 +6453,8 @@ function BranchesView({
 
 function SettingsView({ db, canAdmin, executeAction }: { db: Database; canAdmin: boolean; executeAction: ExecuteAction }) {
   const [form, setForm] = useState(db.settings)
+  const [categoryMarkupText, setCategoryMarkupText] = useState(() => markupMapToText(db.settings.categoryMarkupPercentages))
+  const [productMarkupText, setProductMarkupText] = useState(() => markupMapToText(db.settings.productMarkupPercentages))
   const currentPlanId = db.settings.subscriptionPlanId ?? trialPolicy.includedPlan
   const selectedPlanId = form.subscriptionPlanId ?? currentPlanId
   const selectedPlan = planById(selectedPlanId)
@@ -6151,7 +6485,11 @@ function SettingsView({ db, canAdmin, executeAction }: { db: Database; canAdmin:
       window.alert(planBlockers.join('\n'))
       return
     }
-    void executeAction('updateSettings', form, 'Settings saved')
+    void executeAction('updateSettings', {
+      ...form,
+      categoryMarkupPercentages: textToMarkupMap(categoryMarkupText),
+      productMarkupPercentages: textToMarkupMap(productMarkupText),
+    }, 'Settings saved')
   }
 
   return (
@@ -6187,6 +6525,37 @@ function SettingsView({ db, canAdmin, executeAction }: { db: Database; canAdmin:
         <label>Default branch name<input value={form.branchName} onChange={(event) => setForm({ ...form, branchName: event.target.value })} disabled={!canAdmin} /></label>
         <label>Near-expiry days<input type="number" min="1" value={numberInputValue(form.nearExpiryDays)} onChange={(event) => setForm({ ...form, nearExpiryDays: Number(event.target.value) })} disabled={!canAdmin} /></label>
         <label>Approval threshold (NGN)<input type="number" min="0" value={numberInputValue(form.approvalThreshold)} onChange={(event) => setForm({ ...form, approvalThreshold: Number(event.target.value) })} disabled={!canAdmin} /></label>
+        <div className="pricing-settings full">
+          <div className="pricing-settings-head">
+            <div>
+              <span className="eyebrow">Price control</span>
+              <h3>Auto selling price</h3>
+              <p>Calculate prices from final least-unit cost, markup, and rounding. Manual selling price is locked while this is on, except admin override with audit reason.</p>
+            </div>
+            <label className="switch-row">
+              <input type="checkbox" checked={Boolean(form.autoPricingEnabled)} onChange={(event) => setForm({ ...form, autoPricingEnabled: event.target.checked })} disabled={!canAdmin} />
+              <span>{form.autoPricingEnabled ? 'On' : 'Off'}</span>
+            </label>
+          </div>
+          <div className="pricing-settings-grid">
+            <label>Global markup %<input type="number" min="0" value={numberInputValue(form.globalMarkupPercent ?? 30)} onChange={(event) => setForm({ ...form, globalMarkupPercent: Number(event.target.value) })} disabled={!canAdmin} /></label>
+            <label>Round prices<select value={form.pricingRoundingRule ?? 10} onChange={(event) => setForm({ ...form, pricingRoundingRule: Number(event.target.value) as PricingRoundingRule })} disabled={!canAdmin}>{pricingRoundingRules.map((rule) => <option key={rule} value={rule}>{rule ? `Nearest ${money.format(rule)}` : 'No rounding'}</option>)}</select></label>
+            <label>Cashier discount limit %<input type="number" min="0" max="100" value={numberInputValue(form.cashierDiscountLimitPercent ?? 5)} onChange={(event) => setForm({ ...form, cashierDiscountLimitPercent: Number(event.target.value) })} disabled={!canAdmin} /></label>
+            <label>Manager discount limit %<input type="number" min="0" max="100" value={numberInputValue(form.managerDiscountLimitPercent ?? 10)} onChange={(event) => setForm({ ...form, managerDiscountLimitPercent: Number(event.target.value) })} disabled={!canAdmin} /></label>
+            <label>Unusual markup warning %<input type="number" min="0" value={numberInputValue(form.unusualMarkupPercent ?? 80)} onChange={(event) => setForm({ ...form, unusualMarkupPercent: Number(event.target.value) })} disabled={!canAdmin} /></label>
+            <label>Cost-change warning %<input type="number" min="0" value={numberInputValue(form.costChangeWarningPercent ?? 30)} onChange={(event) => setForm({ ...form, costChangeWarningPercent: Number(event.target.value) })} disabled={!canAdmin} /></label>
+          </div>
+          <div className="pricing-rule-editors">
+            <label>
+              Category markup rules
+              <textarea value={categoryMarkupText} onChange={(event) => setCategoryMarkupText(event.target.value)} disabled={!canAdmin} rows={4} placeholder={'analgesics = 35\nantibiotics = 25'} />
+            </label>
+            <label>
+              Product markup overrides
+              <textarea value={productMarkupText} onChange={(event) => setProductMarkupText(event.target.value)} disabled={!canAdmin} rows={4} placeholder={'pcm-500 = 40\nmedicine:med_123 = 22'} />
+            </label>
+          </div>
+        </div>
         <div className="subscription-settings full">
           <div>
             <span className="eyebrow">Subscription</span>

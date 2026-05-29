@@ -1370,6 +1370,87 @@ td strong {
   font-size: 13px;
 }
 
+.receive-review-modal {
+  width: min(1040px, 100%);
+}
+
+.receive-review-summary {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.receive-review-summary div {
+  background: #f6faf9;
+  border: 1px solid #d7e4e3;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+}
+
+.receive-review-summary span,
+.receive-review-policy,
+.receive-review-warnings span {
+  color: #52636c;
+  font-size: 12px;
+}
+
+.receive-review-summary strong {
+  color: #172024;
+  font-size: 16px;
+}
+
+.receive-review-policy,
+.receive-review-warnings {
+  align-items: center;
+  border-radius: 8px;
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.receive-review-policy {
+  background: #eaf7f1;
+  border: 1px solid #bfe3d2;
+  color: #006b45;
+}
+
+.receive-review-warnings {
+  background: #fff7e0;
+  border: 1px solid #efd99a;
+  color: #7a5600;
+}
+
+.receive-review-table {
+  max-height: var(--rx-scroll-modal);
+  overflow: auto;
+}
+
+.receive-review-table .warn-row {
+  background: #fffaf0;
+}
+
+.warning-chip,
+.success-chip {
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 800;
+  margin: 2px;
+  padding: 4px 7px;
+}
+
+.warning-chip {
+  background: #fff7e0;
+  color: #805600;
+}
+
+.success-chip {
+  background: #eaf7f1;
+  color: #006b45;
+}
+
 .requisition-summary-card,
 .requisition-open-row {
   color: inherit;
@@ -2671,6 +2752,52 @@ td strong {
   overflow: hidden;
 }
 
+.patient-care-queue {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.care-queue-card {
+  background: #ffffff;
+  border: 1px solid #d7e4e3;
+  border-radius: 8px;
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+}
+
+.care-queue-card span {
+  color: #667a82;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.care-queue-card strong {
+  color: #172024;
+  font-size: 24px;
+}
+
+.care-queue-card p {
+  color: #52636c;
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.care-queue-card.danger {
+  border-color: #f0b8b4;
+}
+
+.care-queue-card.warning {
+  border-color: #efd99a;
+}
+
+.care-queue-card.good {
+  border-color: #bfe3d2;
+}
+
 .patient-search {
   align-items: center;
   background: #ffffff;
@@ -3097,6 +3224,75 @@ button:disabled {
 
 .subscription-settings .form-error span {
   display: block;
+}
+
+.pricing-settings {
+  background: #fbfdfd;
+  border: 1px solid var(--rx-border);
+  border-radius: 8px;
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+.pricing-settings-head {
+  align-items: start;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.pricing-settings-head h3 {
+  margin: 4px 0;
+}
+
+.pricing-settings-head p {
+  color: var(--rx-muted);
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.switch-row {
+  align-items: center;
+  background: #eef4f3;
+  border: 1px solid #d7e4e3;
+  border-radius: 999px;
+  color: #006b45;
+  display: inline-flex;
+  flex-direction: row;
+  font-weight: 800;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 12px;
+}
+
+.switch-row input {
+  min-height: 16px;
+  width: 16px;
+}
+
+.pricing-settings-grid,
+.pricing-rule-editors {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.pricing-rule-editors textarea {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+}
+
+.discount-limit-note {
+  color: #667a82;
+  display: block;
+  font-size: 11px;
+  margin-top: 5px;
+}
+
+.discount-limit-note.danger {
+  color: #b42318;
+  font-weight: 800;
 }
 
 .slug-available {
@@ -4399,7 +4595,11 @@ button:disabled {
   .pos-care-fields,
   .patients-layout,
   .patient-profile-grid,
-  .patient-reminder-list article {
+  .patient-reminder-list article,
+  .patient-care-queue,
+  .pricing-settings-grid,
+  .pricing-rule-editors,
+  .receive-review-summary {
     grid-template-columns: 1fr;
   }
 

@@ -7,6 +7,7 @@ type Role = 'admin' | 'pharmacist' | 'inventory' | 'cashier' | 'viewer'
 type UserStatus = 'pending' | 'active' | 'suspended'
 type LedgerType = 'stock-in' | 'stock-out' | 'adjustment' | 'write-off' | 'supplier-return' | 'customer-return'
 type SubscriptionPlanId = 'single-branch' | 'smart-pharmacy' | 'enterprise'
+type PricingRoundingRule = 0 | 1 | 5 | 10 | 50 | 100
 
 type User = {
   id: string
@@ -335,6 +336,15 @@ type Database = {
     primaryAdminId?: string
     nearExpiryDays: number
     approvalThreshold: number
+    autoPricingEnabled?: boolean
+    globalMarkupPercent?: number
+    pricingRoundingRule?: PricingRoundingRule
+    categoryMarkupPercentages?: Record<string, number>
+    productMarkupPercentages?: Record<string, number>
+    cashierDiscountLimitPercent?: number
+    managerDiscountLimitPercent?: number
+    unusualMarkupPercent?: number
+    costChangeWarningPercent?: number
     subscriptionPlanId?: SubscriptionPlanId
     trialStartedAt?: string
     trialEndsAt?: string
@@ -397,6 +407,15 @@ export function createEmptyDatabase(): Database {
       logoDataUrl: '',
       nearExpiryDays: 90,
       approvalThreshold: 25000,
+      autoPricingEnabled: false,
+      globalMarkupPercent: 30,
+      pricingRoundingRule: 10,
+      categoryMarkupPercentages: {},
+      productMarkupPercentages: {},
+      cashierDiscountLimitPercent: 5,
+      managerDiscountLimitPercent: 10,
+      unusualMarkupPercent: 80,
+      costChangeWarningPercent: 30,
       subscriptionPlanId: 'smart-pharmacy',
       trialStartedAt: nowIso(),
       trialEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),

@@ -57,6 +57,10 @@ Do not add floating marketing layouts, oversized hero sections, or decorative pa
 - Guide: beta workflow guide.
 - Settings: company identity, logo, thresholds.
 
+Future expansion memory:
+
+- `Freeze II / Care Network`: HMO-routed prescription workflow, EMR/HMO prescription intake, approved pharmacy matching, patient pickup links, stock reservation, label/counseling handoff, and closed-loop dispensing feedback. Use [FREEZE_II_CARE_NETWORK_FIGMA_BLUEPRINT.md](FREEZE_II_CARE_NETWORK_FIGMA_BLUEPRINT.md) before designing or implementing this expansion.
+
 ## Scroll Policy
 
 Use scroll intentionally:
@@ -109,6 +113,8 @@ Before adding a new `max-height` or `overflow`, prefer these variables and check
 - Downgrading must never delete stock, sales, patient, branch, or audit history. Extra branches/staff should be archived, exported, or made inactive before the lower plan becomes active.
 - Workspace settings persist `subscriptionPlanId`, `trialStartedAt`, and `trialEndsAt`. The app and API both block plan changes that exceed the target plan boundary.
 - High-support or high-value features belong in Enterprise: unlimited branches/staff, custom integrations, SLA, dedicated onboarding, custom reports, and future AI/clinical automation.
+- Expansion features must not become free upgrades by accident. HMO routing, EMR/HMO integrations, pharmacy network matching, claim feedback, custom APIs, and care-network coordination should be priced as Enterprise features or paid add-ons, because they create new revenue value and support obligations beyond normal pharmacy operations.
+- Existing plans should keep receiving quality, security, usability, and workflow improvements inside their promised scope. New cross-organization workflows should require a plan upgrade, add-on, or custom contract.
 
 ## Patient Workflow Rules
 

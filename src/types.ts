@@ -2,6 +2,7 @@ export type Role = 'admin' | 'pharmacist' | 'inventory' | 'cashier' | 'viewer'
 export type UserStatus = 'pending' | 'active' | 'suspended'
 export type LedgerType = 'stock-in' | 'stock-out' | 'adjustment' | 'write-off' | 'supplier-return' | 'customer-return'
 export type SubscriptionPlanId = 'single-branch' | 'smart-pharmacy' | 'enterprise'
+export type PricingRoundingRule = 0 | 1 | 5 | 10 | 50 | 100
 
 export type User = {
   id: string
@@ -295,6 +296,15 @@ export type AppSettings = {
   primaryAdminId?: string
   nearExpiryDays: number
   approvalThreshold: number
+  autoPricingEnabled?: boolean
+  globalMarkupPercent?: number
+  pricingRoundingRule?: PricingRoundingRule
+  categoryMarkupPercentages?: Record<string, number>
+  productMarkupPercentages?: Record<string, number>
+  cashierDiscountLimitPercent?: number
+  managerDiscountLimitPercent?: number
+  unusualMarkupPercent?: number
+  costChangeWarningPercent?: number
   subscriptionPlanId?: SubscriptionPlanId
   trialStartedAt?: string
   trialEndsAt?: string
