@@ -283,6 +283,15 @@ export type BranchAccessRequest = {
   resolvedAt?: string
 }
 
+export type MedicineLabelRule = {
+  id: string
+  match: string
+  label: string
+  instruction: string
+  followUpMessage?: string
+  enabled: boolean
+}
+
 export type AppSettings = {
   softwareName: string
   accountName: string
@@ -305,6 +314,10 @@ export type AppSettings = {
   managerDiscountLimitPercent?: number
   unusualMarkupPercent?: number
   costChangeWarningPercent?: number
+  defaultFollowUpLabel?: string
+  defaultFollowUpMessage?: string
+  dosageFormLabelRules?: Record<string, string>
+  medicineLabelRules?: MedicineLabelRule[]
   subscriptionPlanId?: SubscriptionPlanId
   trialStartedAt?: string
   trialEndsAt?: string

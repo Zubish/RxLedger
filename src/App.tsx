@@ -401,6 +401,15 @@ type BranchAccessRequest = {
   resolvedAt?: string
 }
 
+type MedicineLabelRule = {
+  id: string
+  match: string
+  label: string
+  instruction: string
+  followUpMessage?: string
+  enabled: boolean
+}
+
 type AppSettings = {
   softwareName: string
   accountName: string
@@ -423,6 +432,10 @@ type AppSettings = {
   managerDiscountLimitPercent?: number
   unusualMarkupPercent?: number
   costChangeWarningPercent?: number
+  defaultFollowUpLabel?: string
+  defaultFollowUpMessage?: string
+  dosageFormLabelRules?: Record<string, string>
+  medicineLabelRules?: MedicineLabelRule[]
   subscriptionPlanId?: SubscriptionPlanId
   trialStartedAt?: string
   trialEndsAt?: string
@@ -754,6 +767,60 @@ function textToMarkupMap(value: string) {
     .filter(([key]) => key))
 }
 
+function dosageFormRulesToText(map?: Record<string, string>) {
+  return Object.entries(Object.keys(map ?? {}).length ? map ?? {} : defaultDosageFormLabelRules)
+    .map(([key, instruction]) => `${key} = ${instruction}`)
+    .join('\n')
+}
+
+function textToDosageFormRules(value: string) {
+  return Object.fromEntries(value
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const separator = line.includes('=') ? '=' : ':'
+      const [key = '', ...instructionParts] = line.split(separator)
+      return [key.trim().toLowerCase(), instructionParts.join(separator).trim()] as const
+    })
+    .filter(([key, instruction]) => key && instruction))
+}
+
+function medicineLabelRulesToText(rules?: MedicineLabelRule[]) {
+  const source = rules?.length ? rules : builtInMedicineLabelRules
+  return source
+    .map((rule) => `${rule.match} | ${rule.label} | ${rule.instruction}${rule.followUpMessage ? ` | ${rule.followUpMessage}` : ''}`)
+    .join('\n')
+}
+
+function textToMedicineLabelRules(value: string): MedicineLabelRule[] {
+  return value
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, index) => {
+      const [match = '', label = '', instruction = '', followUpMessage = ''] = line.split('|').map((part) => part.trim())
+      return {
+        id: `rule_${index}_${normalizeCounselingText(match || label).replace(/\s+/g, '-')}`,
+        match,
+        label: label || match,
+        instruction,
+        followUpMessage,
+        enabled: true,
+      }
+    })
+    .filter((rule) => rule.match && rule.instruction)
+}
+
+function toggleInstruction(current: string | undefined, instruction: string) {
+  const clean = instruction.trim()
+  if (!clean) return current ?? ''
+  const existing = current?.trim() ?? ''
+  if (!existing) return clean
+  if (existing.includes(clean)) return existing.replace(clean, '').replace(/\s{2,}/g, ' ').trim()
+  return `${existing} ${clean}`.trim()
+}
+
 function MedicineIdentity({ medicine }: { medicine: Medicine }) {
   return (
     <span className="medicine-identity">
@@ -820,6 +887,10 @@ function createEmptyDatabase(): Database {
       managerDiscountLimitPercent: 10,
       unusualMarkupPercent: 80,
       costChangeWarningPercent: 30,
+      defaultFollowUpLabel: 'Follow-up',
+      defaultFollowUpMessage: 'Please contact the pharmacy if symptoms persist, your condition worsens, or you notice unusual side effects.',
+      dosageFormLabelRules: defaultDosageFormLabelRules,
+      medicineLabelRules: builtInMedicineLabelRules,
       subscriptionPlanId: trialPolicy.includedPlan,
       trialStartedAt: new Date().toISOString(),
       trialEndsAt: new Date(Date.now() + trialPolicy.durationDays * 24 * 60 * 60 * 1000).toISOString(),
@@ -904,47 +975,159 @@ function getSaleItemLabel(db: Database, item: Sale['items'][number]) {
   return db.medicines.find((medicine) => medicine.id === item.medicineId)?.brandName || 'Medicine'
 }
 
-type MedicineCounselingRule = {
-  keys: string[]
+type CounselingSuggestion = {
+  id: string
   label: string
-  followUp: string
+  instruction: string
+  followUpMessage?: string
 }
 
-const medicineCounselingRules: MedicineCounselingRule[] = [
+const defaultDosageFormLabelRules: Record<string, string> = {
+  'tablet, tablets, caplet, caplets': 'Swallow with water unless your prescriber or pharmacist gave different directions.',
+  'capsule, capsules': 'Swallow whole with water unless your prescriber or pharmacist gave different directions.',
+  'oral liquid, syrup, suspension, solution': 'Shake well before use. Measure each dose with an oral syringe, spoon, or cup.',
+  'eye drop, eyedrop, ophthalmic': 'For eye use only. Wash hands before use and avoid touching the dropper tip.',
+  'ear drop, otic': 'For ear use only. Warm bottle in your hands before use and avoid touching the dropper tip.',
+  'suppository, suppositories': 'Insert as directed. Do not swallow.',
+  'cream, ointment, gel, lotion': 'Apply a thin layer to the affected area as directed. Wash hands after use unless treating the hands.',
+  'inhaler, inhalation': 'Use exactly as demonstrated. Rinse mouth after steroid inhalers unless advised otherwise.',
+  'injection, injectable': 'Use only as directed by trained staff or according to your care plan.',
+}
+
+const builtInMedicineLabelRules: MedicineLabelRule[] = [
   {
-    keys: ['cataflam', 'diclofenac', 'nsaid'],
-    label: 'Take as prescribed, preferably with or after food. Avoid if you have stomach ulcer/bleeding, NSAID allergy, or were told to avoid painkillers after surgery. Contact the pharmacist if stomach pain, black stool, chest pain, swelling, or breathing trouble occurs.',
-    followUp: 'Take Cataflam or diclofenac only as prescribed. Do not combine with other painkillers unless advised, and contact the pharmacy or your prescriber if you have ulcer symptoms, unusual bleeding, swelling, chest pain, or breathing difficulty.',
+    id: 'built-in-cataflam',
+    match: 'cataflam, diclofenac, nsaid',
+    label: 'Take with food',
+    instruction: 'Take with or after food. Do not combine with other painkillers unless advised.',
+    followUpMessage: 'Take Cataflam or diclofenac only as prescribed. Contact the pharmacy or your prescriber if you have stomach pain, black stool, swelling, chest pain, or breathing difficulty.',
+    enabled: true,
   },
   {
-    keys: ['amoxicillin', 'augmentin', 'ciprofloxacin', 'azithromycin', 'antibiotic'],
-    label: 'Take exactly as prescribed and complete the full course. Do not skip doses. Report rash, severe diarrhea, breathing difficulty, or swelling immediately.',
-    followUp: 'Please complete the antibiotic course exactly as directed, even if you feel better. Contact the pharmacy if you develop rash, severe diarrhea, swelling, or breathing difficulty.',
+    id: 'built-in-metronidazole',
+    match: 'metronidazole, flagyl',
+    label: 'Avoid alcohol',
+    instruction: 'Do not take alcohol during treatment and for at least 48 hours after completing the course.',
+    followUpMessage: 'Please avoid alcohol while taking metronidazole and for at least 48 hours after completing the course. Contact the pharmacy if you feel unwell.',
+    enabled: true,
   },
   {
-    keys: ['metformin', 'diabet'],
-    label: 'Take with meals unless otherwise directed. Do not skip meals. Monitor blood sugar as advised and report severe weakness, vomiting, or unusual breathing.',
-    followUp: 'Remember to take your diabetes medicine with meals unless your prescriber advised differently. Keep monitoring your blood sugar and contact the pharmacy if you feel unwell.',
+    id: 'built-in-antibiotic',
+    match: 'amoxicillin, augmentin, ciprofloxacin, azithromycin, antibiotic',
+    label: 'Complete course',
+    instruction: 'Take exactly as prescribed and complete the full course. Do not skip doses.',
+    followUpMessage: 'Please complete the antibiotic course exactly as directed, even if you feel better. Contact the pharmacy if you develop rash, severe diarrhea, swelling, or breathing difficulty.',
+    enabled: true,
   },
   {
-    keys: ['amlodipine', 'hypertension', 'blood pressure', 'bp'],
-    label: 'Take at the same time daily. Do not stop suddenly unless your prescriber advises. Monitor blood pressure and report severe dizziness or swelling.',
-    followUp: 'Please take your blood pressure medicine at the same time daily and keep monitoring your readings. Contact the pharmacy if you notice severe dizziness or swelling.',
+    id: 'built-in-aprovel',
+    match: 'aprovel, irbesartan',
+    label: 'Take regularly',
+    instruction: 'Take Aprovel at the same time each day. Do not stop suddenly unless your prescriber advises.',
+    followUpMessage: 'Please take Aprovel at the same time each day and keep monitoring your blood pressure as advised.',
+    enabled: true,
   },
   {
-    keys: ['paracetamol', 'acetaminophen', 'pcm'],
-    label: 'Take only as directed. Do not exceed the recommended daily dose. Avoid combining with other paracetamol-containing products.',
-    followUp: 'Use paracetamol only as directed and avoid taking it with other products that also contain paracetamol.',
+    id: 'built-in-natrilix',
+    match: 'natrilix, indapamide',
+    label: 'Morning dose',
+    instruction: 'Take Natrilix in the morning unless your prescriber advised a different time.',
+    followUpMessage: 'Please take Natrilix in the morning unless otherwise directed, and contact the pharmacy if you feel dizzy or unusually weak.',
+    enabled: true,
+  },
+  {
+    id: 'built-in-metformin',
+    match: 'metformin, diabet',
+    label: 'Take with meals',
+    instruction: 'Take with meals unless otherwise directed. Do not skip meals.',
+    followUpMessage: 'Remember to take your diabetes medicine with meals unless your prescriber advised differently. Keep monitoring your blood sugar and contact the pharmacy if you feel unwell.',
+    enabled: true,
+  },
+  {
+    id: 'built-in-bp',
+    match: 'amlodipine, hypertension, blood pressure, bp',
+    label: 'Same time daily',
+    instruction: 'Take at the same time daily. Do not stop suddenly unless your prescriber advises.',
+    followUpMessage: 'Please take your blood pressure medicine at the same time daily and keep monitoring your readings. Contact the pharmacy if you notice severe dizziness or swelling.',
+    enabled: true,
+  },
+  {
+    id: 'built-in-paracetamol',
+    match: 'paracetamol, acetaminophen, pcm',
+    label: 'Dose limit',
+    instruction: 'Take only as directed. Do not exceed the recommended daily dose or combine with other paracetamol-containing products.',
+    followUpMessage: 'Use paracetamol only as directed and avoid taking it with other products that also contain paracetamol.',
+    enabled: true,
   },
 ]
 
-function medicineInstructionSource(medicine: Medicine) {
-  return `${medicine.brandName} ${medicine.genericName} ${medicine.category} ${medicine.form}`.toLowerCase()
+function normalizeCounselingText(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 }
 
-function medicineCounselingRule(medicine: Medicine) {
+function splitRuleKeys(value: string) {
+  return value.split(',').map((item) => normalizeCounselingText(item)).filter(Boolean)
+}
+
+function dosageFormRules(settings: AppSettings) {
+  return Object.keys(settings.dosageFormLabelRules ?? {}).length ? settings.dosageFormLabelRules ?? {} : defaultDosageFormLabelRules
+}
+
+function medicineRules(settings: AppSettings) {
+  return [...(settings.medicineLabelRules ?? []), ...builtInMedicineLabelRules].filter((rule) => rule.enabled !== false && rule.match.trim() && rule.instruction.trim())
+}
+
+function medicineInstructionSource(medicine: Medicine) {
+  return normalizeCounselingText(`${medicine.brandName} ${medicine.genericName} ${medicine.category} ${medicine.form}`)
+}
+
+function ruleMatchesMedicine(rule: MedicineLabelRule, medicine: Medicine) {
   const source = medicineInstructionSource(medicine)
-  return medicineCounselingRules.find((rule) => rule.keys.some((key) => source.includes(key)))
+  return splitRuleKeys(rule.match).some((key) => source.includes(key))
+}
+
+function dosageFormSuggestion(settings: AppSettings, medicine: Medicine): CounselingSuggestion | undefined {
+  const form = normalizeCounselingText(medicine.form)
+  const match = Object.entries(dosageFormRules(settings)).find(([keys]) => (
+    splitRuleKeys(keys).some((key) => form.includes(key) || key.includes(form))
+  ))
+  if (!match) return undefined
+  const [keys, instruction] = match
+  const label = splitRuleKeys(keys)[0]?.replace(/\b\w/g, (char) => char.toUpperCase()) || 'Dosage form'
+  return { id: `form-${keys}`, label, instruction }
+}
+
+function counselingSuggestionsForMedicine(db: Database, medicine: Medicine): CounselingSuggestion[] {
+  const suggestions = [
+    dosageFormSuggestion(db.settings, medicine),
+    ...medicineRules(db.settings)
+      .filter((rule) => ruleMatchesMedicine(rule, medicine))
+      .map((rule) => ({
+        id: rule.id,
+        label: rule.label,
+        instruction: rule.instruction,
+        followUpMessage: rule.followUpMessage,
+      })),
+  ].filter((suggestion): suggestion is CounselingSuggestion => Boolean(suggestion))
+  const seen = new Set<string>()
+  return suggestions.filter((suggestion) => {
+    const key = normalizeCounselingText(suggestion.instruction)
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function defaultFollowUpText(settings: AppSettings) {
+  const message = settings.defaultFollowUpMessage?.trim()
+  if (!message) return ''
+  const label = settings.defaultFollowUpLabel?.trim() || 'Follow-up'
+  return `${label}: ${message}`
+}
+
+function combinedInstruction(suggestions: CounselingSuggestion[], fallback: string) {
+  const instructions = suggestions.map((suggestion) => suggestion.instruction.trim()).filter(Boolean)
+  return Array.from(new Set(instructions)).join(' ') || fallback
 }
 
 function defaultLabelInstruction(db: Database, itemType: 'medicine' | 'product', itemId: string) {
@@ -952,11 +1135,12 @@ function defaultLabelInstruction(db: Database, itemType: 'medicine' | 'product',
   const medicine = db.medicines.find((item) => item.id === itemId)
   if (!medicine) return ''
   const medicineName = [medicine.brandName, medicine.strength].filter(Boolean).join(' ')
-  return medicineCounselingRule(medicine)?.label || `Take ${medicineName} exactly as prescribed. Contact the pharmacy if you notice unusual side effects.`
+  return combinedInstruction(counselingSuggestionsForMedicine(db, medicine), `Take ${medicineName} exactly as prescribed. Contact the pharmacy if you notice unusual side effects.`)
 }
 
 function medicineFollowUpInstruction(medicine: Medicine) {
-  return medicineCounselingRule(medicine)?.followUp || `Take ${medicine.brandName} exactly as prescribed and contact the pharmacy if you notice unusual side effects.`
+  const followUp = medicineRules({ ...createEmptyDatabase().settings }).find((rule) => ruleMatchesMedicine(rule, medicine))?.followUpMessage
+  return followUp || `Take ${medicine.brandName} exactly as prescribed and contact the pharmacy if you notice unusual side effects.`
 }
 
 function buildPurchaseFollowUpMessage(db: Database, items: Array<{ itemType: 'medicine' | 'product'; itemId: string }>) {
@@ -964,10 +1148,14 @@ function buildPurchaseFollowUpMessage(db: Database, items: Array<{ itemType: 'me
     .filter((item) => item.itemType === 'medicine')
     .map((item) => db.medicines.find((medicine) => medicine.id === item.itemId))
     .filter((medicine): medicine is Medicine => Boolean(medicine))
-    .map((medicine) => medicineFollowUpInstruction(medicine))
+    .flatMap((medicine) => {
+      const specific = counselingSuggestionsForMedicine(db, medicine).map((suggestion) => suggestion.followUpMessage).filter((message): message is string => Boolean(message?.trim()))
+      return specific.length ? specific : [medicineFollowUpInstruction(medicine)]
+    })
   const uniqueMessages = Array.from(new Set(medicineMessages)).slice(0, 3)
-  if (!uniqueMessages.length) return ''
-  return `${uniqueMessages.join(' ')} Please follow the medication label and contact the pharmacy if you need clarification.`
+  const defaultMessage = defaultFollowUpText(db.settings)
+  if (!uniqueMessages.length) return defaultMessage
+  return `${uniqueMessages.join(' ')} ${defaultMessage || 'Please follow the medication label and contact the pharmacy if you need clarification.'}`.trim()
 }
 
 function buildPatientProfiles(db: Database) {
@@ -4538,6 +4726,14 @@ function POSView({
     }))
   }
 
+  function toggleCounselingSuggestion(rowId: string, suggestion: CounselingSuggestion) {
+    setCart((current) => current.map((item) => (
+      item.rowId === rowId
+        ? { ...item, labelInstruction: toggleInstruction(item.labelInstruction, suggestion.instruction) }
+        : item
+    )))
+  }
+
   function selectPatientProfile(profile: ReturnType<typeof buildPatientProfiles>[number]) {
     setCustomerName(profile.name === 'Walk-in patient' ? '' : profile.name)
     setCustomerPhone(profile.phone)
@@ -4864,46 +5060,65 @@ function POSView({
             </div>
 
             <div className="pos-cart-lines">
-              {cartRows.map((item) => (
-                <div className="pos-line-item" key={item.rowId}>
-                  <div className="pos-line-avatar">{optionInitials(item.option?.title ?? 'Rx')}</div>
-                  <div className="pos-line-main">
-                    <div className="pos-line-top">
-                      <div>
-                        <strong>{item.option?.title ?? 'Unknown item'}</strong>
-                        {item.itemType === 'medicine' && <span className="pos-fefo-chip">FEFO</span>}
-                        <small>{item.option?.meta ?? 'Unavailable item'} / {number.format(item.available)} avail.</small>
+              {cartRows.map((item) => {
+                const medicine = item.itemType === 'medicine' ? db.medicines.find((entry) => entry.id === item.itemId) : undefined
+                const suggestions = medicine ? counselingSuggestionsForMedicine(db, medicine) : []
+                return (
+                  <div className="pos-line-item" key={item.rowId}>
+                    <div className="pos-line-avatar">{optionInitials(item.option?.title ?? 'Rx')}</div>
+                    <div className="pos-line-main">
+                      <div className="pos-line-top">
+                        <div>
+                          <strong>{item.option?.title ?? 'Unknown item'}</strong>
+                          {item.itemType === 'medicine' && <span className="pos-fefo-chip">FEFO</span>}
+                          <small>{item.option?.meta ?? 'Unavailable item'} / {number.format(item.available)} avail.</small>
+                        </div>
+                        <button className="pos-line-remove" type="button" onClick={() => setCart((current) => current.filter((cartItem) => cartItem.rowId !== item.rowId))} title="Remove item" disabled={!canSell}>
+                          <Trash2 size={15} />
+                        </button>
                       </div>
-                      <button className="pos-line-remove" type="button" onClick={() => setCart((current) => current.filter((cartItem) => cartItem.rowId !== item.rowId))} title="Remove item" disabled={!canSell}>
-                        <Trash2 size={15} />
-                      </button>
+                      <div className="pos-line-bottom">
+                        <div className="pos-qty-stepper">
+                          <button type="button" onClick={() => updateCart(item.rowId, { quantity: item.quantity - 1 })} disabled={!canSell || item.quantity <= 1}><Minus size={14} /></button>
+                          <input aria-label="Quantity" type="number" min="1" max={item.available || 1} value={numberInputValue(item.quantity)} onChange={(event) => updateCart(item.rowId, { quantity: Number(event.target.value) })} disabled={!canSell} />
+                          <button type="button" onClick={() => updateCart(item.rowId, { quantity: item.quantity + 1 })} disabled={!canSell || item.quantity >= item.available}><Plus size={14} /></button>
+                        </div>
+                        <div>
+                          <small>{money.format(item.unitPrice)} / {number.format(item.available)} avail.</small>
+                          <strong>{money.format(item.lineTotal)}</strong>
+                        </div>
+                      </div>
+                      {item.itemType === 'medicine' && (
+                        <div className="pos-care-fields">
+                          <label>
+                            <span>Therapy days</span>
+                            <input type="number" min="0" value={numberInputValue(item.daysSupply)} onChange={(event) => updateCart(item.rowId, { daysSupply: Number(event.target.value) })} disabled={!canSell} />
+                          </label>
+                          <label>
+                            <span>Medication label</span>
+                            {suggestions.length > 0 && (
+                              <div className="pos-counseling-chips" aria-label="Counselling label suggestions">
+                                {suggestions.map((suggestion) => (
+                                  <button
+                                    className={item.labelInstruction?.includes(suggestion.instruction) ? 'active' : ''}
+                                    key={suggestion.id}
+                                    type="button"
+                                    onClick={() => toggleCounselingSuggestion(item.rowId, suggestion)}
+                                    disabled={!canSell}
+                                  >
+                                    {suggestion.label}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            <textarea value={item.labelInstruction ?? ''} onChange={(event) => updateCart(item.rowId, { labelInstruction: event.target.value })} disabled={!canSell} rows={3} />
+                          </label>
+                        </div>
+                      )}
                     </div>
-                    <div className="pos-line-bottom">
-                      <div className="pos-qty-stepper">
-                        <button type="button" onClick={() => updateCart(item.rowId, { quantity: item.quantity - 1 })} disabled={!canSell || item.quantity <= 1}><Minus size={14} /></button>
-                        <input aria-label="Quantity" type="number" min="1" max={item.available || 1} value={numberInputValue(item.quantity)} onChange={(event) => updateCart(item.rowId, { quantity: Number(event.target.value) })} disabled={!canSell} />
-                        <button type="button" onClick={() => updateCart(item.rowId, { quantity: item.quantity + 1 })} disabled={!canSell || item.quantity >= item.available}><Plus size={14} /></button>
-                      </div>
-                      <div>
-                        <small>{money.format(item.unitPrice)} / {number.format(item.available)} avail.</small>
-                        <strong>{money.format(item.lineTotal)}</strong>
-                      </div>
-                    </div>
-                    {item.itemType === 'medicine' && (
-                      <div className="pos-care-fields">
-                        <label>
-                          <span>Therapy days</span>
-                          <input type="number" min="0" value={numberInputValue(item.daysSupply)} onChange={(event) => updateCart(item.rowId, { daysSupply: Number(event.target.value) })} disabled={!canSell} />
-                        </label>
-                        <label>
-                          <span>Medication label</span>
-                          <textarea value={item.labelInstruction ?? ''} onChange={(event) => updateCart(item.rowId, { labelInstruction: event.target.value })} disabled={!canSell} rows={3} />
-                        </label>
-                      </div>
-                    )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
               {!cartRows.length && <div className="empty-state">Add medicines or products to begin a sale.</div>}
             </div>
 
@@ -6453,6 +6668,8 @@ function SettingsView({ db, canAdmin, executeAction }: { db: Database; canAdmin:
   const [form, setForm] = useState(db.settings)
   const [categoryMarkupText, setCategoryMarkupText] = useState(() => markupMapToText(db.settings.categoryMarkupPercentages))
   const [productMarkupText, setProductMarkupText] = useState(() => markupMapToText(db.settings.productMarkupPercentages))
+  const [dosageFormLabelText, setDosageFormLabelText] = useState(() => dosageFormRulesToText(db.settings.dosageFormLabelRules))
+  const [medicineLabelText, setMedicineLabelText] = useState(() => medicineLabelRulesToText(db.settings.medicineLabelRules))
   const currentPlanId = db.settings.subscriptionPlanId ?? trialPolicy.includedPlan
   const selectedPlanId = form.subscriptionPlanId ?? currentPlanId
   const selectedPlan = planById(selectedPlanId)
@@ -6487,6 +6704,8 @@ function SettingsView({ db, canAdmin, executeAction }: { db: Database; canAdmin:
       ...form,
       categoryMarkupPercentages: textToMarkupMap(categoryMarkupText),
       productMarkupPercentages: textToMarkupMap(productMarkupText),
+      dosageFormLabelRules: textToDosageFormRules(dosageFormLabelText),
+      medicineLabelRules: textToMedicineLabelRules(medicineLabelText),
     }, 'Settings saved')
   }
 
@@ -6523,6 +6742,32 @@ function SettingsView({ db, canAdmin, executeAction }: { db: Database; canAdmin:
         <label>Default branch name<input value={form.branchName} onChange={(event) => setForm({ ...form, branchName: event.target.value })} disabled={!canAdmin} /></label>
         <label>Near-expiry days<input type="number" min="1" value={numberInputValue(form.nearExpiryDays)} onChange={(event) => setForm({ ...form, nearExpiryDays: Number(event.target.value) })} disabled={!canAdmin} /></label>
         <label>Approval threshold (NGN)<input type="number" min="0" value={numberInputValue(form.approvalThreshold)} onChange={(event) => setForm({ ...form, approvalThreshold: Number(event.target.value) })} disabled={!canAdmin} /></label>
+        <div className="counseling-settings full">
+          <div className="pricing-settings-head">
+            <div>
+              <span className="eyebrow">Labelling</span>
+              <h3>Counselling labels and follow-up</h3>
+              <p>Suggested chips appear in POS medication labels and print on medicine labels only. Receipts stay clean.</p>
+            </div>
+          </div>
+          <div className="pricing-settings-grid">
+            <label>Default follow-up label<input value={form.defaultFollowUpLabel ?? 'Follow-up'} onChange={(event) => setForm({ ...form, defaultFollowUpLabel: event.target.value })} disabled={!canAdmin} /></label>
+            <label className="full">Default follow-up message<textarea value={form.defaultFollowUpMessage ?? ''} onChange={(event) => setForm({ ...form, defaultFollowUpMessage: event.target.value })} disabled={!canAdmin} rows={3} placeholder="Please contact the pharmacy if symptoms persist or side effects occur." /></label>
+          </div>
+          <div className="settings-chip-preview">
+            {Object.entries(textToDosageFormRules(dosageFormLabelText)).slice(0, 8).map(([key]) => <span key={key}>{splitRuleKeys(key)[0] || key}</span>)}
+          </div>
+          <div className="pricing-rule-editors">
+            <label>
+              Dosage-form label rules
+              <textarea value={dosageFormLabelText} onChange={(event) => setDosageFormLabelText(event.target.value)} disabled={!canAdmin} rows={8} placeholder={'tablet, tablets = Swallow with water.\noral liquid, syrup = Shake well before use.'} />
+            </label>
+            <label>
+              Medicine-specific label rules
+              <textarea value={medicineLabelText} onChange={(event) => setMedicineLabelText(event.target.value)} disabled={!canAdmin} rows={8} placeholder={'metronidazole | Avoid alcohol | Do not take alcohol during treatment.\ncataflam, diclofenac | Take with food | Take with or after food.'} />
+            </label>
+          </div>
+        </div>
         <div className="pricing-settings full">
           <div className="pricing-settings-head">
             <div>

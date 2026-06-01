@@ -278,6 +278,15 @@ type BranchAccessRequest = {
   resolvedAt?: string
 }
 
+type MedicineLabelRule = {
+  id: string
+  match: string
+  label: string
+  instruction: string
+  followUpMessage?: string
+  enabled: boolean
+}
+
 type Database = {
   users: User[]
   medicines: Medicine[]
@@ -345,6 +354,10 @@ type Database = {
     managerDiscountLimitPercent?: number
     unusualMarkupPercent?: number
     costChangeWarningPercent?: number
+    defaultFollowUpLabel?: string
+    defaultFollowUpMessage?: string
+    dosageFormLabelRules?: Record<string, string>
+    medicineLabelRules?: MedicineLabelRule[]
     subscriptionPlanId?: SubscriptionPlanId
     trialStartedAt?: string
     trialEndsAt?: string
@@ -366,6 +379,25 @@ type HandlerRequest = {
 
 const SESSION_DAYS = 14
 const SESSION_IDLE_MINUTES = 30
+
+const defaultDosageFormLabelRules: Record<string, string> = {
+  'tablet, tablets, caplet, caplets': 'Swallow with water unless your prescriber or pharmacist gave different directions.',
+  'capsule, capsules': 'Swallow whole with water unless your prescriber or pharmacist gave different directions.',
+  'oral liquid, syrup, suspension, solution': 'Shake well before use. Measure each dose with an oral syringe, spoon, or cup.',
+  'eye drop, eyedrop, ophthalmic': 'For eye use only. Wash hands before use and avoid touching the dropper tip.',
+  'ear drop, otic': 'For ear use only. Warm bottle in your hands before use and avoid touching the dropper tip.',
+  'suppository, suppositories': 'Insert as directed. Do not swallow.',
+  'cream, ointment, gel, lotion': 'Apply a thin layer to the affected area as directed. Wash hands after use unless treating the hands.',
+  'inhaler, inhalation': 'Use exactly as demonstrated. Rinse mouth after steroid inhalers unless advised otherwise.',
+  'injection, injectable': 'Use only as directed by trained staff or according to your care plan.',
+}
+
+const defaultMedicineLabelRules: MedicineLabelRule[] = [
+  { id: 'built-in-cataflam', match: 'cataflam, diclofenac, nsaid', label: 'Take with food', instruction: 'Take with or after food. Do not combine with other painkillers unless advised.', followUpMessage: 'Take Cataflam or diclofenac only as prescribed. Contact the pharmacy or your prescriber if you have stomach pain, black stool, swelling, chest pain, or breathing difficulty.', enabled: true },
+  { id: 'built-in-metronidazole', match: 'metronidazole, flagyl', label: 'Avoid alcohol', instruction: 'Do not take alcohol during treatment and for at least 48 hours after completing the course.', followUpMessage: 'Please avoid alcohol while taking metronidazole and for at least 48 hours after completing the course. Contact the pharmacy if you feel unwell.', enabled: true },
+  { id: 'built-in-aprovel', match: 'aprovel, irbesartan', label: 'Take regularly', instruction: 'Take Aprovel at the same time each day. Do not stop suddenly unless your prescriber advises.', followUpMessage: 'Please take Aprovel at the same time each day and keep monitoring your blood pressure as advised.', enabled: true },
+  { id: 'built-in-natrilix', match: 'natrilix, indapamide', label: 'Morning dose', instruction: 'Take Natrilix in the morning unless your prescriber advised a different time.', followUpMessage: 'Please take Natrilix in the morning unless otherwise directed, and contact the pharmacy if you feel dizzy or unusually weak.', enabled: true },
+]
 
 export function createEmptyDatabase(): Database {
   return {
@@ -416,6 +448,10 @@ export function createEmptyDatabase(): Database {
       managerDiscountLimitPercent: 10,
       unusualMarkupPercent: 80,
       costChangeWarningPercent: 30,
+      defaultFollowUpLabel: 'Follow-up',
+      defaultFollowUpMessage: 'Please contact the pharmacy if symptoms persist, your condition worsens, or you notice unusual side effects.',
+      dosageFormLabelRules: defaultDosageFormLabelRules,
+      medicineLabelRules: defaultMedicineLabelRules,
       subscriptionPlanId: 'smart-pharmacy',
       trialStartedAt: nowIso(),
       trialEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
@@ -423,7 +459,7 @@ export function createEmptyDatabase(): Database {
   }
 }
 
-export type { Branch, BranchAccessRequest, BranchAccessRequestStatus, ChatMessage, Database, HandlerRequest, HandlerResponse, LedgerType, Medicine, PasswordResetRequest, PosDraft, Product, Requisition, RequisitionItem, Role, Sale, SecurityEvent, SecurityEventType, Supplier, TenantRecord, User }
+export type { Branch, BranchAccessRequest, BranchAccessRequestStatus, ChatMessage, Database, HandlerRequest, HandlerResponse, LedgerType, Medicine, MedicineLabelRule, PasswordResetRequest, PosDraft, Product, Requisition, RequisitionItem, Role, Sale, SecurityEvent, SecurityEventType, Supplier, TenantRecord, User }
 
 export function id(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${randomBytes(4).toString('hex')}`
@@ -668,6 +704,35 @@ export function createTenantRecord(db: Database, slugSource: string): TenantReco
   }
 }
 
+function normalizeStringMap(value: unknown, fallback: Record<string, string>) {
+  if (!value || typeof value !== 'object') return fallback
+  const entries = Object.entries(value as Record<string, unknown>)
+    .map(([key, text]) => [String(key).trim().toLowerCase(), String(text ?? '').trim()] as const)
+    .filter(([key, text]) => key && text)
+  return entries.length ? Object.fromEntries(entries) : fallback
+}
+
+function normalizeMedicineLabelRules(value: unknown, fallback: MedicineLabelRule[]) {
+  if (!Array.isArray(value)) return fallback
+  const rules = value
+    .flatMap((rule, index): MedicineLabelRule[] => {
+      const item = rule as Partial<MedicineLabelRule>
+      const match = String(item.match ?? '').trim()
+      const label = String(item.label ?? match).trim()
+      const instruction = String(item.instruction ?? '').trim()
+      if (!match || !instruction) return []
+      return [{
+        id: String(item.id ?? `rule_${index}`).trim() || `rule_${index}`,
+        match,
+        label: label || match,
+        instruction,
+        followUpMessage: String(item.followUpMessage ?? '').trim() || undefined,
+        enabled: item.enabled !== false,
+      }]
+    })
+  return rules.length ? rules : fallback
+}
+
 export function normalizeDatabase(raw: Partial<Database>): Database {
   const empty = createEmptyDatabase()
   const rawSettings = (raw.settings ?? {}) as Partial<Database['settings']>
@@ -834,6 +899,10 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
       mainBranchAddress: rawSettings.mainBranchAddress || '',
       logoDataUrl: rawSettings.logoDataUrl || '',
       primaryAdminId,
+      defaultFollowUpLabel: rawSettings.defaultFollowUpLabel || empty.settings.defaultFollowUpLabel,
+      defaultFollowUpMessage: rawSettings.defaultFollowUpMessage || empty.settings.defaultFollowUpMessage,
+      dosageFormLabelRules: normalizeStringMap(rawSettings.dosageFormLabelRules, defaultDosageFormLabelRules),
+      medicineLabelRules: normalizeMedicineLabelRules(rawSettings.medicineLabelRules, defaultMedicineLabelRules),
       subscriptionPlanId: rawSettings.subscriptionPlanId === 'single-branch' || rawSettings.subscriptionPlanId === 'enterprise' ? rawSettings.subscriptionPlanId : 'smart-pharmacy',
       trialStartedAt: rawSettings.trialStartedAt || empty.settings.trialStartedAt,
       trialEndsAt: rawSettings.trialEndsAt || empty.settings.trialEndsAt,

@@ -177,6 +177,33 @@ function normalizeMarkupMap(value: unknown) {
     .filter(([key]) => key))
 }
 
+function normalizeStringMap(value: unknown) {
+  if (!value || typeof value !== 'object') return {}
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+    .map(([key, text]) => [key.trim().toLowerCase(), String(text ?? '').trim()])
+    .filter(([key, text]) => key && text))
+}
+
+function normalizeMedicineLabelRules(value: unknown): NonNullable<Database['settings']['medicineLabelRules']> {
+  if (!Array.isArray(value)) return []
+  return value
+    .flatMap((rule, index): NonNullable<Database['settings']['medicineLabelRules']> => {
+      const item = rule as Partial<NonNullable<Database['settings']['medicineLabelRules']>[number]>
+      const match = String(item.match ?? '').trim()
+      const label = String(item.label ?? match).trim()
+      const instruction = String(item.instruction ?? '').trim()
+      if (!match || !instruction) return []
+      return [{
+        id: String(item.id ?? `rule_${index}`).trim() || `rule_${index}`,
+        match,
+        label: label || match,
+        instruction,
+        followUpMessage: String(item.followUpMessage ?? '').trim() || undefined,
+        enabled: item.enabled !== false,
+      }]
+    })
+}
+
 function pricingPolicy(settings: Database['settings']) {
   const roundingRule = pricingRoundingRules.includes(settings.pricingRoundingRule ?? 10) ? settings.pricingRoundingRule ?? 10 : 10
   return {
@@ -1279,6 +1306,10 @@ function updateSettings(db: Database, actorId: string, actorRole: Role, payload:
     managerDiscountLimitPercent: Math.max(0, Math.min(100, Number(payload?.managerDiscountLimitPercent ?? 10) || 0)),
     unusualMarkupPercent: Math.max(0, Number(payload?.unusualMarkupPercent ?? 80) || 0),
     costChangeWarningPercent: Math.max(0, Number(payload?.costChangeWarningPercent ?? 30) || 0),
+    defaultFollowUpLabel: optionalString(payload?.defaultFollowUpLabel) || 'Follow-up',
+    defaultFollowUpMessage: optionalString(payload?.defaultFollowUpMessage),
+    dosageFormLabelRules: normalizeStringMap(payload?.dosageFormLabelRules),
+    medicineLabelRules: normalizeMedicineLabelRules(payload?.medicineLabelRules),
     subscriptionPlanId,
     trialStartedAt: db.settings.trialStartedAt,
     trialEndsAt: db.settings.trialEndsAt,

@@ -2213,6 +2213,34 @@ td strong {
   resize: vertical;
 }
 
+.pos-counseling-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pos-counseling-chips button,
+.settings-chip-preview span {
+  background: #eef7f4;
+  border: 1px solid #cfe5dd;
+  border-radius: 8px;
+  color: #006b45;
+  font-size: 11px;
+  font-weight: 800;
+  min-height: 30px;
+  padding: 6px 10px;
+}
+
+.pos-counseling-chips button {
+  cursor: pointer;
+}
+
+.pos-counseling-chips button.active {
+  background: #006b45;
+  border-color: #006b45;
+  color: #ffffff;
+}
+
 .pos-customer-panel {
   background: #f8fbfb;
   border-top: 1px solid #dce6e7;
@@ -3226,7 +3254,8 @@ button:disabled {
   display: block;
 }
 
-.pricing-settings {
+.pricing-settings,
+.counseling-settings {
   background: #fbfdfd;
   border: 1px solid var(--rx-border);
   border-radius: 8px;
@@ -3251,6 +3280,12 @@ button:disabled {
   font-size: 13px;
   line-height: 1.45;
   margin: 0;
+}
+
+.settings-chip-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
 }
 
 .switch-row {
