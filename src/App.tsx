@@ -970,7 +970,7 @@ function buildPurchaseFollowUpMessage(db: Database, items: Array<{ itemType: 'me
   return `${uniqueMessages.join(' ')} Please follow the medication label and contact the pharmacy if you need clarification.`
 }
 
-function buildPatientProfiles(db: Database, branchId?: string) {
+function buildPatientProfiles(db: Database) {
   const map = new Map<string, {
     key: string
     name: string
@@ -980,7 +980,6 @@ function buildPatientProfiles(db: Database, branchId?: string) {
     lastVisit: string
   }>()
   db.sales
-    .filter((sale) => !branchId || sale.branchId === branchId)
     .forEach((sale) => {
       const phone = normalizePhone(sale.customerPhone)
       if (!phone) return
@@ -1012,7 +1011,7 @@ function buildPatientProfiles(db: Database, branchId?: string) {
   })).sort((a, b) => b.lastVisit.localeCompare(a.lastVisit))
 }
 
-function buildRefillRows(db: Database, branchId?: string) {
+function buildRefillRows(db: Database) {
   const latestByPatientMedicine = new Map<string, {
     profileKey: string
     patientName: string
@@ -1023,7 +1022,7 @@ function buildRefillRows(db: Database, branchId?: string) {
     refillDueAt: string
     daysUntilDue: number
   }>()
-  const profiles = buildPatientProfiles(db, branchId)
+  const profiles = buildPatientProfiles(db)
   profiles.forEach((profile) => {
     profile.sales.forEach((sale) => {
       sale.items.forEach((item) => {
@@ -4402,7 +4401,7 @@ function POSView({
     .filter((draft) => draft.branchId === activeBranch.id && draft.expiresAt > new Date().toISOString())
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   const canCompleteSale = currentUser.role === 'cashier'
-  const patientProfiles = useMemo(() => buildPatientProfiles(db, activeBranch.id), [activeBranch.id, db])
+  const patientProfiles = useMemo(() => buildPatientProfiles(db), [db])
   const selectedPatient = useMemo(() => {
     const phone = normalizePhone(customerPhone)
     if (!phone) return undefined
@@ -5125,9 +5124,8 @@ function POSView({
 function PatientsView({ db, activeBranch, flash }: { db: Database; activeBranch?: Branch; flash: (message: string) => void }) {
   const [query, setQuery] = useState('')
   const [selectedKey, setSelectedKey] = useState('')
-  const branchId = activeBranch?.id
-  const profiles = useMemo(() => buildPatientProfiles(db, branchId), [branchId, db])
-  const refillRows = useMemo(() => buildRefillRows(db, branchId), [branchId, db])
+  const profiles = useMemo(() => buildPatientProfiles(db), [db])
+  const refillRows = useMemo(() => buildRefillRows(db), [db])
   const dueRows = refillRows.filter((row) => row.daysUntilDue <= 7)
   const overdueRows = refillRows.filter((row) => row.daysUntilDue < 0)
   const chronicPatients = profiles.filter((profile) => {
@@ -5183,9 +5181,9 @@ function PatientsView({ db, activeBranch, flash }: { db: Database; activeBranch?
         <div className="section-heading">
           <div>
             <h2>Patient Lookup</h2>
-            <p>Search by phone, name, or receipt reference from POS sales history.</p>
+            <p>Search by phone, name, or receipt reference across every branch in this workspace.</p>
           </div>
-          {activeBranch && <span className="pill active">{activeBranch.name}</span>}
+          <span className="pill active">All workspace branches</span>
         </div>
         <label className="patient-search">
           <Search size={18} />
@@ -5197,7 +5195,7 @@ function PatientsView({ db, activeBranch, flash }: { db: Database; activeBranch?
               <button className={profile.key === selectedProfile?.key ? 'patient-list-item active' : 'patient-list-item'} key={profile.key} type="button" onClick={() => setSelectedKey(profile.key)}>
                 <strong>{profile.name}</strong>
                 <span>{profile.phone || 'No phone saved'} / {profile.sales.length} visit{profile.sales.length === 1 ? '' : 's'}</span>
-                <small>Last seen {new Date(profile.lastVisit).toLocaleDateString()} / {money.format(profile.totalSpent)}</small>
+                <small>Last seen {new Date(profile.lastVisit).toLocaleDateString()} at {getBranchName(db, profile.sales[0]?.branchId || activeBranch?.id || 'main')} / {money.format(profile.totalSpent)}</small>
               </button>
             ))}
             {!filteredProfiles.length && <div className="empty-state">No patient records match this search yet.</div>}
@@ -5210,7 +5208,7 @@ function PatientsView({ db, activeBranch, flash }: { db: Database; activeBranch?
                   <div>
                     <span className="eyebrow">Patient profile</span>
                     <h2>{selectedProfile.name}</h2>
-                    <p>{selectedProfile.phone || 'Phone number not recorded'} / {selectedProfile.sales.length} visit{selectedProfile.sales.length === 1 ? '' : 's'}</p>
+                    <p>{selectedProfile.phone || 'Phone number not recorded'} / {selectedProfile.sales.length} visit{selectedProfile.sales.length === 1 ? '' : 's'} across workspace branches</p>
                   </div>
                   <strong>{money.format(selectedProfile.totalSpent)}</strong>
                 </header>
@@ -5223,7 +5221,7 @@ function PatientsView({ db, activeBranch, flash }: { db: Database; activeBranch?
                         <article key={sale.id}>
                           <div>
                             <strong>{new Date(sale.soldAt).toLocaleDateString()} / {sale.reference}</strong>
-                            <span>{sale.items.length} item{sale.items.length === 1 ? '' : 's'} / {money.format(sale.total ?? sale.subtotal)}</span>
+                            <span>{getBranchName(db, sale.branchId)} / {sale.items.length} item{sale.items.length === 1 ? '' : 's'} / {money.format(sale.total ?? sale.subtotal)}</span>
                           </div>
                           <ul>
                             {sale.items.map((item, index) => (
@@ -5247,7 +5245,7 @@ function PatientsView({ db, activeBranch, flash }: { db: Database; activeBranch?
                         const href = whatsappHref(selectedProfile.phone, message)
                         return (
                           <article key={sale.id}>
-                            <strong>{new Date(sale.soldAt).toLocaleDateString()} / {sale.reference}</strong>
+                            <strong>{new Date(sale.soldAt).toLocaleDateString()} / {getBranchName(db, sale.branchId)} / {sale.reference}</strong>
                             <p>{message}</p>
                             <footer>
                               <button type="button" onClick={() => { void copyMessage(message) }}><ClipboardList size={14} /> Copy</button>
@@ -5272,7 +5270,7 @@ function PatientsView({ db, activeBranch, flash }: { db: Database; activeBranch?
         <div className="section-heading">
           <div>
             <h2>Refill Reminders</h2>
-            <p>Generated from medicines sold with therapy days recorded at checkout.</p>
+            <p>Generated from workspace-wide medicine sales with therapy days recorded at checkout.</p>
           </div>
           <span className="pill warning">{dueRows.length} due within 7 days</span>
         </div>
@@ -5285,7 +5283,7 @@ function PatientsView({ db, activeBranch, flash }: { db: Database; activeBranch?
                 <div>
                   <strong>{row.patientName}</strong>
                   <span>{row.medicineName} / refill {formatDate(row.refillDueAt)} / {row.daysUntilDue < 0 ? `${Math.abs(row.daysUntilDue)} day${Math.abs(row.daysUntilDue) === 1 ? '' : 's'} overdue` : `${row.daysUntilDue} day${row.daysUntilDue === 1 ? '' : 's'} left`}</span>
-                  <small>{row.phone || 'No phone saved'}</small>
+                  <small>{row.phone || 'No phone saved'} / last visit {getBranchName(db, row.sale.branchId)}</small>
                 </div>
                 <footer>
                   <button type="button" onClick={() => { void copyMessage(message) }}><ClipboardList size={14} /> Copy</button>
