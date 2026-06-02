@@ -246,33 +246,6 @@ type PosDraft = {
   expiresAt: string
 }
 
-type PendingMedicationStatus = 'pending' | 'available' | 'contacted' | 'fulfilled' | 'cancelled'
-
-type PendingMedication = {
-  id: string
-  branchId: string
-  patientName: string
-  patientPhone: string
-  medicineId?: string
-  medicationName: string
-  genericName: string
-  strength: string
-  form: string
-  quantity: number
-  unit: string
-  sourceNote: string
-  status: PendingMedicationStatus
-  recordedBy: string
-  requestedAt: string
-  updatedAt: string
-  availableAt?: string
-  availableQuantity?: number
-  contactedAt?: string
-  fulfilledAt?: string
-  cancelledAt?: string
-  resolvedBy?: string
-}
-
 type TenantRecord = {
   id: string
   name: string
@@ -344,7 +317,6 @@ type Database = {
   }>
   sales: Sale[]
   posDrafts: PosDraft[]
-  pendingMedications: PendingMedication[]
   chatMessages: ChatMessage[]
   passwordResetRequests: PasswordResetRequest[]
   securityEvents: SecurityEvent[]
@@ -449,7 +421,6 @@ export function createEmptyDatabase(): Database {
     receipts: [],
     sales: [],
     posDrafts: [],
-    pendingMedications: [],
     chatMessages: [],
     passwordResetRequests: [],
     securityEvents: [],
@@ -488,7 +459,7 @@ export function createEmptyDatabase(): Database {
   }
 }
 
-export type { Branch, BranchAccessRequest, BranchAccessRequestStatus, ChatMessage, Database, HandlerRequest, HandlerResponse, LedgerType, Medicine, MedicineLabelRule, PasswordResetRequest, PendingMedication, PendingMedicationStatus, PosDraft, Product, Requisition, RequisitionItem, Role, Sale, SecurityEvent, SecurityEventType, Supplier, TenantRecord, User }
+export type { Branch, BranchAccessRequest, BranchAccessRequestStatus, ChatMessage, Database, HandlerRequest, HandlerResponse, LedgerType, Medicine, MedicineLabelRule, PasswordResetRequest, PosDraft, Product, Requisition, RequisitionItem, Role, Sale, SecurityEvent, SecurityEventType, Supplier, TenantRecord, User }
 
 export function id(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${randomBytes(4).toString('hex')}`
@@ -892,31 +863,6 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
         labelInstruction: item.labelInstruction || undefined,
       })),
     })),
-    pendingMedications: (raw.pendingMedications ?? empty.pendingMedications).map((item) => {
-      const status = item.status === 'available' || item.status === 'contacted' || item.status === 'fulfilled' || item.status === 'cancelled' ? item.status : 'pending'
-      return {
-        ...item,
-        medicineId: item.medicineId || undefined,
-        patientName: item.patientName || 'Patient',
-        patientPhone: item.patientPhone || '',
-        medicationName: item.medicationName || item.genericName || 'Medication',
-        genericName: item.genericName || '',
-        strength: item.strength || '',
-        form: item.form || '',
-        quantity: Math.max(1, Number(item.quantity) || 1),
-        unit: item.unit || 'unit',
-        sourceNote: item.sourceNote || '',
-        status,
-        requestedAt: item.requestedAt || item.updatedAt || nowIso(),
-        updatedAt: item.updatedAt || item.requestedAt || nowIso(),
-        availableQuantity: Number(item.availableQuantity) || undefined,
-        availableAt: item.availableAt || undefined,
-        contactedAt: item.contactedAt || undefined,
-        fulfilledAt: item.fulfilledAt || undefined,
-        cancelledAt: item.cancelledAt || undefined,
-        resolvedBy: item.resolvedBy || undefined,
-      }
-    }),
     chatMessages: (raw.chatMessages ?? empty.chatMessages).map((message) => ({
       ...message,
       channel: message.channel === 'direct' ? 'direct' : 'group',

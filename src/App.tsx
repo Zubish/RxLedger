@@ -300,33 +300,6 @@ type PosDraft = {
   expiresAt: string
 }
 
-type PendingMedicationStatus = 'pending' | 'available' | 'contacted' | 'fulfilled' | 'cancelled'
-
-type PendingMedication = {
-  id: string
-  branchId: string
-  patientName: string
-  patientPhone: string
-  medicineId?: string
-  medicationName: string
-  genericName: string
-  strength: string
-  form: string
-  quantity: number
-  unit: string
-  sourceNote: string
-  status: PendingMedicationStatus
-  recordedBy: string
-  requestedAt: string
-  updatedAt: string
-  availableAt?: string
-  availableQuantity?: number
-  contactedAt?: string
-  fulfilledAt?: string
-  cancelledAt?: string
-  resolvedBy?: string
-}
-
 type AuditLog = {
   id: string
   userId: string
@@ -479,7 +452,6 @@ type Database = {
   receipts: Receipt[]
   sales: Sale[]
   posDrafts: PosDraft[]
-  pendingMedications: PendingMedication[]
   chatMessages: ChatMessage[]
   auditLogs: AuditLog[]
   passwordResetRequests: PasswordResetRequest[]
@@ -538,7 +510,7 @@ const views: Array<{ id: View; label: string; icon: typeof LayoutDashboard; admi
 const roleLabels: Record<Role, string> = {
   admin: 'Admin',
   pharmacist: 'Pharmacist',
-  inventory: 'Pharmacy Technician',
+  inventory: 'Inventory Officer',
   cashier: 'Cashier',
   viewer: 'Viewer/Auditor',
 }
@@ -564,14 +536,6 @@ const movementLabels: Record<LedgerType, string> = {
   'write-off': 'Write-off',
   'supplier-return': 'Supplier Return',
   'customer-return': 'Customer Return',
-}
-
-const pendingMedicationStatusLabels: Record<PendingMedicationStatus, string> = {
-  pending: 'Pending',
-  available: 'Available',
-  contacted: 'Contacted',
-  fulfilled: 'Fulfilled',
-  cancelled: 'Cancelled',
 }
 
 const movementFilterOptions = [
@@ -896,7 +860,6 @@ function createEmptyDatabase(): Database {
     receipts: [],
     sales: [],
     posDrafts: [],
-    pendingMedications: [],
     chatMessages: [],
     auditLogs: [],
     passwordResetRequests: [],
@@ -1326,12 +1289,6 @@ function canWriteBranch(db: Database, user: User, branchId: string) {
   return isSuperAdmin(db, user) || ((user.role === 'admin' || user.role === 'pharmacist' || user.role === 'inventory') && hasActiveBranchAssignment(user, branchId))
 }
 
-function canManagePendingMedication(db: Database, user: User, branchId: string) {
-  return isSuperAdmin(db, user)
-    || canManageBranch(db, user, branchId)
-    || (user.role === 'pharmacist' && hasActiveBranchAssignment(user, branchId))
-}
-
 function canViewBranch(db: Database, user: User, branchId: string) {
   return isSuperAdmin(db, user) || hasActiveBranchAssignment(user, branchId)
 }
@@ -1581,11 +1538,6 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
   const releasedRequisitions = relevantRequisitions.filter((request) => request.status === 'released' && canViewBranch(db, currentUser, request.requestingBranchId))
   const handledRequisitions = relevantRequisitions.filter((request) => request.requesterUserId === currentUser.id && request.status !== 'pending')
   const branchAccessRequests = db.branchAccessRequests.filter((request) => request.status === 'pending' && canViewBranch(db, currentUser, request.branchId))
-  const pendingMedicationAlerts = db.pendingMedications.filter((item) => (
-    item.status === 'available'
-    && canViewBranch(db, currentUser, item.branchId)
-    && (isSuperAdmin(db, currentUser) || currentUser.role === 'pharmacist' || canManageBranch(db, currentUser, item.branchId))
-  ))
   const scopedMedicineIds = new Set(stockRows.map((row) => row.medicine.id))
   const expired = stockRows.filter((row) => row.quantity > 0 && row.status === 'expired')
   const nearExpiry = stockRows.filter((row) => row.quantity > 0 && row.status === 'near-expiry')
@@ -1657,18 +1609,6 @@ function buildNotifications(db: Database, stockRows: StockRow[], stockTotals: Ma
       branchId: request.branchId,
       requiredPermission: 'manage-branch',
       createdAt: request.requestedAt,
-    })
-  })
-
-  pendingMedicationAlerts.forEach((item) => {
-    notifications.push({
-      id: `pending-medication-${item.id}`,
-      tone: 'good',
-      title: `${item.medicationName || item.genericName} is now available`,
-      detail: `${item.patientName}${item.patientPhone ? ` / ${item.patientPhone}` : ''} is waiting for ${number.format(item.quantity)} ${item.unit}.`,
-      view: 'medicines',
-      branchId: item.branchId,
-      createdAt: item.availableAt ?? item.updatedAt,
     })
   })
 
@@ -3553,16 +3493,6 @@ function Medicines({
           </div>
         </form>
       </section>
-      {activeBranch && (
-        <PendingMedicationPanel
-          db={db}
-          activeBranch={activeBranch}
-          stockTotals={stockTotals}
-          canManage={canManagePendingMedication(db, currentUser, activeBranch.id)}
-          executeAction={executeAction}
-          flash={flash}
-        />
-      )}
       {requestMedicine && requestBatch && (
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <section className="modal-panel">
@@ -3808,207 +3738,6 @@ function Medicines({
         </div>
       )}
     </div>
-  )
-}
-
-function PendingMedicationPanel({
-  db,
-  activeBranch,
-  stockTotals,
-  canManage,
-  executeAction,
-  flash,
-}: {
-  db: Database
-  activeBranch: Branch
-  stockTotals: Map<string, number>
-  canManage: boolean
-  executeAction: ExecuteAction
-  flash: (message: string) => void
-}) {
-  const createForm = () => ({
-    patientName: '',
-    patientPhone: '',
-    medicineId: '',
-    medicationName: '',
-    genericName: '',
-    strength: '',
-    form: '',
-    quantity: 1,
-    unit: 'Unit',
-    sourceNote: '',
-  })
-  const [form, setForm] = useState(createForm)
-  const [query, setQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState<PendingMedicationStatus | 'all'>('all')
-  const branchRecords = db.pendingMedications
-    .filter((item) => item.branchId === activeBranch.id)
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-  const activeRecords = branchRecords.filter((item) => item.status !== 'fulfilled' && item.status !== 'cancelled')
-  const availableRecords = branchRecords.filter((item) => item.status === 'available')
-  const visibleRecords = branchRecords.filter((item) => {
-    const text = `${item.patientName} ${item.patientPhone} ${item.medicationName} ${item.genericName} ${item.strength} ${item.form} ${item.sourceNote}`.toLowerCase()
-    return (statusFilter === 'all' || item.status === statusFilter) && text.includes(query.toLowerCase())
-  })
-  const selectedMedicine = db.medicines.find((medicine) => medicine.id === form.medicineId)
-
-  function chooseMedicine(medicineId: string) {
-    const medicine = db.medicines.find((item) => item.id === medicineId)
-    setForm((current) => ({
-      ...current,
-      medicineId,
-      medicationName: medicine?.brandName ?? current.medicationName,
-      genericName: medicine?.genericName ?? current.genericName,
-      strength: medicine?.strength ?? current.strength,
-      form: medicine?.form ?? current.form,
-      unit: medicine?.sellableUnit || medicine?.unit || current.unit,
-    }))
-  }
-
-  async function copyPatientMessage(item: PendingMedication) {
-    const message = patientCareMessage(
-      db.settings.accountName,
-      item.patientName,
-      `${item.medicationName || item.genericName} is now available at ${activeBranch.name}. Kindly contact or visit the pharmacy so we can complete your medication request.`,
-    )
-    try {
-      await navigator.clipboard.writeText(message)
-      flash('Pending medication message copied')
-    } catch {
-      flash(message)
-    }
-  }
-
-  function submit(event: FormEvent) {
-    event.preventDefault()
-    if (!canManage) return
-    if (!form.patientName.trim()) {
-      flash('Patient name is required')
-      return
-    }
-    if (!form.medicationName.trim() && !form.genericName.trim()) {
-      flash('Medication name or generic name is required')
-      return
-    }
-    void executeAction('createPendingMedication', {
-      branchId: activeBranch.id,
-      ...form,
-      quantity: Math.max(1, Number(form.quantity) || 1),
-    }, 'Pending medication saved')
-    setForm(createForm())
-  }
-
-  function updateStatus(item: PendingMedication, status: PendingMedicationStatus) {
-    if (!canManage) return
-    if (status === 'fulfilled' && !window.confirm('Mark this pending medication as fulfilled? Complete any actual sale through POS so stock deduction remains accurate.')) return
-    if (status === 'cancelled' && !window.confirm('Cancel this pending medication request?')) return
-    void executeAction('updatePendingMedication', {
-      pendingMedicationId: item.id,
-      status,
-    }, `Pending medication marked ${pendingMedicationStatusLabels[status].toLowerCase()}`)
-  }
-
-  function statusClass(status: PendingMedicationStatus) {
-    if (status === 'available' || status === 'fulfilled') return 'pill good'
-    if (status === 'contacted') return 'pill active'
-    if (status === 'cancelled') return 'pill muted'
-    return 'pill warning'
-  }
-
-  return (
-    <section className="content-section pending-medication-section full">
-      <div className="section-heading">
-        <div>
-          <h2>Pending Medication</h2>
-          <p>Record prescribed medicines that were unavailable, then flag the pharmacist once stock is received.</p>
-        </div>
-        <div className="pending-medication-summary">
-          <span><strong>{number.format(activeRecords.length)}</strong> open</span>
-          <span><strong>{number.format(availableRecords.length)}</strong> available</span>
-        </div>
-      </div>
-      {!canManage && (
-        <div className="form-note">
-          Pharmacy Technicians can see pending availability here. Only pharmacists, branch managers, or the permanent admin can record or update patient-facing pending medication.
-        </div>
-      )}
-      <div className="pending-medication-layout">
-        <form className="form-grid pending-medication-form" onSubmit={submit}>
-          <label>Patient name<input required value={form.patientName} onChange={(event) => setForm({ ...form, patientName: event.target.value })} disabled={!canManage} /></label>
-          <label>Patient phone<input value={form.patientPhone} onChange={(event) => setForm({ ...form, patientPhone: event.target.value })} disabled={!canManage} /></label>
-          <label className="full">Link catalog medicine<select value={form.medicineId} onChange={(event) => chooseMedicine(event.target.value)} disabled={!canManage}><option value="">No catalog link / manually enter medicine</option>{db.medicines.filter((medicine) => medicine.active).map((medicine) => <option key={medicine.id} value={medicine.id}>{medicineOptionLabel(medicine)}</option>)}</select></label>
-          <label>Medication requested<input required={!form.genericName.trim()} value={form.medicationName} onChange={(event) => setForm({ ...form, medicationName: event.target.value })} disabled={!canManage} /></label>
-          <label>Generic name<input value={form.genericName} onChange={(event) => setForm({ ...form, genericName: event.target.value })} disabled={!canManage} /></label>
-          <label>Strength<input value={form.strength} onChange={(event) => setForm({ ...form, strength: event.target.value })} disabled={!canManage} /></label>
-          <label>Form<input value={form.form} onChange={(event) => setForm({ ...form, form: event.target.value })} disabled={!canManage} /></label>
-          <label>Quantity needed<input type="number" min="1" value={numberInputValue(form.quantity)} onChange={(event) => setForm({ ...form, quantity: Number(event.target.value) })} disabled={!canManage} /></label>
-          <label>Unit<input value={form.unit} onChange={(event) => setForm({ ...form, unit: event.target.value })} disabled={!canManage} /></label>
-          <label className="full">Prescription/source note<textarea value={form.sourceNote} onChange={(event) => setForm({ ...form, sourceNote: event.target.value })} placeholder="Prescription source, diagnosis note, substitute discussion, or staff note" disabled={!canManage} /></label>
-          {selectedMedicine && (
-            <div className="availability full">
-              <MedicineIdentity medicine={selectedMedicine} />
-              <span>Current branch stock: {medicineStockLabel(selectedMedicine, stockTotals.get(selectedMedicine.id) ?? 0)}</span>
-            </div>
-          )}
-          <div className="form-actions full">
-            <button className="ghost-button" type="button" onClick={() => setForm(createForm())} disabled={!canManage}>Clear</button>
-            <button className="primary-button" type="submit" disabled={!canManage}>
-              <StickyNote size={17} />
-              Save pending medication
-            </button>
-          </div>
-        </form>
-
-        <section className="pending-medication-list-panel">
-          <div className="pending-medication-tools">
-            <label className="search-box">
-              <Search size={16} />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search pending medication" />
-            </label>
-            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as PendingMedicationStatus | 'all')}>
-              <option value="all">All statuses</option>
-              {Object.entries(pendingMedicationStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </div>
-          <div className="pending-medication-list">
-            {visibleRecords.length ? visibleRecords.map((item) => {
-              const linkedMedicine = item.medicineId ? db.medicines.find((medicine) => medicine.id === item.medicineId) : undefined
-              const messageHref = item.patientPhone ? whatsappHref(item.patientPhone, patientCareMessage(db.settings.accountName, item.patientName, `${item.medicationName || item.genericName} is now available at ${activeBranch.name}. Kindly contact or visit the pharmacy so we can complete your medication request.`)) : ''
-              return (
-                <article className={`pending-medication-card ${item.status}`} key={item.id}>
-                  <header>
-                    <div>
-                      <strong>{item.medicationName || item.genericName}</strong>
-                      <span>{[item.genericName, item.strength, item.form].filter(Boolean).join(' / ') || 'No medicine details recorded'}</span>
-                    </div>
-                    <b className={statusClass(item.status)}>{pendingMedicationStatusLabels[item.status]}</b>
-                  </header>
-                  <dl>
-                    <div><dt>Patient</dt><dd>{item.patientName}{item.patientPhone ? ` / ${item.patientPhone}` : ''}</dd></div>
-                    <div><dt>Needed</dt><dd>{number.format(item.quantity)} {item.unit}</dd></div>
-                    <div><dt>Recorded</dt><dd>{new Date(item.requestedAt).toLocaleString()} by {getUserName(db, item.recordedBy)}</dd></div>
-                    <div><dt>Available</dt><dd>{item.availableQuantity ? `${number.format(item.availableQuantity)} ${item.unit}` : linkedMedicine ? medicineStockLabel(linkedMedicine, stockTotals.get(linkedMedicine.id) ?? 0) : '-'}</dd></div>
-                  </dl>
-                  {item.sourceNote && <p>{item.sourceNote}</p>}
-                  <footer>
-                    <button type="button" onClick={() => { void copyPatientMessage(item) }} disabled={item.status !== 'available' && item.status !== 'contacted'}>
-                      <ClipboardList size={14} />
-                      Copy message
-                    </button>
-                    {messageHref && <a href={messageHref} target="_blank" rel="noreferrer"><Smartphone size={14} /> WhatsApp</a>}
-                    <button type="button" onClick={() => updateStatus(item, 'contacted')} disabled={!canManage || item.status !== 'available'}>Contacted</button>
-                    <button type="button" onClick={() => updateStatus(item, 'fulfilled')} disabled={!canManage || (item.status !== 'available' && item.status !== 'contacted')}>Fulfilled</button>
-                    <button type="button" onClick={() => updateStatus(item, 'cancelled')} disabled={!canManage || item.status === 'fulfilled' || item.status === 'cancelled'}>Cancel</button>
-                  </footer>
-                </article>
-              )
-            }) : (
-              <div className="empty-state">No pending medication records match this branch and filter.</div>
-            )}
-          </div>
-        </section>
-      </div>
-    </section>
   )
 }
 

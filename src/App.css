@@ -3747,163 +3747,6 @@ button:disabled {
   white-space: nowrap;
 }
 
-.pending-medication-section {
-  display: grid;
-  gap: 14px;
-}
-
-.pending-medication-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.pending-medication-summary span {
-  background: #f3faf7;
-  border: 1px solid #d8ebe4;
-  border-radius: 8px;
-  color: #52636c;
-  display: inline-flex;
-  gap: 6px;
-  min-height: 34px;
-  align-items: center;
-  padding: 0 10px;
-}
-
-.pending-medication-summary strong {
-  color: #006b45;
-}
-
-.pending-medication-layout {
-  display: grid;
-  gap: 16px;
-  grid-template-columns: minmax(280px, 0.72fr) minmax(0, 1.28fr);
-  align-items: start;
-}
-
-.pending-medication-form,
-.pending-medication-list-panel {
-  background: #f8fbfb;
-  border: 1px solid #dfe7e8;
-  border-radius: 8px;
-  padding: 12px;
-}
-
-.pending-medication-list-panel {
-  display: grid;
-  gap: 12px;
-}
-
-.pending-medication-tools {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: minmax(0, 1fr) minmax(150px, 190px);
-}
-
-.pending-medication-list {
-  display: grid;
-  gap: 10px;
-  max-height: var(--rx-scroll-deep);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding-right: 4px;
-  scrollbar-gutter: stable;
-}
-
-.pending-medication-card {
-  background: #ffffff;
-  border: 1px solid #dce6e7;
-  border-left: 4px solid #f2b94b;
-  border-radius: 8px;
-  display: grid;
-  gap: 10px;
-  padding: 12px;
-}
-
-.pending-medication-card.available,
-.pending-medication-card.contacted,
-.pending-medication-card.fulfilled {
-  border-left-color: #2fa37d;
-}
-
-.pending-medication-card.cancelled {
-  border-left-color: #9aa8ad;
-}
-
-.pending-medication-card header,
-.pending-medication-card footer {
-  align-items: center;
-  display: flex;
-  gap: 10px;
-  justify-content: space-between;
-}
-
-.pending-medication-card header > div {
-  min-width: 0;
-}
-
-.pending-medication-card header strong,
-.pending-medication-card header span {
-  display: block;
-}
-
-.pending-medication-card header span,
-.pending-medication-card p {
-  color: #68777e;
-  font-size: 13px;
-  line-height: 1.45;
-  margin: 0;
-}
-
-.pending-medication-card dl {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin: 0;
-}
-
-.pending-medication-card dt {
-  color: #68777e;
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.pending-medication-card dd {
-  color: #24343a;
-  font-size: 13px;
-  margin: 2px 0 0;
-}
-
-.pending-medication-card footer {
-  flex-wrap: wrap;
-  justify-content: flex-start;
-}
-
-.pending-medication-card footer button,
-.pending-medication-card footer a {
-  align-items: center;
-  background: #eef4f3;
-  border: 1px solid #d4e1df;
-  border-radius: 8px;
-  color: #24343a;
-  cursor: pointer;
-  display: inline-flex;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  gap: 6px;
-  min-height: 32px;
-  padding: 0 9px;
-  text-decoration: none;
-}
-
-.pending-medication-card footer button:hover,
-.pending-medication-card footer a:hover {
-  border-color: #2fa37d;
-  color: #006b45;
-}
-
 @keyframes spin {
   to {
     transform: rotate(360deg);
@@ -4755,8 +4598,6 @@ button:disabled {
 
   .two-column,
   .cart-layout,
-  .pending-medication-layout,
-  .pending-medication-tools,
   .requisition-detail-grid,
   .requisition-detail-item,
   .chat-controls,
@@ -4947,8 +4788,7 @@ button:disabled {
   }
 
   .patient-message-list footer,
-  .patient-reminder-list footer,
-  .pending-medication-card footer {
+  .patient-reminder-list footer {
     display: grid;
     grid-template-columns: 1fr;
   }
@@ -4956,15 +4796,9 @@ button:disabled {
   .patient-message-list button,
   .patient-message-list a,
   .patient-reminder-list button,
-  .patient-reminder-list a,
-  .pending-medication-card footer button,
-  .pending-medication-card footer a {
+  .patient-reminder-list a {
     justify-content: center;
     width: 100%;
-  }
-
-  .pending-medication-card dl {
-    grid-template-columns: 1fr;
   }
 
   .scan-field > div {

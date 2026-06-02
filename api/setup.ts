@@ -60,7 +60,6 @@ export default async function handler(req: HandlerRequest, res: HandlerResponse)
       receipts: [],
       sales: [],
       posDrafts: [],
-      pendingMedications: [],
       chatMessages: [],
       auditLogs: [],
       passwordResetRequests: [],
