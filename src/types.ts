@@ -193,6 +193,33 @@ export type PosDraft = {
   expiresAt: string
 }
 
+export type PendingMedicationStatus = 'pending' | 'available' | 'contacted' | 'fulfilled' | 'cancelled'
+
+export type PendingMedication = {
+  id: string
+  branchId: string
+  patientName: string
+  patientPhone: string
+  medicineId?: string
+  medicationName: string
+  genericName: string
+  strength: string
+  form: string
+  quantity: number
+  unit: string
+  sourceNote: string
+  status: PendingMedicationStatus
+  recordedBy: string
+  requestedAt: string
+  updatedAt: string
+  availableAt?: string
+  availableQuantity?: number
+  contactedAt?: string
+  fulfilledAt?: string
+  cancelledAt?: string
+  resolvedBy?: string
+}
+
 export type AuditLog = {
   id: string
   userId: string
@@ -334,6 +361,7 @@ export type Database = {
   receipts: Receipt[]
   sales: Sale[]
   posDrafts: PosDraft[]
+  pendingMedications: PendingMedication[]
   chatMessages: ChatMessage[]
   auditLogs: AuditLog[]
   passwordResetRequests: PasswordResetRequest[]
