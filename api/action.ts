@@ -151,12 +151,10 @@ export default async function handler(
 
     await saveTenantDatabase(companySlug, db);
     const clean = sanitizeDatabase(db);
-    res
-      .status(200)
-      .json({
-        db: clean,
-        currentUser: clean.users.find((user) => user.id === actor.id),
-      });
+    res.status(200).json({
+      db: clean,
+      currentUser: clean.users.find((user) => user.id === actor.id),
+    });
   } catch (error) {
     fail(
       res,

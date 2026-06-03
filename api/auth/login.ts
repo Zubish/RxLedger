@@ -100,13 +100,11 @@ export default async function handler(
     await saveTenantDatabase(companySlug, db);
     const session = await createSession(user.id);
     const clean = sanitizeDatabase(db);
-    res
-      .status(200)
-      .json({
-        ...session,
-        db: clean,
-        currentUser: clean.users.find((item) => item.id === user.id),
-      });
+    res.status(200).json({
+      ...session,
+      db: clean,
+      currentUser: clean.users.find((item) => item.id === user.id),
+    });
   } catch (error) {
     fail(res, 500, error instanceof Error ? error.message : "Unable to log in");
   }

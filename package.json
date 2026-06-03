@@ -8,6 +8,7 @@
     "dev:api": "npx vercel dev",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "test": "node scripts/rxledger-rules.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

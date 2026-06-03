@@ -176,13 +176,11 @@ export default async function handler(
     root.defaultSlug = tenant.slug;
     await saveRootState(root);
     const session = await createSession(adminId);
-    res
-      .status(200)
-      .json({
-        ...session,
-        db: sanitizeDatabase(db),
-        currentUser: sanitizeDatabase(db).users[0],
-      });
+    res.status(200).json({
+      ...session,
+      db: sanitizeDatabase(db),
+      currentUser: sanitizeDatabase(db).users[0],
+    });
   } catch (error) {
     fail(
       res,

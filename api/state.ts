@@ -30,12 +30,10 @@ export default async function handler(
       return;
     }
     const clean = sanitizeDatabase(db);
-    res
-      .status(200)
-      .json({
-        db: clean,
-        currentUser: clean.users.find((item) => item.id === user.id),
-      });
+    res.status(200).json({
+      db: clean,
+      currentUser: clean.users.find((item) => item.id === user.id),
+    });
   } catch (error) {
     fail(
       res,
