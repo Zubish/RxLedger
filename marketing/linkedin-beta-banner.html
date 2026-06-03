@@ -38,8 +38,16 @@
         height: 900px;
         overflow: hidden;
         background:
-          radial-gradient(circle at 12% 18%, rgba(134, 59, 255, 0.1), transparent 20%),
-          radial-gradient(circle at 92% 6%, rgba(47, 163, 125, 0.18), transparent 26%),
+          radial-gradient(
+            circle at 12% 18%,
+            rgba(134, 59, 255, 0.1),
+            transparent 20%
+          ),
+          radial-gradient(
+            circle at 92% 6%,
+            rgba(47, 163, 125, 0.18),
+            transparent 26%
+          ),
           linear-gradient(115deg, #fffdf7 0%, #fbfbf3 46%, #edf6ef 100%);
         color: var(--ink);
       }
@@ -48,7 +56,10 @@
         content: "";
         position: absolute;
         inset: 0;
-        background-image: radial-gradient(rgba(0, 107, 69, 0.16) 1.3px, transparent 1.3px);
+        background-image: radial-gradient(
+          rgba(0, 107, 69, 0.16) 1.3px,
+          transparent 1.3px
+        );
         background-size: 26px 26px;
         opacity: 0.35;
       }
@@ -408,16 +419,21 @@
 
       <section class="copy">
         <div class="eyebrow">Beta testing is open</div>
-        <h1>
-          Pharmacy operations, <strong>audited by default.</strong>
-        </h1>
+        <h1>Pharmacy operations, <strong>audited by default.</strong></h1>
         <p class="subcopy">
           Test the workspace for FEFO inventory, POS checkout, branch movement,
           requisitions, and day-end reconciliation.
         </p>
         <div class="cta">
           Join beta testing
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.3"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
             <path d="M5 12h14" />
             <path d="m12 5 7 7-7 7" />
           </svg>
@@ -433,7 +449,14 @@
         <div class="metric-row">
           <div class="metric">
             <div class="metric-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
                 <path d="M3 17l6-6 4 4 7-8" />
                 <path d="M14 7h6v6" />
               </svg>
@@ -446,7 +469,14 @@
           </div>
           <div class="metric">
             <div class="metric-icon warn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.1"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
                 <path d="M8 2v4" />
                 <path d="M16 2v4" />
                 <rect x="3" y="4" width="18" height="18" rx="2" />
@@ -466,14 +496,25 @@
           <div class="ledger-head">
             <div class="ledger-title">
               <span class="pill-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="m10.5 20.5 10-10a4.95 4.95 0 0 0-7-7l-10 10a4.95 4.95 0 0 0 7 7Z" />
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.1"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path
+                    d="m10.5 20.5 10-10a4.95 4.95 0 0 0-7-7l-10 10a4.95 4.95 0 0 0 7 7Z"
+                  />
                   <path d="m8.5 8.5 7 7" />
                 </svg>
               </span>
               FEFO dispense queue
             </div>
-            <div class="branch-chip"><span class="green-dot"></span> All branches</div>
+            <div class="branch-chip">
+              <span class="green-dot"></span> All branches
+            </div>
           </div>
           <div class="table-head">
             <span>Item · batch</span>
@@ -485,7 +526,15 @@
             <div class="item">
               <div class="pack">
                 <svg viewBox="0 0 40 40">
-                  <rect x="8" y="6" width="24" height="28" rx="4" fill="#fff" stroke="#c9d8d1" />
+                  <rect
+                    x="8"
+                    y="6"
+                    width="24"
+                    height="28"
+                    rx="4"
+                    fill="#fff"
+                    stroke="#c9d8d1"
+                  />
                   <path d="M11 11h18v7H11z" fill="#e53935" />
                   <path d="M13 24h14" stroke="#006b45" stroke-width="2" />
                   <path d="M17 20h6" stroke="#006b45" stroke-width="2" />
@@ -501,8 +550,23 @@
             <div class="item">
               <div class="pack">
                 <svg viewBox="0 0 40 40">
-                  <rect x="12" y="8" width="13" height="24" rx="4" fill="#47bfff" stroke="#0b6b73" />
-                  <rect x="20" y="17" width="10" height="13" rx="3" fill="#0f766e" />
+                  <rect
+                    x="12"
+                    y="8"
+                    width="13"
+                    height="24"
+                    rx="4"
+                    fill="#47bfff"
+                    stroke="#0b6b73"
+                  />
+                  <rect
+                    x="20"
+                    y="17"
+                    width="10"
+                    height="13"
+                    rx="3"
+                    fill="#0f766e"
+                  />
                 </svg>
               </div>
               <div><strong>Ventolin Inhaler</strong><span>B-1178</span></div>
@@ -515,7 +579,15 @@
             <div class="item">
               <div class="pack">
                 <svg viewBox="0 0 40 40">
-                  <rect x="8" y="7" width="24" height="26" rx="4" fill="#fff" stroke="#c9d8d1" />
+                  <rect
+                    x="8"
+                    y="7"
+                    width="24"
+                    height="26"
+                    rx="4"
+                    fill="#fff"
+                    stroke="#c9d8d1"
+                  />
                   <path d="M8 25h24v8H8z" fill="#1e9e54" />
                   <path d="M13 12h14" stroke="#006b45" stroke-width="2" />
                 </svg>

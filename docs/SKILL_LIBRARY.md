@@ -13,16 +13,16 @@ The goal is not to copy RxLedger's pharmacy UI everywhere. The goal is to reuse 
 
 ## Core Skills
 
-| Skill | When To Use | Reference |
-| --- | --- | --- |
-| Product workflow design | Turning real operational work into app flows | [product-workflow-design.md](skill-library/product-workflow-design.md) |
-| UI and visual design | Layout, hierarchy, density, brand, image use, readability | [ui-ux-design.md](skill-library/ui-ux-design.md) |
-| Responsive and mobile UX | Mobile menus, scroll behavior, touch layout, overflow checks | [responsive-mobile-ux.md](skill-library/responsive-mobile-ux.md) |
-| Frontend engineering | React, state, component behavior, scoped changes | [frontend-engineering.md](skill-library/frontend-engineering.md) |
-| Data and business rules | Plan changes, retention, drafts, audit, permissions | [data-business-rules.md](skill-library/data-business-rules.md) |
-| QA and deployment | Build, lint, browser checks, GitHub, Vercel | [qa-deployment.md](skill-library/qa-deployment.md) |
-| Industry adaptation | Moving from pharmacy to other business domains | [industry-adaptation.md](skill-library/industry-adaptation.md) |
-| AI collaboration | How to work with an AI coding agent productively | [ai-collaboration.md](skill-library/ai-collaboration.md) |
+| Skill                    | When To Use                                                  | Reference                                                              |
+| ------------------------ | ------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| Product workflow design  | Turning real operational work into app flows                 | [product-workflow-design.md](skill-library/product-workflow-design.md) |
+| UI and visual design     | Layout, hierarchy, density, brand, image use, readability    | [ui-ux-design.md](skill-library/ui-ux-design.md)                       |
+| Responsive and mobile UX | Mobile menus, scroll behavior, touch layout, overflow checks | [responsive-mobile-ux.md](skill-library/responsive-mobile-ux.md)       |
+| Frontend engineering     | React, state, component behavior, scoped changes             | [frontend-engineering.md](skill-library/frontend-engineering.md)       |
+| Data and business rules  | Plan changes, retention, drafts, audit, permissions          | [data-business-rules.md](skill-library/data-business-rules.md)         |
+| QA and deployment        | Build, lint, browser checks, GitHub, Vercel                  | [qa-deployment.md](skill-library/qa-deployment.md)                     |
+| Industry adaptation      | Moving from pharmacy to other business domains               | [industry-adaptation.md](skill-library/industry-adaptation.md)         |
+| AI collaboration         | How to work with an AI coding agent productively             | [ai-collaboration.md](skill-library/ai-collaboration.md)               |
 
 ## Universal Product Principles
 
@@ -41,17 +41,17 @@ The goal is not to copy RxLedger's pharmacy UI everywhere. The goal is to reuse 
 
 When moving to a new industry, map RxLedger concepts like this:
 
-| RxLedger Concept | Generic Pattern | Example In Another Industry |
-| --- | --- | --- |
-| Branch | Operating site or team workspace | Restaurant outlet, clinic, warehouse, school campus |
-| Medicine batch | Trackable inventory unit | Food lot, spare part batch, lab reagent, fashion stock batch |
-| Expiry/FEFO | Time-sensitive allocation rule | Food freshness, warranty expiration, service SLA |
-| POS draft | Temporary active transaction | Restaurant order, clinic intake, repair estimate |
-| Patient history | Customer continuity record | Client purchase history, student profile, case file |
-| Refill reminder | Scheduled follow-up | Subscription renewal, maintenance reminder, appointment recall |
-| Audit log | Operational accountability | Compliance trail, supervisor review, financial record |
-| Role access | Permission boundary | Owner, manager, cashier, technician, auditor |
-| Subscription plan | Commercial boundary | Basic, growth, enterprise SaaS tiers |
+| RxLedger Concept  | Generic Pattern                  | Example In Another Industry                                    |
+| ----------------- | -------------------------------- | -------------------------------------------------------------- |
+| Branch            | Operating site or team workspace | Restaurant outlet, clinic, warehouse, school campus            |
+| Medicine batch    | Trackable inventory unit         | Food lot, spare part batch, lab reagent, fashion stock batch   |
+| Expiry/FEFO       | Time-sensitive allocation rule   | Food freshness, warranty expiration, service SLA               |
+| POS draft         | Temporary active transaction     | Restaurant order, clinic intake, repair estimate               |
+| Patient history   | Customer continuity record       | Client purchase history, student profile, case file            |
+| Refill reminder   | Scheduled follow-up              | Subscription renewal, maintenance reminder, appointment recall |
+| Audit log         | Operational accountability       | Compliance trail, supervisor review, financial record          |
+| Role access       | Permission boundary              | Owner, manager, cashier, technician, auditor                   |
+| Subscription plan | Commercial boundary              | Basic, growth, enterprise SaaS tiers                           |
 
 ## Pre-Implementation Checklist
 

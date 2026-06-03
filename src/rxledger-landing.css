@@ -228,7 +228,9 @@
     background-size: cover;
     opacity: 0;
     transform: scale(1.02);
-    transition: opacity 900ms ease, transform 1600ms ease;
+    transition:
+      opacity 900ms ease,
+      transform 1600ms ease;
   }
 
   .rxledger-landing .landing-testimonial-bg.is-active {
@@ -238,8 +240,18 @@
 
   .rxledger-landing .landing-testimonial-overlay {
     background:
-      linear-gradient(90deg, oklch(0.995 0.003 150 / 34%) 0%, oklch(0.995 0.003 150 / 14%) 43%, oklch(0.16 0.02 220 / 4%) 100%),
-      linear-gradient(180deg, oklch(0.16 0.02 220 / 8%) 0%, oklch(0.16 0.02 220 / 0%) 46%, oklch(0.16 0.02 220 / 12%) 100%);
+      linear-gradient(
+        90deg,
+        oklch(0.995 0.003 150 / 34%) 0%,
+        oklch(0.995 0.003 150 / 14%) 43%,
+        oklch(0.16 0.02 220 / 4%) 100%
+      ),
+      linear-gradient(
+        180deg,
+        oklch(0.16 0.02 220 / 8%) 0%,
+        oklch(0.16 0.02 220 / 0%) 46%,
+        oklch(0.16 0.02 220 / 12%) 100%
+      );
     z-index: 1;
   }
 
@@ -277,8 +289,12 @@
     }
 
     .rxledger-landing .landing-testimonial-overlay {
-      background:
-        linear-gradient(180deg, oklch(0.995 0.003 150 / 12%) 0%, oklch(0.16 0.02 220 / 2%) 46%, oklch(0.16 0.02 220 / 14%) 100%);
+      background: linear-gradient(
+        180deg,
+        oklch(0.995 0.003 150 / 12%) 0%,
+        oklch(0.16 0.02 220 / 2%) 46%,
+        oklch(0.16 0.02 220 / 14%) 100%
+      );
     }
 
     .rxledger-landing .landing-testimonial-panel {
@@ -290,5 +306,4 @@
       min-height: 17rem;
     }
   }
-
 }

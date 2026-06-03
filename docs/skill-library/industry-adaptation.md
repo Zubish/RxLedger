@@ -14,15 +14,15 @@ Use this skill when applying RxLedger lessons to a different industry.
 
 ## Industry Mapping Examples
 
-| Industry | Inventory/Record | Time Risk | Continuity Record | Site Context |
-| --- | --- | --- | --- | --- |
-| Restaurant | Ingredients, prepared orders | Freshness, table wait time | Customer/order history | Branch, kitchen, table |
-| Clinic | Supplies, appointments, patient files | Appointment delay, medication expiry | Patient chart | Clinic, department |
-| Auto repair | Parts, job cards | Warranty, service SLA | Vehicle service history | Workshop, bay |
-| School | Student records, fees, attendance | Term deadlines | Student profile | Campus, class |
-| Beauty salon | Products, bookings, staff schedules | Appointment time, product stock | Client treatment history | Outlet, stylist |
-| Logistics | Parcels, routes, fleet | Delivery SLA | Customer shipment history | Hub, driver route |
-| Construction | Materials, equipment, tasks | Permit dates, rental return | Project history | Site, contractor |
+| Industry     | Inventory/Record                      | Time Risk                            | Continuity Record         | Site Context           |
+| ------------ | ------------------------------------- | ------------------------------------ | ------------------------- | ---------------------- |
+| Restaurant   | Ingredients, prepared orders          | Freshness, table wait time           | Customer/order history    | Branch, kitchen, table |
+| Clinic       | Supplies, appointments, patient files | Appointment delay, medication expiry | Patient chart             | Clinic, department     |
+| Auto repair  | Parts, job cards                      | Warranty, service SLA                | Vehicle service history   | Workshop, bay          |
+| School       | Student records, fees, attendance     | Term deadlines                       | Student profile           | Campus, class          |
+| Beauty salon | Products, bookings, staff schedules   | Appointment time, product stock      | Client treatment history  | Outlet, stylist        |
+| Logistics    | Parcels, routes, fleet                | Delivery SLA                         | Customer shipment history | Hub, driver route      |
+| Construction | Materials, equipment, tasks           | Permit dates, rental return          | Project history           | Site, contractor       |
 
 ## Domain Translation Rules
 
