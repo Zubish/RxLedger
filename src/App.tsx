@@ -1082,6 +1082,30 @@ function aggregateMedicineStock(rows: StockRow[]) {
   return totals;
 }
 
+function getAlertScopeMedicines(
+  db: Database,
+  rows: StockRow[],
+  activeBranch?: Branch,
+) {
+  const stockedMedicineIds = new Set(rows.map((row) => row.medicine.id));
+  return db.medicines
+    .filter((medicine) => medicine.active)
+    .filter((medicine) => activeBranch || stockedMedicineIds.has(medicine.id));
+}
+
+function getLowStockMedicines(
+  db: Database,
+  rows: StockRow[],
+  totals: Map<string, number>,
+  activeBranch?: Branch,
+) {
+  return getAlertScopeMedicines(db, rows, activeBranch).filter(
+    (medicine) =>
+      medicine.reorderLevel > 0 &&
+      (totals.get(medicine.id) ?? 0) <= medicine.reorderLevel,
+  );
+}
+
 function getMedicineSellingPrice(rows: StockRow[], medicineId: string) {
   const row = rows
     .filter(
@@ -1928,23 +1952,20 @@ function buildNotifications(
       request.status === "pending" &&
       canViewBranch(db, currentUser, request.branchId),
   );
-  const scopedMedicineIds = new Set(stockRows.map((row) => row.medicine.id));
   const expired = stockRows.filter(
     (row) => row.quantity > 0 && row.status === "expired",
   );
   const nearExpiry = stockRows.filter(
     (row) => row.quantity > 0 && row.status === "near-expiry",
   );
-  const lowStock = db.medicines.filter(
-    (medicine) =>
-      scopedMedicineIds.has(medicine.id) &&
-      (stockTotals.get(medicine.id) ?? 0) > 0 &&
-      (stockTotals.get(medicine.id) ?? 0) <= medicine.reorderLevel,
+  const lowStock = getLowStockMedicines(
+    db,
+    stockRows,
+    stockTotals,
+    activeBranch,
   );
-  const outOfStock = db.medicines.filter(
-    (medicine) =>
-      scopedMedicineIds.has(medicine.id) &&
-      (stockTotals.get(medicine.id) ?? 0) <= 0,
+  const outOfStock = lowStock.filter(
+    (medicine) => (stockTotals.get(medicine.id) ?? 0) <= 0,
   );
 
   if (unreadChat.length) {
@@ -2076,7 +2097,7 @@ function buildNotifications(
     .forEach((medicine) => {
       notifications.push({
         id: `low-${medicine.id}`,
-        tone: "info",
+        tone: "warning",
         title: `${medicineOptionLabel(medicine)} is low on stock`,
         detail: `${activeBranch?.name ?? "Current branch"} / available: ${medicineStockLabel(medicine, stockTotals.get(medicine.id) ?? 0)}. Reorder level: ${medicineStockLabel(medicine, medicine.reorderLevel)}.`,
         view: "medicines",
@@ -2685,8 +2706,8 @@ function App() {
           <div className="brand-identity">
             <BrandMark settings={db.settings} />
             <div>
-              <strong>{db.settings.softwareName}</strong>
-              <span>{db.settings.accountName}</span>
+              <strong>{db.settings.accountName}</strong>
+              <span>Company file</span>
             </div>
           </div>
           <button
@@ -3972,14 +3993,11 @@ function Dashboard({
   setActiveView: (view: View) => void;
 }) {
   const scopedMedicineIds = new Set(stockRows.map((row) => row.medicine.id));
-  const alertMedicineIds = new Set(
-    alertStockRows.map((row) => row.medicine.id),
-  );
-  const lowStock = db.medicines.filter(
-    (medicine) =>
-      alertMedicineIds.has(medicine.id) &&
-      (alertStockTotals.get(medicine.id) ?? 0) > 0 &&
-      (alertStockTotals.get(medicine.id) ?? 0) <= medicine.reorderLevel,
+  const lowStock = getLowStockMedicines(
+    db,
+    alertStockRows,
+    alertStockTotals,
+    activeBranch,
   );
   const nearExpiry = alertStockRows.filter(
     (row) => row.quantity > 0 && row.status === "near-expiry",
@@ -11621,7 +11639,7 @@ function SettingsView({
       <div className="section-heading">
         <div>
           <h2>Account Settings</h2>
-          <p>RxLedger account identity and operational thresholds.</p>
+          <p>Company account identity and operational thresholds.</p>
         </div>
       </div>
       <form className="form-grid" onSubmit={submit}>
@@ -11659,16 +11677,6 @@ function SettingsView({
             </button>
           )}
         </div>
-        <label>
-          Software name
-          <input
-            value={form.softwareName}
-            onChange={(event) =>
-              setForm({ ...form, softwareName: event.target.value })
-            }
-            disabled={!canAdmin}
-          />
-        </label>
         <label>
           Account/company name
           <input

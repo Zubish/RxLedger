@@ -59,6 +59,36 @@ assertPresent(
   /Cashiers and viewers cannot be branch managers/,
   "Cashier access should not be treated as branch management authority.",
 );
+assertPresent(
+  app,
+  /<strong>{db\.settings\.accountName}<\/strong>[\s\S]*<span>Company file<\/span>/,
+  "RxLedger sidebar should present the customer company file instead of the software name.",
+);
+assertAbsent(
+  app,
+  /<strong>{db\.settings\.softwareName}<\/strong>/,
+  "RxLedger sidebar should not show the internal software name.",
+);
+assertAbsent(
+  app,
+  /Software name\s*<input/,
+  "RxLedger settings should not expose software name as a customer-editable field.",
+);
+assertPresent(
+  action,
+  /softwareName:\s*db\.settings\.softwareName/,
+  "RxLedger settings updates should preserve the internal software name.",
+);
+assertPresent(
+  app,
+  /function getLowStockMedicines[\s\S]*medicine\.reorderLevel > 0[\s\S]*\(totals\.get\(medicine\.id\) \?\? 0\) <= medicine\.reorderLevel/,
+  "RxLedger low-stock helper should include zero-stock medicines when reorder level is set.",
+);
+assertPresent(
+  app,
+  /const outOfStock = lowStock\.filter\([\s\S]*\(stockTotals\.get\(medicine\.id\) \?\? 0\) <= 0/,
+  "RxLedger out-of-stock alerts should be derived from low-stock scope so zero-stock items are not missed.",
+);
 
 for (const source of [app, action, shared, types]) {
   assertAbsent(

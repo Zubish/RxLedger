@@ -2114,8 +2114,7 @@ function updateSettings(
   db.settings = {
     pharmacyName:
       optionalString(payload?.pharmacyName) || db.settings.pharmacyName,
-    softwareName:
-      optionalString(payload?.softwareName) || db.settings.softwareName,
+    softwareName: db.settings.softwareName,
     accountName:
       optionalString(payload?.accountName) || db.settings.accountName,
     branchName: optionalString(payload?.branchName) || db.settings.branchName,
