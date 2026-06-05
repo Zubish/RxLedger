@@ -12,6 +12,7 @@ import {
   sanitizeDatabase,
   saveTenantDatabase,
   sendSecurityEmail,
+  setSessionCookie,
   verifyPassword,
 } from "../_shared.js";
 import type { HandlerRequest, HandlerResponse } from "../_shared.js";
@@ -99,9 +100,10 @@ export default async function handler(
     }
     await saveTenantDatabase(companySlug, db);
     const session = await createSession(user.id);
+    setSessionCookie(res, session);
     const clean = sanitizeDatabase(db);
     res.status(200).json({
-      ...session,
+      expiresAt: session.expiresAt,
       db: clean,
       currentUser: clean.users.find((item) => item.id === user.id),
     });

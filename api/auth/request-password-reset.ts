@@ -14,6 +14,7 @@ import {
   saveTenantDatabase,
   sendSecurityEmail,
 } from "../_shared.js";
+import { randomInt } from "node:crypto";
 import type {
   HandlerRequest,
   HandlerResponse,
@@ -71,7 +72,7 @@ export default async function handler(
       }
     }
 
-    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const code = String(randomInt(100000, 1000000));
     const expiresAt = new Date(Date.now() + 15 * 60_000).toISOString();
     let emailSent = false;
     const request: PasswordResetRequest = {

@@ -405,6 +405,7 @@ type HandlerRequest = {
 
 const SESSION_DAYS = 14;
 const SESSION_IDLE_MINUTES = 30;
+const SESSION_COOKIE_NAME = "rxledger_session";
 
 const defaultDosageFormLabelRules: Record<string, string> = {
   "tablet, tablets, caplet, caplets":
@@ -830,12 +831,12 @@ export function normalizeRootState(
   );
   const hasExistingWorkspace = Boolean(
     tenant.workspace.users.length ||
-      tenant.workspace.medicines.length ||
-      tenant.workspace.suppliers.length ||
-      tenant.workspace.batches.length ||
-      tenant.workspace.ledger.length ||
-      tenant.workspace.sales.length ||
-      (raw as Partial<Database>).settings?.primaryAdminId,
+    tenant.workspace.medicines.length ||
+    tenant.workspace.suppliers.length ||
+    tenant.workspace.batches.length ||
+    tenant.workspace.ledger.length ||
+    tenant.workspace.sales.length ||
+    (raw as Partial<Database>).settings?.primaryAdminId,
   );
   return {
     tenants: hasExistingWorkspace ? [tenant] : [],
@@ -1220,6 +1221,32 @@ export async function createSession(userId: string) {
   return { token, expiresAt };
 }
 
+function sessionCookieAttributes(maxAgeSeconds: number) {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return `Path=/; Max-Age=${maxAgeSeconds}; HttpOnly; SameSite=Lax${secure}`;
+}
+
+export function setSessionCookie(
+  res: HandlerResponse,
+  session: { token: string; expiresAt: string },
+) {
+  const maxAgeSeconds = Math.max(
+    0,
+    Math.floor((new Date(session.expiresAt).getTime() - Date.now()) / 1000),
+  );
+  res.setHeader(
+    "Set-Cookie",
+    `${SESSION_COOKIE_NAME}=${encodeURIComponent(session.token)}; ${sessionCookieAttributes(maxAgeSeconds)}`,
+  );
+}
+
+export function clearSessionCookie(res: HandlerResponse) {
+  res.setHeader(
+    "Set-Cookie",
+    `${SESSION_COOKIE_NAME}=; ${sessionCookieAttributes(0)}`,
+  );
+}
+
 export async function deleteOtherSessions(userId: string, currentToken = "") {
   const sql = getSql();
   if (currentToken) {
@@ -1241,8 +1268,23 @@ export function getBearerToken(req: HandlerRequest) {
   return header.slice("Bearer ".length);
 }
 
+export function getCookieToken(req: HandlerRequest) {
+  const raw = req.headers.cookie;
+  const header = Array.isArray(raw) ? raw.join("; ") : raw || "";
+  const cookie = header
+    .split(";")
+    .map((item) => item.trim())
+    .find((item) => item.startsWith(`${SESSION_COOKIE_NAME}=`));
+  if (!cookie) return "";
+  return decodeURIComponent(cookie.slice(SESSION_COOKIE_NAME.length + 1));
+}
+
+export function getSessionToken(req: HandlerRequest) {
+  return getCookieToken(req) || getBearerToken(req);
+}
+
 export async function getAuthenticatedUser(req: HandlerRequest, db: Database) {
-  const token = getBearerToken(req);
+  const token = getSessionToken(req);
   if (!token) return null;
   const sql = getSql();
   const tokenHash = hashToken(token);

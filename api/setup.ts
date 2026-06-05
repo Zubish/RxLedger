@@ -12,6 +12,7 @@ import {
   requireMethod,
   sanitizeDatabase,
   saveRootState,
+  setSessionCookie,
 } from "./_shared.js";
 import type {
   Database,
@@ -176,8 +177,9 @@ export default async function handler(
     root.defaultSlug = tenant.slug;
     await saveRootState(root);
     const session = await createSession(adminId);
+    setSessionCookie(res, session);
     res.status(200).json({
-      ...session,
+      expiresAt: session.expiresAt,
       db: sanitizeDatabase(db),
       currentUser: sanitizeDatabase(db).users[0],
     });

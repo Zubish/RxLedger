@@ -7,7 +7,9 @@ const read = (file) => readFileSync(join(root, file), "utf8");
 
 const app = read("src/App.tsx");
 const action = read("api/action.ts");
+const api = read("src/api.ts");
 const shared = read("api/_shared.ts");
+const reset = read("api/auth/request-password-reset.ts");
 const types = read("src/types.ts");
 
 function assertAbsent(source, pattern, message) {
@@ -88,6 +90,31 @@ assertPresent(
   app,
   /const outOfStock = lowStock\.filter\([\s\S]*\(stockTotals\.get\(medicine\.id\) \?\? 0\) <= 0/,
   "RxLedger out-of-stock alerts should be derived from low-stock scope so zero-stock items are not missed.",
+);
+assertAbsent(
+  api,
+  /Authorization.+Bearer/,
+  "Client API requests should not send stored bearer tokens.",
+);
+assertPresent(
+  api,
+  /credentials:\s*"include"/,
+  "Client API requests should include the HttpOnly session cookie.",
+);
+assertPresent(
+  shared,
+  /HttpOnly; SameSite=Lax/,
+  "Session cookies should be HttpOnly and SameSite=Lax.",
+);
+assertPresent(
+  shared,
+  /getSessionToken\(req[\s\S]*getCookieToken\(req\) \|\| getBearerToken\(req\)/,
+  "Session lookup should prefer cookies while allowing bearer fallback during rollout.",
+);
+assertPresent(
+  reset,
+  /randomInt\(100000, 1000000\)/,
+  "Password reset codes should use cryptographically secure randomInt.",
 );
 
 for (const source of [app, action, shared, types]) {
