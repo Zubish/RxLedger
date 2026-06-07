@@ -1,8 +1,8 @@
 # RxLedger App Blueprint
 
-This blueprint is the working guide for future RxLedger changes. Read it before changing layout, navigation, POS logic, patient workflow, branch access, or reporting behavior.
+This blueprint is the working guide for future RxLedger changes. Read it before changing layout, navigation, POS logic, patient workflow, branch access, reporting behavior, or ecosystem modules.
 
-For reusable skills that apply beyond RxLedger, also read [SKILL_LIBRARY.md](SKILL_LIBRARY.md). The blueprint is RxLedger-specific; the skill library is cross-industry.
+For ecosystem planning, also read [RXLEDGER_ECOSYSTEM_MODULES.md](RXLEDGER_ECOSYSTEM_MODULES.md). For reusable skills that apply beyond RxLedger, also read [SKILL_LIBRARY.md](SKILL_LIBRARY.md). The blueprint is RxLedger-specific; the skill library is cross-industry.
 
 ## Product Shape
 
@@ -15,6 +15,33 @@ The core promise is:
 - Patient continuity from POS sales history.
 - Audit-friendly reports and operational traceability.
 - Role-based access for admins, branch managers, pharmacists, cashiers, inventory staff, and viewers.
+
+## Ecosystem Module Map
+
+RxLedger should grow as separate, deliberate modules:
+
+1. **RxLedger Core**
+   Inventory, Mart, POS, branches, pricing, receiving, reports, users, audit, notifications, and settings.
+
+2. **Patient Continuity**
+   Patient lookup, medication history, refill timing, counseling/follow-up messages, and cross-branch patient memory.
+
+3. **Medication Owed / Backorder**
+   Future community-pharmacy workflow for unavailable requested/prescribed medicines. This must be designed separately for RxLedger and should not be copied from the Totalenergies Pharmacy Inventory implementation.
+
+4. **Clinical Safety Assistant**
+   Future pharmacist-assistive review prompts for interactions, duplicate therapy, repeated antibiotic use, possible misuse patterns, and counseling reminders. This module must keep pharmacists in control.
+
+5. **RxLedger Connect**
+   Future external prescription intake by API, CSV, HMO/provider portal, or manual entry.
+
+6. **RxLedger Care Network**
+   Future HMO/provider/pharmacy routing, availability status, reservation, pickup, dispensing feedback, and claim-ready records.
+
+7. **Analytics And Stewardship**
+   Future intelligence for reorder behavior, expiry waste, adherence/refill behavior, antibiotic use, controlled medicine watchlists, and branch performance.
+
+Core and Patient Continuity can keep improving inside the app today. Connect, Care Network, advanced clinical AI, and network workflows should remain separate Enterprise/add-on layers until their data, audit, and pricing rules are clear.
 
 ## Technical Map
 
@@ -60,6 +87,7 @@ Do not add floating marketing layouts, oversized hero sections, or decorative pa
 Future expansion memory:
 
 - `Freeze II / Care Network`: HMO-routed prescription workflow, EMR/HMO prescription intake, approved pharmacy matching, patient pickup links, stock reservation, label/counseling handoff, and closed-loop dispensing feedback. Use [FREEZE_II_CARE_NETWORK_FIGMA_BLUEPRINT.md](FREEZE_II_CARE_NETWORK_FIGMA_BLUEPRINT.md) before designing or implementing this expansion.
+- `Clinical Safety Assistant`: pharmacist-assistive alerts must be explainable, auditable, dismissible with reason, and framed as review prompts rather than diagnoses or autonomous dispensing decisions.
 
 ## Scroll Policy
 
@@ -123,6 +151,16 @@ Before adding a new `max-height` or `overflow`, prefer these variables and check
 - Patient cards should stay compact because each card carries only identity, visit count, last seen, and spend.
 - Medication history and follow-up messages are scrollable panel lists on desktop and natural lists on mobile.
 - WhatsApp/copy actions should never require leaving the patient context.
+- Patient Continuity is the strategic differentiator. Avoid adding scattered patient widgets that do not strengthen the patient journey.
+
+## Clinical Safety Rules
+
+- Start with deterministic, auditable rules before AI-generated explanations.
+- Show why an alert was raised.
+- Avoid accusatory language such as labeling a patient as abusive or addicted.
+- Use language like "review recommended" and "possible pattern".
+- Pharmacists should be able to resolve, dismiss, or document follow-up.
+- The assistant should not diagnose, prescribe, or autonomously block dispensing.
 
 ## Branch and Access Rules
 

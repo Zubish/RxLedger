@@ -55,6 +55,20 @@ Every important stock and access action should be traceable. RxLedger keeps audi
 
 ## Core Workflows
 
+## Ecosystem Module Structure
+
+RxLedger should grow as a modular pharmacy ecosystem, not one crowded screen.
+
+- **RxLedger Core**: inventory, POS, Mart/general retail, receiving, pricing, branch operations, reports, audit, users, and settings.
+- **Patient Continuity**: patient lookup, medication history, refill reminders, counseling/follow-up notes, and cross-branch patient memory.
+- **Medication Owed / Backorder**: a future community-pharmacy module for unavailable prescribed/requested medicines, patient follow-up, stock-arrival matching, and fulfillment history. This must be designed for RxLedger separately, not copied from the Totalenergies Pharmacy Inventory implementation.
+- **Clinical Safety Assistant**: future pharmacist-assistive review prompts for duplicate therapy, drug-drug and drug-food interaction cautions, repeated antibiotic use, possible misuse patterns, and counseling reminders.
+- **RxLedger Connect**: future prescription intake by API, CSV, HMO/provider portal, or manual entry, with normalization of medicines, quantities, patient identifiers, and claim context.
+- **RxLedger Care Network**: future HMO/provider/pharmacy routing, approved pharmacy matching, stock availability status, reservation, pickup, and closed-loop feedback.
+- **Analytics And Stewardship**: stock intelligence, expiry waste, reorder behavior, antimicrobial stewardship signals, patient adherence patterns, and branch performance.
+
+The current app should keep strengthening Core and Patient Continuity first. Connect, Care Network, and advanced AI/clinical automation should stay deliberate, auditable, and priced as Enterprise or paid add-on capabilities.
+
 ### Inventory
 
 RxLedger tracks medicines and retail products with stock quantities, batches, expiry dates, suppliers, selling prices, reorder levels, and branch locations.
@@ -114,7 +128,7 @@ RxLedger is organized around practical pharmacy growth stages:
 
 - **Single Branch**: core inventory, POS, reports, stock alerts, and basic patient lookup.
 - **Smart Pharmacy**: multi-branch workflows, staff controls, refill reminders, counseling follow-up, team messaging, and advanced reports.
-- **Enterprise**: unlimited scale, onboarding, custom reports, integrations, advanced controls, and dedicated support.
+- **Enterprise**: unlimited scale, onboarding, custom reports, integrations, advanced controls, clinical automation, Care Network workflows, and dedicated support.
 
 Trial and plan changes are designed to preserve pharmacy data. Upgrading should keep the same workspace data, while downgrading should never delete sales, stock, patient, branch, or audit history.
 

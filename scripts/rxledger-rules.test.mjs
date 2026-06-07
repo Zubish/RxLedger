@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = process.cwd();
@@ -11,6 +11,9 @@ const api = read("src/api.ts");
 const shared = read("api/_shared.ts");
 const reset = read("api/auth/request-password-reset.ts");
 const types = read("src/types.ts");
+const readme = read("README.md");
+const blueprint = read("docs/APP_BLUEPRINT.md");
+const modules = read("docs/RXLEDGER_ECOSYSTEM_MODULES.md");
 
 function assertAbsent(source, pattern, message) {
   assert.equal(pattern.test(source), false, message);
@@ -29,6 +32,11 @@ assertPresent(
   app,
   /cashier: "Cashier"/,
   "RxLedger should keep a visible cashier role label for POS checkout.",
+);
+assertPresent(
+  app,
+  /\{ id: "products", label: "Mart"/,
+  "RxLedger should keep Mart/general retail as part of its community pharmacy scope.",
 );
 assertPresent(
   action,
@@ -115,6 +123,28 @@ assertPresent(
   reset,
   /randomInt\(100000, 1000000\)/,
   "Password reset codes should use cryptographically secure randomInt.",
+);
+assert.equal(
+  existsSync(join(root, "docs/FREEZE_II_CARE_NETWORK_FIGMA_BLUEPRINT.md")),
+  true,
+  "RxLedger should preserve the Care Network/HMO blueprint as an ecosystem expansion document.",
+);
+for (const source of [readme, blueprint, modules]) {
+  assertPresent(
+    source,
+    /RxLedger Core[\s\S]*Patient Continuity[\s\S]*(Medication Owed|Backorder)[\s\S]*Clinical Safety Assistant[\s\S]*RxLedger Connect[\s\S]*RxLedger Care Network/s,
+    "RxLedger documentation should preserve the ecosystem module map.",
+  );
+}
+assertPresent(
+  modules,
+  /Do not copy the Totalenergies Pharmacy Inventory implementation directly into RxLedger/,
+  "RxLedger Medication Owed/Backorder should be designed separately from Totalenergies Pharmacy Inventory.",
+);
+assertPresent(
+  blueprint,
+  /The assistant should not diagnose, prescribe, or autonomously block dispensing/,
+  "RxLedger clinical safety guidance should keep pharmacists in control.",
 );
 
 for (const source of [app, action, shared, types]) {
