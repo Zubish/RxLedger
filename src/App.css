@@ -773,6 +773,92 @@ td span,
   gap: 12px;
 }
 
+.user-panel > div {
+  min-width: 0;
+}
+
+.user-profile-card,
+.workspace-access-card {
+  background: #f8fbfb;
+  border: 1px solid #dfe7e8;
+  border-radius: 8px;
+  display: grid;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 16px;
+}
+
+.user-profile-header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+}
+
+.user-profile-header > svg {
+  background: #e6f5ef;
+  border-radius: 999px;
+  color: var(--rx-green);
+  height: 38px;
+  padding: 8px;
+  width: 38px;
+}
+
+.user-profile-header strong,
+.user-profile-meta strong,
+.copy-value-card strong {
+  display: block;
+}
+
+.user-profile-header span,
+.user-profile-meta span,
+.user-profile-meta small,
+.workspace-access-card p,
+.copy-value-card span {
+  color: #68777e;
+  display: block;
+  font-size: 13px;
+}
+
+.user-profile-grid,
+.workspace-access-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.workspace-access-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.user-profile-meta,
+.copy-value-card {
+  border-left: 3px solid #cfe7df;
+  min-width: 0;
+  padding-left: 12px;
+}
+
+.user-profile-meta strong,
+.copy-value-card strong {
+  margin: 3px 0;
+  overflow-wrap: anywhere;
+}
+
+.copy-value-card {
+  display: grid;
+  gap: 8px;
+}
+
+.copy-value-card .ghost-button {
+  justify-self: start;
+}
+
+@media (max-width: 760px) {
+  .user-profile-grid,
+  .workspace-access-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .nav-badge {
   margin-left: auto;
   min-width: 22px;
