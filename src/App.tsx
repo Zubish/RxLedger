@@ -3227,7 +3227,12 @@ function App() {
             />
           )}
           {activeView === "patients" && (
-            <PatientsView db={db} activeBranch={activeBranch} flash={flash} />
+            <PatientsView
+              db={db}
+              activeBranch={activeBranch}
+              executeAction={executeAction}
+              flash={flash}
+            />
           )}
           {activeView === "continuity" && (
             <ContinuityCentre
@@ -9883,14 +9888,18 @@ function ContinuityCentre({
 function PatientsView({
   db,
   activeBranch,
+  executeAction,
   flash,
 }: {
   db: Database;
   activeBranch?: Branch;
+  executeAction: ExecuteAction;
   flash: (message: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const [selectedKey, setSelectedKey] = useState("");
+  const [editingPatient, setEditingPatient] = useState(false);
+  const [patientEdit, setPatientEdit] = useState({ name: "", phone: "" });
   const profiles = useMemo(() => buildPatientProfiles(db), [db]);
   const refillRows = useMemo(() => buildRefillRows(db), [db]);
   const dueRows = refillRows.filter((row) => row.daysUntilDue <= 7);
@@ -9961,6 +9970,31 @@ function PatientsView({
     }
   }
 
+  function startPatientEdit() {
+    if (!selectedProfile) return;
+    setPatientEdit({
+      name: selectedProfile.name,
+      phone: selectedProfile.phone,
+    });
+    setEditingPatient(true);
+  }
+
+  async function savePatientEdit(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedProfile) return;
+    const updated = await executeAction(
+      "updatePatientProfile",
+      {
+        oldPatientName: selectedProfile.name,
+        oldPatientPhone: selectedProfile.phone,
+        patientName: patientEdit.name,
+        patientPhone: patientEdit.phone,
+      },
+      "Patient profile updated",
+    );
+    if (updated) setEditingPatient(false);
+  }
+
   return (
     <div className="page-grid patients-page">
       <section className="metric-grid">
@@ -10029,7 +10063,10 @@ function PatientsView({
                 }
                 key={profile.key}
                 type="button"
-                onClick={() => setSelectedKey(profile.key)}
+                onClick={() => {
+                  setSelectedKey(profile.key);
+                  setEditingPatient(false);
+                }}
               >
                 <strong>{profile.name}</strong>
                 <span>
@@ -10068,8 +10105,58 @@ function PatientsView({
                       workspace branches
                     </p>
                   </div>
-                  <strong>{money.format(selectedProfile.totalSpent)}</strong>
+                  <div className="patient-profile-actions">
+                    <strong>{money.format(selectedProfile.totalSpent)}</strong>
+                    <button type="button" onClick={startPatientEdit}>
+                      Edit profile
+                    </button>
+                  </div>
                 </header>
+
+                {editingPatient && (
+                  <form
+                    className="patient-profile-edit"
+                    onSubmit={(event) => {
+                      void savePatientEdit(event);
+                    }}
+                  >
+                    <label>
+                      Patient name
+                      <input
+                        value={patientEdit.name}
+                        onChange={(event) =>
+                          setPatientEdit((current) => ({
+                            ...current,
+                            name: event.target.value,
+                          }))
+                        }
+                        required
+                      />
+                    </label>
+                    <label>
+                      Phone number
+                      <input
+                        value={patientEdit.phone}
+                        onChange={(event) =>
+                          setPatientEdit((current) => ({
+                            ...current,
+                            phone: event.target.value,
+                          }))
+                        }
+                        required
+                      />
+                    </label>
+                    <div>
+                      <button type="submit">Save profile</button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingPatient(false)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                )}
 
                 {selectedContinuityRequests.length > 0 && (
                   <section className="patient-continuity-strip">

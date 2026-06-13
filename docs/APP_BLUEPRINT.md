@@ -149,6 +149,7 @@ Before adding a new `max-height` or `overflow`, prefer these variables and check
 ## Patient Workflow Rules
 
 - Patients are derived from POS sales data, not a separate manual CRM table yet.
+- Saved patient profiles can be corrected from the patient page; edits update matching sales, draft carts, and continuity requests with an audit entry.
 - Search must work by name, phone, and receipt reference.
 - Patient cards should stay compact because each card carries only identity, visit count, last seen, and spend.
 - Medication history and follow-up messages are scrollable panel lists on desktop and natural lists on mobile.

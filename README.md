@@ -87,7 +87,7 @@ The POS supports active carts, temporary sale drafts, discounts, payment method 
 
 ### Patient Care
 
-RxLedger turns sales history into patient profiles. This supports faster patient lookup, refill reminders, medication history review, counseling follow-up, and WhatsApp or copy-ready communication.
+RxLedger turns sales history into editable patient profiles. This supports faster patient lookup, phone/name correction, refill reminders, medication history review, counseling follow-up, and WhatsApp or copy-ready communication.
 
 ### Continuity Centre
 

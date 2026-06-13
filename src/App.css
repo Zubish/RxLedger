@@ -3325,9 +3325,69 @@ td strong {
   margin: 1px 0 3px;
 }
 
-.patient-profile-header > strong {
+.patient-profile-actions {
+  align-items: flex-end;
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+}
+
+.patient-profile-actions strong {
   color: #006b45;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.patient-profile-actions button,
+.patient-profile-edit button {
+  background: #ffffff;
+  border: 1px solid #d5e1e0;
+  border-radius: 8px;
+  color: #183238;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 8px 10px;
+}
+
+.patient-profile-edit {
+  background: #f8fbfb;
+  border: 1px solid #d7e4e3;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  padding: 12px;
+}
+
+.patient-profile-edit label {
+  color: #435056;
+  display: grid;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 5px;
+}
+
+.patient-profile-edit input {
+  border: 1px solid #d5e1e0;
+  border-radius: 8px;
+  font: inherit;
+  min-height: 38px;
+  min-width: 0;
+  padding: 0 10px;
+}
+
+.patient-profile-edit div {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.patient-profile-edit button[type="submit"] {
+  background: #0e6a56;
+  border-color: #0e6a56;
+  color: #ffffff;
 }
 
 .patient-profile-grid {
@@ -5075,6 +5135,7 @@ button:disabled {
   .pos-care-fields,
   .patients-layout,
   .patient-profile-grid,
+  .patient-profile-edit,
   .continuity-meta-grid,
   .continuity-principles,
   .patient-reminder-list article,

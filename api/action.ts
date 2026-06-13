@@ -111,6 +111,9 @@ export default async function handler(
       case "updateContinuityRequest":
         updateContinuityRequest(db, actor.id, actor.role, body.payload);
         break;
+      case "updatePatientProfile":
+        updatePatientProfile(db, actor.id, body.payload);
+        break;
       case "createRequisition":
         createRequisition(db, actor.id, body.payload);
         break;
@@ -178,6 +181,10 @@ function requireString(value: unknown, label: string) {
 
 function optionalString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizePatientPhone(value: string) {
+  return value.replace(/\D/g, "");
 }
 
 function normalizeSubscriptionPlanId(
@@ -1483,6 +1490,104 @@ function updateContinuityRequest(
     request.id,
     before,
     { ...request },
+  );
+}
+
+function updatePatientProfile(
+  db: Database,
+  actorId: string,
+  payload: Record<string, unknown> | undefined,
+) {
+  const actor = db.users.find((user) => user.id === actorId);
+  if (!actor) throw new Error("Authentication required");
+  if (actor.role === "viewer")
+    throw new Error("Viewers cannot edit patient profiles");
+  const oldPatientName = optionalString(payload?.oldPatientName);
+  const oldPatientPhone = optionalString(payload?.oldPatientPhone);
+  const patientName = requireString(payload?.patientName, "Patient name");
+  const patientPhone = requireString(payload?.patientPhone, "Patient phone");
+  const oldPhone = normalizePatientPhone(oldPatientPhone);
+  const newPhone = normalizePatientPhone(patientPhone);
+  if (!oldPhone && !oldPatientName)
+    throw new Error("Original patient profile is required");
+  if (!newPhone) throw new Error("Patient phone is required");
+
+  const before = {
+    oldPatientName,
+    oldPatientPhone,
+    matchingSales: db.sales
+      .filter(
+        (sale) =>
+          (oldPhone && normalizePatientPhone(sale.customerPhone) === oldPhone) ||
+          (!oldPhone &&
+            sale.customerName.trim().toLowerCase() ===
+              oldPatientName.trim().toLowerCase()),
+      )
+      .map((sale) => ({
+        id: sale.id,
+        customerName: sale.customerName,
+        customerPhone: sale.customerPhone,
+      })),
+    matchingContinuityRequests: db.continuityRequests
+      .filter(
+        (request) =>
+          (oldPhone && normalizePatientPhone(request.patientPhone) === oldPhone) ||
+          (!oldPhone &&
+            request.patientName.trim().toLowerCase() ===
+              oldPatientName.trim().toLowerCase()),
+      )
+      .map((request) => ({
+        id: request.id,
+        patientName: request.patientName,
+        patientPhone: request.patientPhone,
+      })),
+  };
+  let updatedSales = 0;
+  let updatedContinuity = 0;
+  db.sales.forEach((sale) => {
+    const matches =
+      (oldPhone && normalizePatientPhone(sale.customerPhone) === oldPhone) ||
+      (!oldPhone &&
+        sale.customerName.trim().toLowerCase() ===
+          oldPatientName.trim().toLowerCase());
+    if (!matches) return;
+    sale.customerName = patientName;
+    sale.customerPhone = patientPhone;
+    updatedSales += 1;
+  });
+  db.posDrafts.forEach((draft) => {
+    const matches =
+      (oldPhone && normalizePatientPhone(draft.customerPhone) === oldPhone) ||
+      (!oldPhone &&
+        draft.customerName.trim().toLowerCase() ===
+          oldPatientName.trim().toLowerCase());
+    if (!matches) return;
+    draft.customerName = patientName;
+    draft.customerPhone = patientPhone;
+    draft.updatedAt = nowIso();
+  });
+  db.continuityRequests.forEach((request) => {
+    const matches =
+      (oldPhone && normalizePatientPhone(request.patientPhone) === oldPhone) ||
+      (!oldPhone &&
+        request.patientName.trim().toLowerCase() ===
+          oldPatientName.trim().toLowerCase());
+    if (!matches) return;
+    request.patientName = patientName;
+    request.patientPhone = patientPhone;
+    request.updatedAt = nowIso();
+    updatedContinuity += 1;
+  });
+  if (!updatedSales && !updatedContinuity)
+    throw new Error("No matching patient records found");
+  addAudit(
+    db,
+    actorId,
+    `Updated patient profile for ${patientName}`,
+    "patient-profile",
+    newPhone || patientName,
+    before,
+    { patientName, patientPhone, updatedSales, updatedContinuity },
   );
 }
 

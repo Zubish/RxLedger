@@ -170,5 +170,25 @@ assertPresent(
   /createContinuityRequest[\s\S]*updateContinuityRequest[\s\S]*Matched continuity request to available stock/s,
   "RxLedger should support auditable continuity creation, updates, and stock matching.",
 );
+assertPresent(
+  action,
+  /case "updatePatientProfile"[\s\S]*updatePatientProfile[\s\S]*Updated patient profile/,
+  "RxLedger should support audited patient profile corrections.",
+);
+assertPresent(
+  app,
+  /Edit profile/,
+  "RxLedger patient profiles should be editable from the Patients page.",
+);
+assertPresent(
+  app,
+  /updatePatientProfile[\s\S]*Patient profile updated/,
+  "RxLedger patient edit form should call the patient profile update action.",
+);
+assertPresent(
+  blueprint,
+  /Saved patient profiles can be corrected[\s\S]*sales[\s\S]*continuity requests/,
+  "RxLedger blueprint should document editable patient profile corrections.",
+);
 
 console.log("RxLedger rule regression tests passed.");
