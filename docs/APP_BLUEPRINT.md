@@ -26,8 +26,8 @@ RxLedger should grow as separate, deliberate modules:
 2. **Patient Continuity**
    Patient lookup, medication history, refill timing, counseling/follow-up messages, and cross-branch patient memory.
 
-3. **Medication Owed / Backorder**
-   Future community-pharmacy workflow for unavailable requested/prescribed medicines. This must be designed separately for RxLedger and should not be copied from the Totalenergies Pharmacy Inventory implementation.
+3. **Continuity Centre**
+   RxLedger-native workflow for unavailable requested/prescribed medicines, patient follow-up, stock-arrival matching, branch availability guidance, and contacted/fulfilled/cancelled outcomes. This is not the Totalenergies clinic pending-medication flow; it is branch-aware community-pharmacy continuity.
 
 4. **Clinical Safety Assistant**
    Future pharmacist-assistive review prompts for interactions, duplicate therapy, repeated antibiotic use, possible misuse patterns, and counseling reminders. This module must keep pharmacists in control.
@@ -41,7 +41,7 @@ RxLedger should grow as separate, deliberate modules:
 7. **Analytics And Stewardship**
    Future intelligence for reorder behavior, expiry waste, adherence/refill behavior, antibiotic use, controlled medicine watchlists, and branch performance.
 
-Core and Patient Continuity can keep improving inside the app today. Connect, Care Network, advanced clinical AI, and network workflows should remain separate Enterprise/add-on layers until their data, audit, and pricing rules are clear.
+Core, Patient Continuity, and Continuity Centre can keep improving inside the app today. Connect, Care Network, advanced clinical AI, and network workflows should remain separate Enterprise/add-on layers until their data, audit, and pricing rules are clear.
 
 ## Technical Map
 
@@ -73,6 +73,7 @@ Do not add floating marketing layouts, oversized hero sections, or decorative pa
 - Receive: stock receiving into the active branch.
 - POS: sale catalog, active cart, draft carts, payment, patient care fields, sales history.
 - Patients: patient lookup, medication history, refill reminders, follow-up messages.
+- Continuity: patient-linked unavailable medicine requests, branch availability options, map links, and follow-up status.
 - Issue Stock: branch stock issue workflow.
 - Adjustments: write-off, returns, and correction posting.
 - Reports: stock on hand, movement ledger, pharmacy/mart modes, CSV/print output.
@@ -88,6 +89,7 @@ Future expansion memory:
 
 - `Freeze II / Care Network`: HMO-routed prescription workflow, EMR/HMO prescription intake, approved pharmacy matching, patient pickup links, stock reservation, label/counseling handoff, and closed-loop dispensing feedback. Use [FREEZE_II_CARE_NETWORK_FIGMA_BLUEPRINT.md](FREEZE_II_CARE_NETWORK_FIGMA_BLUEPRINT.md) before designing or implementing this expansion.
 - `Clinical Safety Assistant`: pharmacist-assistive alerts must be explainable, auditable, dismissible with reason, and framed as review prompts rather than diagnoses or autonomous dispensing decisions.
+- `Continuity Centre`: do not emit one notification per patient. Group continuity prompts and route the real work into the Continuity Centre, patient profile, POS missing-stock panel, and receiving-stock matching.
 
 ## Scroll Policy
 

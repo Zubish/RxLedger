@@ -105,6 +105,12 @@ export default async function handler(
       case "receiveStock":
         receiveStock(db, actor.id, actor.role, body.payload);
         break;
+      case "createContinuityRequest":
+        createContinuityRequest(db, actor.id, actor.role, body.payload);
+        break;
+      case "updateContinuityRequest":
+        updateContinuityRequest(db, actor.id, actor.role, body.payload);
+        break;
       case "createRequisition":
         createRequisition(db, actor.id, body.payload);
         break;
@@ -1260,6 +1266,16 @@ function receiveStock(
   db.batches.unshift(...batches);
   db.ledger.unshift(...ledgerEntries);
   db.receipts.unshift(receipt);
+  receipt.items
+    .filter((item) => item.itemType !== "product" && item.medicineId)
+    .forEach((item) =>
+      matchContinuityRequestsForMedicine(
+        db,
+        actorId,
+        item.medicineId,
+        item.branchId || branchId,
+      ),
+    );
   addAudit(
     db,
     actorId,
@@ -1275,6 +1291,199 @@ function getBatchAvailable(db: Database, batchId: string) {
   return db.ledger
     .filter((entry) => entry.batchId === batchId)
     .reduce((sum, entry) => sum + entry.quantity, 0);
+}
+
+function normalizeContactPhone(value: unknown) {
+  return String(value ?? "").replace(/\D/g, "");
+}
+
+function availableMedicineQuantity(db: Database, medicineId: string, branchId: string) {
+  return db.batches
+    .filter((batch) => batch.branchId === branchId && batch.medicineId === medicineId)
+    .reduce((sum, batch) => {
+      if (daysUntil(batch.expiryDate) < 0) return sum;
+      return sum + Math.max(0, getBatchAvailable(db, batch.id));
+    }, 0);
+}
+
+function bestContinuityBranch(db: Database, medicineId: string, preferredBranchId = "") {
+  const candidates = db.branches
+    .filter((branch) => branch.active)
+    .map((branch) => ({
+      branchId: branch.id,
+      quantity: availableMedicineQuantity(db, medicineId, branch.id),
+    }))
+    .filter((entry) => entry.quantity > 0);
+  return (
+    candidates.find((entry) => entry.branchId === preferredBranchId) ??
+    candidates[0]
+  );
+}
+
+function matchContinuityRequestsForMedicine(
+  db: Database,
+  actorId: string,
+  medicineId: string,
+  matchedBranchId: string,
+) {
+  db.continuityRequests
+    .filter(
+      (request) =>
+        request.medicineId === medicineId &&
+        (request.status === "open" || request.status === "contacted") &&
+        availableMedicineQuantity(db, medicineId, matchedBranchId) > 0,
+    )
+    .forEach((request) => {
+      const before = { ...request };
+      request.status = "matched";
+      request.matchedBranchId = matchedBranchId;
+      request.matchedAt = nowIso();
+      request.updatedAt = nowIso();
+      addAudit(
+        db,
+        actorId,
+        "Matched continuity request to available stock",
+        "continuity-request",
+        request.id,
+        before,
+        { ...request },
+      );
+    });
+}
+
+function createContinuityRequest(
+  db: Database,
+  actorId: string,
+  actorRole: Role,
+  payload: Record<string, unknown> | undefined,
+) {
+  const actor = db.users.find((user) => user.id === actorId);
+  if (!actor) throw new Error("Authentication required");
+  const originBranchId = optionalString(payload?.originBranchId) || optionalString(payload?.branchId) || "main";
+  if (!db.branches.some((branch) => branch.id === originBranchId && branch.active))
+    throw new Error("Active branch not found");
+  if (!canSellInBranch(db, { ...actor, role: actorRole }, originBranchId))
+    throw new Error("You do not have permission to create continuity requests in this branch");
+  const medicineId = requireString(payload?.medicineId, "Medicine");
+  const medicine = db.medicines.find((item) => item.id === medicineId && item.active);
+  if (!medicine) throw new Error("Active medicine not found");
+  const patientName = optionalString(payload?.patientName) || "Walk-in patient";
+  const patientPhone = optionalString(payload?.patientPhone);
+  if (!patientPhone && patientName === "Walk-in patient")
+    throw new Error("Add a patient name or phone number for continuity follow-up");
+  const normalizedPhone = normalizeContactPhone(patientPhone);
+  const duplicate = normalizedPhone
+    ? db.continuityRequests.find(
+        (request) =>
+          normalizeContactPhone(request.patientPhone) === normalizedPhone &&
+          request.medicineId === medicineId &&
+          !["fulfilled", "cancelled"].includes(request.status),
+      )
+    : undefined;
+  if (duplicate)
+    throw new Error("This patient already has an active continuity request for this medicine");
+  const urgency =
+    payload?.urgency === "urgent" || payload?.urgency === "important"
+      ? payload.urgency
+      : "routine";
+  const preferredBranchId = optionalString(payload?.preferredBranchId);
+  if (
+    preferredBranchId &&
+    !db.branches.some((branch) => branch.id === preferredBranchId && branch.active)
+  ) {
+    throw new Error("Preferred branch not found");
+  }
+  const bestBranch = bestContinuityBranch(db, medicineId, preferredBranchId || originBranchId);
+  const request: Database["continuityRequests"][number] = {
+    id: id("ctr"),
+    patientName,
+    patientPhone,
+    medicineId,
+    requestedMedicineName: optionalString(payload?.requestedMedicineName) || medicine.brandName,
+    quantityRequested: Math.max(1, Number(payload?.quantityRequested) || 1),
+    originBranchId,
+    preferredBranchId: preferredBranchId || undefined,
+    matchedBranchId: bestBranch?.branchId,
+    status: bestBranch ? "matched" : "open",
+    urgency,
+    source: payload?.source === "manual" ? "manual" : "pos",
+    note: optionalString(payload?.note) || undefined,
+    createdBy: actorId,
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+    matchedAt: bestBranch ? nowIso() : undefined,
+  };
+  db.continuityRequests.unshift(request);
+  addAudit(
+    db,
+    actorId,
+    "Created continuity request",
+    "continuity-request",
+    request.id,
+    undefined,
+    request,
+  );
+}
+
+function updateContinuityRequest(
+  db: Database,
+  actorId: string,
+  actorRole: Role,
+  payload: Record<string, unknown> | undefined,
+) {
+  const actor = db.users.find((user) => user.id === actorId);
+  if (!actor) throw new Error("Authentication required");
+  const requestId = requireString(payload?.requestId, "Continuity request");
+  const request = db.continuityRequests.find((item) => item.id === requestId);
+  if (!request) throw new Error("Continuity request not found");
+  const canAct =
+    canSellInBranch(db, { ...actor, role: actorRole }, request.originBranchId) ||
+    (request.matchedBranchId
+      ? canSellInBranch(db, { ...actor, role: actorRole }, request.matchedBranchId)
+      : false) ||
+    (request.preferredBranchId
+      ? canSellInBranch(db, { ...actor, role: actorRole }, request.preferredBranchId)
+      : false);
+  if (!canAct)
+    throw new Error("You do not have permission to update this continuity request");
+  const before = { ...request };
+  const status = optionalString(payload?.status);
+  if (status) {
+    if (
+      status !== "open" &&
+      status !== "matched" &&
+      status !== "contacted" &&
+      status !== "fulfilled" &&
+      status !== "cancelled"
+    ) {
+      throw new Error("Unsupported continuity status");
+    }
+    request.status = status;
+    if (status === "matched") request.matchedAt = request.matchedAt || nowIso();
+    if (status === "contacted") request.contactedAt = nowIso();
+    if (status === "fulfilled") {
+      request.fulfilledAt = nowIso();
+      request.closedAt = nowIso();
+    }
+    if (status === "cancelled") request.closedAt = nowIso();
+  }
+  if ("note" in (payload ?? {})) request.note = optionalString(payload?.note) || undefined;
+  const preferredBranchId = optionalString(payload?.preferredBranchId);
+  if (preferredBranchId) {
+    if (!db.branches.some((branch) => branch.id === preferredBranchId && branch.active))
+      throw new Error("Preferred branch not found");
+    request.preferredBranchId = preferredBranchId;
+  }
+  request.updatedAt = nowIso();
+  addAudit(
+    db,
+    actorId,
+    "Updated continuity request",
+    "continuity-request",
+    request.id,
+    before,
+    { ...request },
+  );
 }
 
 function getUserRequestingBranches(db: Database, actorId: string) {

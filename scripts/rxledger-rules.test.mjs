@@ -132,7 +132,7 @@ assert.equal(
 for (const source of [readme, blueprint, modules]) {
   assertPresent(
     source,
-    /RxLedger Core[\s\S]*Patient Continuity[\s\S]*(Medication Owed|Backorder)[\s\S]*Clinical Safety Assistant[\s\S]*RxLedger Connect[\s\S]*RxLedger Care Network/s,
+    /RxLedger Core[\s\S]*Patient Continuity[\s\S]*(Continuity Centre|Medication Owed|Backorder)[\s\S]*Clinical Safety Assistant[\s\S]*RxLedger Connect[\s\S]*RxLedger Care Network/s,
     "RxLedger documentation should preserve the ecosystem module map.",
   );
 }
@@ -154,5 +154,21 @@ for (const source of [app, action, shared, types]) {
     "RxLedger should not receive the Pharmacy Inventory-only pending medication flow through these tests.",
   );
 }
+
+assertPresent(
+  app,
+  /ContinuityCentre[\s\S]*Action queue, not alert flood/,
+  "RxLedger should keep Continuity Centre as a calm action queue.",
+);
+assertPresent(
+  shared,
+  /continuityRequests: ContinuityRequest\[\]/,
+  "RxLedger should persist continuity requests in its own data model.",
+);
+assertPresent(
+  action,
+  /createContinuityRequest[\s\S]*updateContinuityRequest[\s\S]*Matched continuity request to available stock/s,
+  "RxLedger should support auditable continuity creation, updates, and stock matching.",
+);
 
 console.log("RxLedger rule regression tests passed.");

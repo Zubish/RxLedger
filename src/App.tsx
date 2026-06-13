@@ -24,10 +24,12 @@ import {
   Eye,
   EyeOff,
   FileText,
+  HeartPulse,
   History,
   LayoutDashboard,
   Lock,
   LogOut,
+  MapPin,
   MessageSquare,
   Minus,
   PackageCheck,
@@ -102,6 +104,7 @@ type View =
   | "receive"
   | "pos"
   | "patients"
+  | "continuity"
   | "issue"
   | "adjust"
   | "reports"
@@ -427,6 +430,38 @@ type BranchAccessRequest = {
   resolvedAt?: string;
 };
 
+type ContinuityRequestStatus =
+  | "open"
+  | "matched"
+  | "contacted"
+  | "fulfilled"
+  | "cancelled";
+
+type ContinuityUrgency = "routine" | "important" | "urgent";
+
+type ContinuityRequest = {
+  id: string;
+  patientName: string;
+  patientPhone: string;
+  medicineId: string;
+  requestedMedicineName: string;
+  quantityRequested: number;
+  originBranchId: string;
+  preferredBranchId?: string;
+  matchedBranchId?: string;
+  status: ContinuityRequestStatus;
+  urgency: ContinuityUrgency;
+  source: "pos" | "manual";
+  note?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  matchedAt?: string;
+  contactedAt?: string;
+  fulfilledAt?: string;
+  closedAt?: string;
+};
+
 type MedicineLabelRule = {
   id: string;
   match: string;
@@ -484,6 +519,7 @@ type Database = {
   securityEvents: SecurityEvent[];
   requisitions: Requisition[];
   branchAccessRequests: BranchAccessRequest[];
+  continuityRequests: ContinuityRequest[];
   settings: AppSettings;
 };
 
@@ -526,6 +562,7 @@ const views: Array<{
   { id: "receive", label: "Receive", icon: PackagePlus },
   { id: "pos", label: "POS", icon: Calculator },
   { id: "patients", label: "Patients", icon: User2 },
+  { id: "continuity", label: "Continuity", icon: HeartPulse },
   { id: "issue", label: "Issue Stock", icon: PackageMinus },
   { id: "adjust", label: "Adjust/Returns", icon: RotateCcw },
   { id: "reports", label: "Reports", icon: FileText },
@@ -1005,6 +1042,7 @@ function createEmptyDatabase(): Database {
     securityEvents: [],
     requisitions: [],
     branchAccessRequests: [],
+    continuityRequests: [],
     settings: {
       softwareName: "RxLedger",
       accountName: "Pharmacy Account",
@@ -1126,6 +1164,67 @@ function getMedicineSellingPrice(rows: StockRow[], medicineId: string) {
 
 function getActiveBranches(db: Database) {
   return db.branches.filter((branch) => branch.active);
+}
+
+function branchAddressScore(reference: Branch | undefined, candidate: Branch) {
+  if (!reference?.address || !candidate.address) return 0;
+  const referenceTokens = new Set(
+    reference.address
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((token) => token.length > 3),
+  );
+  return candidate.address
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => referenceTokens.has(token))
+    .length;
+}
+
+function branchMapHref(branch: Branch) {
+  const query = [branch.name, branch.address].filter(Boolean).join(", ");
+  return query
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
+    : "";
+}
+
+function getMedicineBranchAvailability(
+  db: Database,
+  rows: StockRow[],
+  medicineId: string,
+  referenceBranch?: Branch,
+) {
+  const totals = new Map<string, number>();
+  rows
+    .filter(
+      (row) =>
+        row.medicine.id === medicineId &&
+        row.quantity > 0 &&
+        row.daysToExpiry >= 0,
+    )
+    .forEach((row) => {
+      totals.set(row.batch.branchId, (totals.get(row.batch.branchId) ?? 0) + row.quantity);
+    });
+  return [...totals.entries()]
+    .map(([branchId, quantity]) => {
+      const branch = db.branches.find((item) => item.id === branchId);
+      return branch
+        ? {
+            branch,
+            quantity,
+            mapHref: branchMapHref(branch),
+            score: branchAddressScore(referenceBranch, branch),
+          }
+        : undefined;
+    })
+    .filter((entry): entry is { branch: Branch; quantity: number; mapHref: string; score: number } =>
+      Boolean(entry),
+    )
+    .sort((a, b) => {
+      if (a.branch.id === referenceBranch?.id) return -1;
+      if (b.branch.id === referenceBranch?.id) return 1;
+      return b.score - a.score || b.quantity - a.quantity || a.branch.name.localeCompare(b.branch.name);
+    });
 }
 
 function getBranchName(db: Database, branchId: string) {
@@ -2035,6 +2134,23 @@ function buildNotifications(
       request.status === "pending" &&
       canViewBranch(db, currentUser, request.branchId),
   );
+  const visibleContinuityRequests = db.continuityRequests.filter((request) => {
+    if (request.status !== "matched" && request.status !== "open") return false;
+    const branchIds = [
+      request.originBranchId,
+      request.preferredBranchId,
+      request.matchedBranchId,
+    ].filter(Boolean) as string[];
+    const canSee = branchIds.some((branchId) =>
+      canViewBranch(db, currentUser, branchId),
+    );
+    if (!canSee && !isSuperAdmin(db, currentUser)) return false;
+    if (!activeBranch) return true;
+    return branchIds.includes(activeBranch.id);
+  });
+  const matchedContinuityRequests = visibleContinuityRequests.filter(
+    (request) => request.status === "matched",
+  );
   const expired = stockRows.filter(
     (row) => row.quantity > 0 && row.status === "expired",
   );
@@ -2124,6 +2240,22 @@ function buildNotifications(
       createdAt: request.requestedAt,
     });
   });
+
+  if (matchedContinuityRequests.length) {
+    const latest = matchedContinuityRequests
+      .map((request) => request.updatedAt || request.matchedAt || request.createdAt)
+      .sort()
+      .at(-1);
+    notifications.push({
+      id: "continuity-matched",
+      tone: "good",
+      title: `${matchedContinuityRequests.length} continuity follow-up${matchedContinuityRequests.length === 1 ? "" : "s"} ready`,
+      detail: "Stock is now available for patients who were waiting. Review the Continuity Centre before contacting them.",
+      view: "continuity",
+      branchId: activeBranch?.id,
+      createdAt: latest,
+    });
+  }
 
   db.receipts
     .map((receipt) => receivedReceiptNotification(db, receipt, activeBranch))
@@ -3088,6 +3220,7 @@ function App() {
               currentUser={currentUser}
               activeBranch={activeBranch}
               stockRows={activeBranchStockRows}
+              workspaceStockRows={stockRows}
               canSell={Boolean(canSell)}
               executeAction={executeAction}
               flash={flash}
@@ -3095,6 +3228,16 @@ function App() {
           )}
           {activeView === "patients" && (
             <PatientsView db={db} activeBranch={activeBranch} flash={flash} />
+          )}
+          {activeView === "continuity" && (
+            <ContinuityCentre
+              db={db}
+              currentUser={currentUser}
+              activeBranch={activeBranch}
+              stockRows={stockRows}
+              executeAction={executeAction}
+              flash={flash}
+            />
           )}
           {activeView === "issue" && activeBranch && (
             <IssueStock
@@ -7586,6 +7729,7 @@ function POSView({
   currentUser,
   activeBranch,
   stockRows,
+  workspaceStockRows,
   canSell,
   executeAction,
   flash,
@@ -7594,6 +7738,7 @@ function POSView({
   currentUser: User;
   activeBranch: Branch;
   stockRows: StockRow[];
+  workspaceStockRows: StockRow[];
   canSell: boolean;
   executeAction: ExecuteAction;
   flash: (message: string) => void;
@@ -7766,6 +7911,39 @@ function POSView({
     })
     .slice(0, 16);
   const visibleSaleOptions = query.trim() ? saleOptions : frequentlySoldOptions;
+  const unavailableMedicineMatches = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (needle.length < 2) return [];
+    return db.medicines
+      .filter((medicine) => {
+        if (!medicine.active) return false;
+        if ((stockByMedicine.get(medicine.id) ?? 0) > 0) return false;
+        const text = [
+          medicine.brandName,
+          medicine.genericName,
+          medicine.form,
+          medicine.strength,
+          medicine.sku,
+          medicine.nafdacNumber,
+          ...medicine.barcodes,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return text.includes(needle);
+      })
+      .map((medicine) => ({
+        medicine,
+        branches: getMedicineBranchAvailability(
+          db,
+          workspaceStockRows,
+          medicine.id,
+          activeBranch,
+        ).filter((entry) => entry.branch.id !== activeBranch.id),
+      }))
+      .filter((entry) => entry.branches.length > 0)
+      .slice(0, 4);
+  }, [activeBranch, db, query, stockByMedicine, workspaceStockRows]);
   const cartRows = cart.map((item) => {
     const option =
       saleOptions.find(
@@ -7953,7 +8131,7 @@ function POSView({
       const medicine = findMedicineByScan(db, scan);
       if (medicine && (stockByMedicine.get(medicine.id) ?? 0) <= 0) {
         flash(
-          `${medicine.brandName} has no non-expired stock in ${activeBranch.name}`,
+          `${medicine.brandName} has no non-expired stock in ${activeBranch.name}. Check branch options below if another branch has it.`,
         );
         return;
       }
@@ -8074,6 +8252,27 @@ function POSView({
         labelInstruction: item.labelInstruction,
       })),
     };
+  }
+
+  function createContinuityFromMedicine(medicine: Medicine, matchedBranchId = "") {
+    void executeAction(
+      "createContinuityRequest",
+      {
+        originBranchId: activeBranch.id,
+        preferredBranchId: matchedBranchId || activeBranch.id,
+        patientName: customerName,
+        patientPhone: customerPhone,
+        medicineId: medicine.id,
+        requestedMedicineName: medicine.brandName,
+        quantityRequested: 1,
+        urgency: "routine",
+        source: "pos",
+        note: matchedBranchId
+          ? `Stock was not available at ${activeBranch.name}. Suggested branch: ${getBranchName(db, matchedBranchId)}.`
+          : `Stock was not available at ${activeBranch.name}.`,
+      },
+      "Continuity request created",
+    );
   }
 
   async function saveDraft() {
@@ -8447,6 +8646,63 @@ function POSView({
                 </div>
               )}
             </div>
+            {unavailableMedicineMatches.length > 0 && (
+              <section className="pos-branch-options">
+                <div className="pos-quick-heading">
+                  <div>
+                    <strong>Not on this shelf</strong>
+                    <span>
+                      These medicines are unavailable in {activeBranch.name},
+                      but another branch has non-expired stock.
+                    </span>
+                  </div>
+                </div>
+                {unavailableMedicineMatches.map(({ medicine, branches }) => (
+                  <article key={medicine.id}>
+                    <header>
+                      <div>
+                        <strong>{medicineOptionLabel(medicine)}</strong>
+                        <span>{medicineMeta(medicine)}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          createContinuityFromMedicine(
+                            medicine,
+                            branches[0]?.branch.id,
+                          )
+                        }
+                        disabled={!canSell}
+                      >
+                        <HeartPulse size={14} />
+                        Add follow-up
+                      </button>
+                    </header>
+                    <div className="branch-availability-list">
+                      {branches.slice(0, 3).map((entry) => (
+                        <div key={entry.branch.id}>
+                          <MapPin size={15} />
+                          <span>
+                            <strong>{entry.branch.name}</strong>
+                            {entry.branch.address || "No address recorded"} /{" "}
+                            {number.format(entry.quantity)} available
+                          </span>
+                          {entry.mapHref && (
+                            <a
+                              href={entry.mapHref}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Map
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                ))}
+              </section>
+            )}
           </section>
 
           <aside className="pos-sale-cart">
@@ -9103,6 +9359,527 @@ function POSView({
   );
 }
 
+const continuityStatusLabels: Record<ContinuityRequestStatus, string> = {
+  open: "Waiting",
+  matched: "Stock available",
+  contacted: "Contacted",
+  fulfilled: "Fulfilled",
+  cancelled: "Cancelled",
+};
+
+const continuityUrgencyLabels: Record<ContinuityUrgency, string> = {
+  routine: "Routine",
+  important: "Important",
+  urgent: "Urgent",
+};
+
+function continuityVisibilityBranches(request: ContinuityRequest) {
+  return [
+    request.originBranchId,
+    request.preferredBranchId,
+    request.matchedBranchId,
+  ].filter(Boolean) as string[];
+}
+
+function continuityVisibleToUser(
+  db: Database,
+  currentUser: User,
+  request: ContinuityRequest,
+  activeBranch?: Branch,
+) {
+  const branchIds = continuityVisibilityBranches(request);
+  const canSee =
+    isSuperAdmin(db, currentUser) ||
+    branchIds.some((branchId) => canViewBranch(db, currentUser, branchId));
+  if (!canSee) return false;
+  if (!activeBranch) return true;
+  return branchIds.includes(activeBranch.id) || isSuperAdmin(db, currentUser);
+}
+
+function continuityMessage(
+  db: Database,
+  request: ContinuityRequest,
+  matchedBranch?: Branch,
+) {
+  return patientCareMessage(
+    db.settings.accountName,
+    request.patientName,
+    `${request.requestedMedicineName} is now available${matchedBranch ? ` at ${matchedBranch.name}` : ""}. Please contact the pharmacy so we can confirm pickup or arrange follow-up.`,
+  );
+}
+
+function ContinuityCentre({
+  db,
+  currentUser,
+  activeBranch,
+  stockRows,
+  executeAction,
+  flash,
+}: {
+  db: Database;
+  currentUser: User;
+  activeBranch?: Branch;
+  stockRows: StockRow[];
+  executeAction: ExecuteAction;
+  flash: (message: string) => void;
+}) {
+  const [statusFilter, setStatusFilter] = useState<
+    "active" | ContinuityRequestStatus | "all"
+  >("active");
+  const [scopeFilter, setScopeFilter] = useState<"my-branch" | "workspace">(
+    "my-branch",
+  );
+  const [form, setForm] = useState({
+    patientName: "",
+    patientPhone: "",
+    medicineId: "",
+    quantityRequested: 1,
+    urgency: "routine" as ContinuityUrgency,
+    preferredBranchId: activeBranch?.id ?? "",
+    note: "",
+  });
+  const refillRows = useMemo(() => buildRefillRows(db), [db]);
+  const visibleRequests = db.continuityRequests
+    .filter((request) =>
+      continuityVisibleToUser(
+        db,
+        currentUser,
+        request,
+        scopeFilter === "my-branch" ? activeBranch : undefined,
+      ),
+    )
+    .filter((request) =>
+      statusFilter === "active"
+        ? request.status !== "fulfilled" && request.status !== "cancelled"
+        : statusFilter === "all"
+          ? true
+          : request.status === statusFilter,
+    )
+    .sort((a, b) => {
+      const urgencyRank = { urgent: 3, important: 2, routine: 1 };
+      return (
+        urgencyRank[b.urgency] - urgencyRank[a.urgency] ||
+        b.updatedAt.localeCompare(a.updatedAt)
+      );
+    });
+  const activeRequests = visibleRequests.filter(
+    (request) => request.status !== "fulfilled" && request.status !== "cancelled",
+  );
+  const matchedRequests = visibleRequests.filter(
+    (request) => request.status === "matched",
+  );
+  const waitingRequests = visibleRequests.filter(
+    (request) => request.status === "open",
+  );
+  const dueRefills = refillRows.filter((row) => row.daysUntilDue <= 7);
+  const canCreate = Boolean(activeBranch);
+  const selectedMedicine = db.medicines.find(
+    (medicine) => medicine.id === form.medicineId,
+  );
+
+  function updateRequest(requestId: string, status: ContinuityRequestStatus) {
+    void executeAction(
+      "updateContinuityRequest",
+      { requestId, status },
+      `Continuity request marked ${continuityStatusLabels[status].toLowerCase()}`,
+    );
+  }
+
+  async function copyPatientMessage(request: ContinuityRequest) {
+    const matchedBranch = request.matchedBranchId
+      ? db.branches.find((branch) => branch.id === request.matchedBranchId)
+      : undefined;
+    const message = continuityMessage(db, request, matchedBranch);
+    try {
+      await navigator.clipboard.writeText(message);
+      flash("Continuity message copied");
+    } catch {
+      flash(message);
+    }
+  }
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!activeBranch || !form.medicineId) return;
+    void executeAction(
+      "createContinuityRequest",
+      {
+        originBranchId: activeBranch.id,
+        preferredBranchId: form.preferredBranchId || activeBranch.id,
+        patientName: form.patientName,
+        patientPhone: form.patientPhone,
+        medicineId: form.medicineId,
+        requestedMedicineName: selectedMedicine?.brandName,
+        quantityRequested: form.quantityRequested,
+        urgency: form.urgency,
+        source: "manual",
+        note: form.note,
+      },
+      "Continuity request created",
+    ).then((created) => {
+      if (!created) return;
+      setForm({
+        patientName: "",
+        patientPhone: "",
+        medicineId: "",
+        quantityRequested: 1,
+        urgency: "routine",
+        preferredBranchId: activeBranch.id,
+        note: "",
+      });
+    });
+  }
+
+  return (
+    <div className="page-grid continuity-page">
+      <section className="metric-grid">
+        <Metric
+          icon={HeartPulse}
+          label="Active continuity"
+          value={compactNumber(activeRequests.length)}
+          tone={activeRequests.length ? "warning" : "good"}
+        />
+        <Metric
+          icon={PackageCheck}
+          label="Stock now available"
+          value={compactNumber(matchedRequests.length)}
+          tone={matchedRequests.length ? "good" : undefined}
+        />
+        <Metric
+          icon={Bell}
+          label="Still waiting"
+          value={compactNumber(waitingRequests.length)}
+          tone={waitingRequests.length ? "warning" : "good"}
+        />
+        <Metric
+          icon={MessageSquare}
+          label="Refills due"
+          value={compactNumber(dueRefills.length)}
+          tone={dueRefills.length ? "warning" : "good"}
+        />
+      </section>
+
+      <section className="content-section continuity-brief">
+        <div className="section-heading">
+          <div>
+            <h2>Continuity Centre</h2>
+            <p>
+              Patient-linked follow-up for unavailable medicines, refill timing,
+              and branch stock options. Built as a queue so RxLedger stays calm
+              while pharmacists keep the context.
+            </p>
+          </div>
+          <span className="pill active">Action queue, not alert flood</span>
+        </div>
+        <div className="continuity-principles">
+          <span>Smarter alerts: grouped and actionable.</span>
+          <span>Context first: patient, medicine, branch, timing.</span>
+          <span>Pharmacist led: review, contact, resolve, audit.</span>
+        </div>
+      </section>
+
+      <section className="content-section">
+        <div className="section-heading">
+          <div>
+            <h2>Create continuity request</h2>
+            <p>
+              Use this when a patient needs a medicine that is not available on
+              the current shelf, or when staff should follow up before therapy
+              is interrupted.
+            </p>
+          </div>
+        </div>
+        <form className="form-grid" onSubmit={submit}>
+          <label>
+            Patient name
+            <input
+              value={form.patientName}
+              onChange={(event) =>
+                setForm({ ...form, patientName: event.target.value })
+              }
+              placeholder="Patient or caregiver name"
+              disabled={!canCreate}
+            />
+          </label>
+          <label>
+            Phone
+            <input
+              value={form.patientPhone}
+              onChange={(event) =>
+                setForm({ ...form, patientPhone: event.target.value })
+              }
+              placeholder="WhatsApp or phone number"
+              disabled={!canCreate}
+            />
+          </label>
+          <label>
+            Medicine
+            <select
+              value={form.medicineId}
+              onChange={(event) =>
+                setForm({ ...form, medicineId: event.target.value })
+              }
+              disabled={!canCreate}
+            >
+              <option value="">Choose medicine</option>
+              {db.medicines
+                .filter((medicine) => medicine.active)
+                .map((medicine) => (
+                  <option value={medicine.id} key={medicine.id}>
+                    {medicineOptionLabel(medicine)}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label>
+            Quantity needed
+            <input
+              type="number"
+              min="1"
+              value={numberInputValue(form.quantityRequested)}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  quantityRequested: Number(event.target.value),
+                })
+              }
+              disabled={!canCreate}
+            />
+          </label>
+          <label>
+            Preferred branch
+            <select
+              value={form.preferredBranchId}
+              onChange={(event) =>
+                setForm({ ...form, preferredBranchId: event.target.value })
+              }
+              disabled={!canCreate}
+            >
+              {getActiveBranches(db).map((branch) => (
+                <option value={branch.id} key={branch.id}>
+                  {branch.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Urgency
+            <select
+              value={form.urgency}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  urgency: event.target.value as ContinuityUrgency,
+                })
+              }
+              disabled={!canCreate}
+            >
+              {Object.entries(continuityUrgencyLabels).map(([value, label]) => (
+                <option value={value} key={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="full">
+            Note
+            <textarea
+              value={form.note}
+              onChange={(event) => setForm({ ...form, note: event.target.value })}
+              placeholder="Example: patient can pick up after work, or prefers transfer to this branch."
+              disabled={!canCreate}
+            />
+          </label>
+          <button
+            className="primary-button"
+            type="submit"
+            disabled={!canCreate || !form.medicineId}
+          >
+            <HeartPulse size={16} />
+            Add to Continuity
+          </button>
+        </form>
+      </section>
+
+      <section className="content-section">
+        <div className="section-heading">
+          <div>
+            <h2>Patient medication queue</h2>
+            <p>
+              Review only the records your branch can act on. Other branches
+              stay quiet until a patient appears there or stock is available.
+            </p>
+          </div>
+          <div className="segmented-control">
+            {(["my-branch", "workspace"] as const).map((scope) => (
+              <button
+                className={scopeFilter === scope ? "active" : ""}
+                type="button"
+                key={scope}
+                onClick={() => setScopeFilter(scope)}
+              >
+                {scope === "my-branch" ? "My branch" : "Workspace"}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="continuity-filter-row">
+          {(
+            [
+              "active",
+              "matched",
+              "open",
+              "contacted",
+              "fulfilled",
+              "cancelled",
+              "all",
+            ] as const
+          ).map((status) => (
+            <button
+              className={statusFilter === status ? "pill active" : "pill"}
+              type="button"
+              key={status}
+              onClick={() => setStatusFilter(status)}
+            >
+              {status === "active"
+                ? "Active"
+                : status === "all"
+                  ? "All"
+                  : continuityStatusLabels[status]}
+            </button>
+          ))}
+        </div>
+        <div className="continuity-list">
+          {visibleRequests.map((request) => {
+            const medicine = db.medicines.find(
+              (item) => item.id === request.medicineId,
+            );
+            const origin = db.branches.find(
+              (branch) => branch.id === request.originBranchId,
+            );
+            const matched = db.branches.find(
+              (branch) => branch.id === request.matchedBranchId,
+            );
+            const availability = getMedicineBranchAvailability(
+              db,
+              stockRows,
+              request.medicineId,
+              activeBranch,
+            ).slice(0, 3);
+            const message = continuityMessage(db, request, matched);
+            const whatsapp = whatsappHref(request.patientPhone, message);
+            return (
+              <article
+                className={`continuity-card ${request.status}`}
+                key={request.id}
+              >
+                <div className="continuity-card-main">
+                  <header>
+                    <div>
+                      <span
+                        className={`pill ${
+                          request.urgency === "urgent"
+                            ? "expired"
+                            : request.urgency === "important"
+                              ? "warning"
+                              : "active"
+                        }`}
+                      >
+                        {continuityUrgencyLabels[request.urgency]}
+                      </span>
+                      <h3>{request.patientName || "Walk-in patient"}</h3>
+                      <p>
+                        {request.patientPhone || "No phone recorded"} /{" "}
+                        {request.requestedMedicineName}
+                        {medicine ? ` / ${medicineMeta(medicine)}` : ""}
+                      </p>
+                    </div>
+                    <strong>{continuityStatusLabels[request.status]}</strong>
+                  </header>
+                  <div className="continuity-meta-grid">
+                    <span>Needed: {number.format(request.quantityRequested)}</span>
+                    <span>Recorded at {origin?.name ?? request.originBranchId}</span>
+                    <span>
+                      {matched
+                        ? `Available at ${matched.name}`
+                        : "Waiting for available stock"}
+                    </span>
+                    <span>
+                      Updated {new Date(request.updatedAt).toLocaleString()}
+                    </span>
+                  </div>
+                  {request.note && (
+                    <p className="continuity-note">{request.note}</p>
+                  )}
+                  <div className="branch-availability-list">
+                    {availability.map((entry) => (
+                      <div key={entry.branch.id}>
+                        <MapPin size={15} />
+                        <span>
+                          <strong>{entry.branch.name}</strong>
+                          {entry.branch.address || "No address recorded"} /{" "}
+                          {number.format(entry.quantity)} available
+                        </span>
+                        {entry.mapHref && (
+                          <a href={entry.mapHref} target="_blank" rel="noreferrer">
+                            Map
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                    {!availability.length && (
+                      <small>
+                        No non-expired stock is available in another branch yet.
+                      </small>
+                    )}
+                  </div>
+                </div>
+                <footer>
+                  <button
+                    type="button"
+                    onClick={() => void copyPatientMessage(request)}
+                  >
+                    <ClipboardList size={14} /> Copy
+                  </button>
+                  {whatsapp && (
+                    <a href={whatsapp} target="_blank" rel="noreferrer">
+                      <Smartphone size={14} /> WhatsApp
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => updateRequest(request.id, "contacted")}
+                  >
+                    Mark contacted
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateRequest(request.id, "fulfilled")}
+                  >
+                    Fulfilled
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateRequest(request.id, "cancelled")}
+                  >
+                    Cancel
+                  </button>
+                </footer>
+              </article>
+            );
+          })}
+          {!visibleRequests.length && (
+            <div className="empty-state">
+              No continuity requests match this scope. When a patient is waiting
+              for unavailable stock, add them here instead of relying on memory.
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function PatientsView({
   db,
   activeBranch,
@@ -9164,6 +9941,16 @@ function PatientsView({
         body: saleFollowUpBody(db, sale),
       }))
       .filter((message) => message.body) ?? [];
+  const selectedContinuityRequests =
+    selectedProfile?.phone
+      ? db.continuityRequests.filter(
+          (request) =>
+            normalizePhone(request.patientPhone) ===
+              normalizePhone(selectedProfile.phone) &&
+            request.status !== "fulfilled" &&
+            request.status !== "cancelled",
+        )
+      : [];
 
   async function copyMessage(message: string) {
     try {
@@ -9283,6 +10070,25 @@ function PatientsView({
                   </div>
                   <strong>{money.format(selectedProfile.totalSpent)}</strong>
                 </header>
+
+                {selectedContinuityRequests.length > 0 && (
+                  <section className="patient-continuity-strip">
+                    <strong>
+                      {selectedContinuityRequests.length} active continuity
+                      request
+                      {selectedContinuityRequests.length === 1 ? "" : "s"}
+                    </strong>
+                    <div>
+                      {selectedContinuityRequests.map((request) => (
+                        <span key={request.id}>
+                          {request.requestedMedicineName} /{" "}
+                          {continuityStatusLabels[request.status]} /{" "}
+                          {getBranchName(db, request.originBranchId)}
+                        </span>
+                      ))}
+                    </div>
+                  </section>
+                )}
 
                 <div className="patient-profile-grid">
                   <section>

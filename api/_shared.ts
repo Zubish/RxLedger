@@ -304,6 +304,38 @@ type BranchAccessRequest = {
   resolvedAt?: string;
 };
 
+type ContinuityRequestStatus =
+  | "open"
+  | "matched"
+  | "contacted"
+  | "fulfilled"
+  | "cancelled";
+
+type ContinuityUrgency = "routine" | "important" | "urgent";
+
+type ContinuityRequest = {
+  id: string;
+  patientName: string;
+  patientPhone: string;
+  medicineId: string;
+  requestedMedicineName: string;
+  quantityRequested: number;
+  originBranchId: string;
+  preferredBranchId?: string;
+  matchedBranchId?: string;
+  status: ContinuityRequestStatus;
+  urgency: ContinuityUrgency;
+  source: "pos" | "manual";
+  note?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  matchedAt?: string;
+  contactedAt?: string;
+  fulfilledAt?: string;
+  closedAt?: string;
+};
+
 type MedicineLabelRule = {
   id: string;
   match: string;
@@ -348,6 +380,7 @@ type Database = {
   securityEvents: SecurityEvent[];
   requisitions: Requisition[];
   branchAccessRequests: BranchAccessRequest[];
+  continuityRequests: ContinuityRequest[];
   auditLogs: Array<{
     id: string;
     userId: string;
@@ -499,6 +532,7 @@ export function createEmptyDatabase(): Database {
     securityEvents: [],
     requisitions: [],
     branchAccessRequests: [],
+    continuityRequests: [],
     auditLogs: [],
     settings: {
       softwareName: "RxLedger",
@@ -540,6 +574,9 @@ export type {
   BranchAccessRequest,
   BranchAccessRequestStatus,
   ChatMessage,
+  ContinuityRequest,
+  ContinuityRequestStatus,
+  ContinuityUrgency,
   Database,
   HandlerRequest,
   HandlerResponse,
@@ -1114,6 +1151,40 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
     })),
     branchAccessRequests:
       raw.branchAccessRequests ?? empty.branchAccessRequests,
+    continuityRequests: (raw.continuityRequests ?? empty.continuityRequests).map(
+      (request) => ({
+        ...request,
+        id: request.id || id("ctr"),
+        patientName: request.patientName || "Walk-in patient",
+        patientPhone: request.patientPhone || "",
+        medicineId: request.medicineId || "",
+        requestedMedicineName: request.requestedMedicineName || "Medicine",
+        quantityRequested: Math.max(1, Number(request.quantityRequested) || 1),
+        originBranchId: request.originBranchId || "main",
+        preferredBranchId: request.preferredBranchId || undefined,
+        matchedBranchId: request.matchedBranchId || undefined,
+        status:
+          request.status === "matched" ||
+          request.status === "contacted" ||
+          request.status === "fulfilled" ||
+          request.status === "cancelled"
+            ? request.status
+            : "open",
+        urgency:
+          request.urgency === "important" || request.urgency === "urgent"
+            ? request.urgency
+            : "routine",
+        source: request.source === "manual" ? "manual" : "pos",
+        note: request.note || undefined,
+        createdBy: request.createdBy || "",
+        createdAt: request.createdAt || nowIso(),
+        updatedAt: request.updatedAt || request.createdAt || nowIso(),
+        matchedAt: request.matchedAt || undefined,
+        contactedAt: request.contactedAt || undefined,
+        fulfilledAt: request.fulfilledAt || undefined,
+        closedAt: request.closedAt || undefined,
+      }),
+    ),
     auditLogs: raw.auditLogs ?? empty.auditLogs,
     settings: {
       ...empty.settings,

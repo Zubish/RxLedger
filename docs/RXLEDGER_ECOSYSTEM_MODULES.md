@@ -38,30 +38,35 @@ Includes:
 - Refill timing.
 - Counseling and follow-up messages.
 - Cross-branch patient memory where permissions allow it.
+- Active continuity requests surfaced when the patient returns to any branch with permission.
 - Future safety timeline and adherence signals.
 
 Implementation status: active, with room to improve.
 
-## 3. Medication Owed / Backorder
+## 3. Continuity Centre
 
 Purpose: remember requested or prescribed medicines that could not be supplied, then reconnect the patient when stock becomes available.
 
-Possible scope:
+Scope:
 
-- Unavailable medicine record.
+- Unavailable medicine continuity request.
 - Patient and phone context.
 - Requested quantity.
-- Source note or prescription note.
+- Source note, urgency, or prescription note.
 - Branch and staff recorder.
 - Stock-arrival matching.
-- Contacted, fulfilled, cancelled, not interested, not picked up, and expired outcomes.
+- Branch availability list for medicines not on the current shelf.
+- Map links based on saved branch addresses.
+- Contacted, fulfilled, cancelled, and waiting outcomes.
+- Quiet grouped notification that points staff to the queue instead of sending one alert per patient.
 
 Important boundary:
 
 - Do not copy the Totalenergies Pharmacy Inventory implementation directly into RxLedger.
 - RxLedger needs its own community-pharmacy version because POS drafts, cashier checkout, Mart products, branch operations, and patient history behave differently here.
+- Do not auto-sell, auto-transfer, or auto-close a request from stock matching alone. Pharmacists and branch staff must review and confirm the next action.
 
-Implementation status: future module.
+Implementation status: active first version.
 
 ## 4. Clinical Safety Assistant
 

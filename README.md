@@ -37,6 +37,10 @@ The POS workflow is built for pharmacy sales. Staff can search medicines and gen
 
 Patient history is built from real sales activity. Staff can search by name, phone number, or receipt reference, then review medication history, refill timing, and counseling or follow-up notes.
 
+### Missed Medication Continuity
+
+When a medicine is unavailable at one branch, pharmacies often rely on memory, notebooks, or noisy group messages. RxLedger now supports a Continuity Centre for patient-linked unavailable medicine requests, stock-availability matching, branch options, and follow-up status.
+
 ### Manual Follow-Up
 
 RxLedger supports refill reminders and post-purchase counseling workflows. Pharmacies can use patient purchase history to follow up on chronic medicines, missed refills, and medicine instructions.
@@ -60,14 +64,14 @@ Every important stock and access action should be traceable. RxLedger keeps audi
 RxLedger should grow as a modular pharmacy ecosystem, not one crowded screen.
 
 - **RxLedger Core**: inventory, POS, Mart/general retail, receiving, pricing, branch operations, reports, audit, users, and settings.
-- **Patient Continuity**: patient lookup, medication history, refill reminders, counseling/follow-up notes, and cross-branch patient memory.
-- **Medication Owed / Backorder**: a future community-pharmacy module for unavailable prescribed/requested medicines, patient follow-up, stock-arrival matching, and fulfillment history. This must be designed for RxLedger separately, not copied from the Totalenergies Pharmacy Inventory implementation.
+- **Patient Continuity**: patient lookup, medication history, refill reminders, counseling/follow-up notes, cross-branch patient memory, and continuity context when a patient returns.
+- **Continuity Centre**: RxLedger-native unavailable medicine requests, patient follow-up, stock-arrival matching, branch availability guidance, map links from branch addresses, and contacted/fulfilled/cancelled outcomes.
 - **Clinical Safety Assistant**: future pharmacist-assistive review prompts for duplicate therapy, drug-drug and drug-food interaction cautions, repeated antibiotic use, possible misuse patterns, and counseling reminders.
 - **RxLedger Connect**: future prescription intake by API, CSV, HMO/provider portal, or manual entry, with normalization of medicines, quantities, patient identifiers, and claim context.
 - **RxLedger Care Network**: future HMO/provider/pharmacy routing, approved pharmacy matching, stock availability status, reservation, pickup, and closed-loop feedback.
 - **Analytics And Stewardship**: stock intelligence, expiry waste, reorder behavior, antimicrobial stewardship signals, patient adherence patterns, and branch performance.
 
-The current app should keep strengthening Core and Patient Continuity first. Connect, Care Network, and advanced AI/clinical automation should stay deliberate, auditable, and priced as Enterprise or paid add-on capabilities.
+The current app should keep strengthening Core, Patient Continuity, and Continuity Centre first. Connect, Care Network, and advanced AI/clinical automation should stay deliberate, auditable, and priced as Enterprise or paid add-on capabilities.
 
 ### Inventory
 
@@ -84,6 +88,10 @@ The POS supports active carts, temporary sale drafts, discounts, payment method 
 ### Patient Care
 
 RxLedger turns sales history into patient profiles. This supports faster patient lookup, refill reminders, medication history review, counseling follow-up, and WhatsApp or copy-ready communication.
+
+### Continuity Centre
+
+The Continuity Centre records medicines patients could not receive, keeps the record branch-aware, and matches it when stock appears in any branch. Notifications stay grouped so staff review an action queue rather than receiving one alert per patient. POS also suggests branches that have a searched medicine when the current branch has none, with map links based on branch addresses and a follow-up action for the patient.
 
 ### Branch Operations
 

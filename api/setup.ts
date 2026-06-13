@@ -107,6 +107,7 @@ export default async function handler(
       securityEvents: [],
       requisitions: [],
       branchAccessRequests: [],
+      continuityRequests: [],
       settings: {
         softwareName: "RxLedger",
         accountName: body.pharmacyName.trim(),

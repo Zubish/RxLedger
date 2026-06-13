@@ -307,6 +307,38 @@ export type BranchAccessRequest = {
   resolvedAt?: string;
 };
 
+export type ContinuityRequestStatus =
+  | "open"
+  | "matched"
+  | "contacted"
+  | "fulfilled"
+  | "cancelled";
+
+export type ContinuityUrgency = "routine" | "important" | "urgent";
+
+export type ContinuityRequest = {
+  id: string;
+  patientName: string;
+  patientPhone: string;
+  medicineId: string;
+  requestedMedicineName: string;
+  quantityRequested: number;
+  originBranchId: string;
+  preferredBranchId?: string;
+  matchedBranchId?: string;
+  status: ContinuityRequestStatus;
+  urgency: ContinuityUrgency;
+  source: "pos" | "manual";
+  note?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  matchedAt?: string;
+  contactedAt?: string;
+  fulfilledAt?: string;
+  closedAt?: string;
+};
+
 export type MedicineLabelRule = {
   id: string;
   match: string;
@@ -364,6 +396,7 @@ export type Database = {
   securityEvents: SecurityEvent[];
   requisitions: Requisition[];
   branchAccessRequests: BranchAccessRequest[];
+  continuityRequests: ContinuityRequest[];
   settings: AppSettings;
 };
 
