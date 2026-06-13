@@ -161,6 +161,21 @@ assertPresent(
   /pharmacistReviewOutcome[\s\S]*safetyReviewSummary/,
   "RxLedger should persist pharmacist review outcome and prompt summary.",
 );
+assertPresent(
+  app,
+  /Allergies or reactions[\s\S]*Current\/chronic medicines/,
+  "RxLedger safety review should include allergy, chronic medicine, and controlled medicine context.",
+);
+assertPresent(
+  app,
+  /Controlled\/monitored medicine review/,
+  "RxLedger safety review should flag controlled or monitored medicine context.",
+);
+assertPresent(
+  app,
+  /transferred: "Transfer requested"[\s\S]*Request transfer/,
+  "RxLedger Continuity Centre should support transfer-request status without marking stock fulfilled.",
+);
 
 for (const source of [app, action, shared, types]) {
   assertAbsent(

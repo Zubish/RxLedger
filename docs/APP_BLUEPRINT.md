@@ -90,6 +90,8 @@ Future expansion memory:
 - `Freeze II / Care Network`: HMO-routed prescription workflow, EMR/HMO prescription intake, approved pharmacy matching, patient pickup links, stock reservation, label/counseling handoff, and closed-loop dispensing feedback. Use [FREEZE_II_CARE_NETWORK_FIGMA_BLUEPRINT.md](FREEZE_II_CARE_NETWORK_FIGMA_BLUEPRINT.md) before designing or implementing this expansion.
 - `Clinical Safety Assistant`: pharmacist-assistive alerts must be explainable, auditable, dismissible with reason, and framed as review prompts rather than diagnoses or autonomous dispensing decisions.
 - `Pharmacist Safety Review`: deterministic POS prompts should use patient reliability, age/pregnancy/renal/liver context, duplicate therapy, antibiotic repetition, high-risk medicines, and counselling rules. Persist pharmacist outcome/note and prompt summary on drafts/sales.
+- Allergy/current medicine context should be captured inside the POS review panel and used only as explainable pharmacist prompts.
+- Continuity transfer requests are queue states only. They must not deduct stock or mark patient need fulfilled until a POS sale/dispensing event happens.
 - `Continuity Centre`: do not emit one notification per patient. Group continuity prompts and route the real work into the Continuity Centre, patient profile, POS missing-stock panel, and receiving-stock matching.
 
 ## Scroll Policy

@@ -2194,6 +2194,7 @@ td strong {
   grid-column: 1 / -1;
 }
 
+.review-context-grid input,
 .review-context-grid select,
 .review-context-grid textarea {
   border: 1px solid #d5e1e0;

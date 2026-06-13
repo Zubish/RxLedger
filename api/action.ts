@@ -202,6 +202,8 @@ function normalizePatientRiskContext(
     pregnant: Boolean(input.pregnant),
     renalRisk: Boolean(input.renalRisk),
     liverRisk: Boolean(input.liverRisk),
+    allergies: optionalString(input.allergies) || undefined,
+    chronicMedicines: optionalString(input.chronicMedicines) || undefined,
     notes: optionalString(input.notes) || undefined,
   };
 }
@@ -1503,6 +1505,7 @@ function updateContinuityRequest(
       status !== "open" &&
       status !== "matched" &&
       status !== "contacted" &&
+      status !== "transferred" &&
       status !== "fulfilled" &&
       status !== "cancelled"
     ) {
@@ -1511,6 +1514,14 @@ function updateContinuityRequest(
     request.status = status;
     if (status === "matched") request.matchedAt = request.matchedAt || nowIso();
     if (status === "contacted") request.contactedAt = nowIso();
+    if (status === "transferred") {
+      request.note = [
+        request.note,
+        optionalString(payload?.note) || "Transfer requested between branches.",
+      ]
+        .filter(Boolean)
+        .join(" ");
+    }
     if (status === "fulfilled") {
       request.fulfilledAt = nowIso();
       request.closedAt = nowIso();

@@ -28,6 +28,8 @@ type PatientRiskContext = {
   pregnant?: boolean;
   renalRisk?: boolean;
   liverRisk?: boolean;
+  allergies?: string;
+  chronicMedicines?: string;
   notes?: string;
 };
 type LedgerType =
@@ -338,6 +340,7 @@ type ContinuityRequestStatus =
   | "open"
   | "matched"
   | "contacted"
+  | "transferred"
   | "fulfilled"
   | "cancelled";
 
