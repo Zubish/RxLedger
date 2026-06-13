@@ -96,6 +96,26 @@ const SIDEBAR_WIDTH = 280;
 
 type Role = "admin" | "pharmacist" | "inventory" | "cashier" | "viewer";
 type UserStatus = "pending" | "active" | "suspended";
+type PatientInfoReliability =
+  | "confirmed_today"
+  | "patient_reported"
+  | "previous_record"
+  | "incomplete";
+type PatientAgeGroup = "child" | "adult" | "older_adult";
+type PharmacistReviewOutcome =
+  | "none"
+  | "counselled"
+  | "doctor_contacted"
+  | "changed_recommendation"
+  | "system_missed"
+  | "dismissed";
+type PatientRiskContext = {
+  ageGroup?: PatientAgeGroup;
+  pregnant?: boolean;
+  renalRisk?: boolean;
+  liverRisk?: boolean;
+  notes?: string;
+};
 type View =
   | "dashboard"
   | "medicines"
@@ -264,10 +284,15 @@ type Sale = {
   cashierUserId: string;
   customerName: string;
   customerPhone: string;
+  patientInfoReliability?: PatientInfoReliability;
+  patientRiskContext?: PatientRiskContext;
   paymentMethod: "cash" | "card" | "transfer" | "mixed";
   reference: string;
   note: string;
   followUpMessage?: string;
+  pharmacistReviewOutcome?: PharmacistReviewOutcome;
+  pharmacistReviewNote?: string;
+  safetyReviewSummary?: string[];
   soldAt: string;
   subtotal: number;
   discount: number;
@@ -297,10 +322,15 @@ type PosDraft = {
   bookingCode: string;
   customerName: string;
   customerPhone: string;
+  patientInfoReliability?: PatientInfoReliability;
+  patientRiskContext?: PatientRiskContext;
   paymentMethod: Sale["paymentMethod"];
   discount: number;
   note: string;
   followUpMessage?: string;
+  pharmacistReviewOutcome?: PharmacistReviewOutcome;
+  pharmacistReviewNote?: string;
+  safetyReviewSummary?: string[];
   items: Array<{
     itemType: "medicine" | "product";
     itemId: string;
@@ -1531,6 +1561,155 @@ function buildPurchaseFollowUpMessage(
   const defaultMessage = defaultFollowUpText(db.settings);
   if (!uniqueMessages.length) return defaultMessage;
   return `${uniqueMessages.join(" ")} ${defaultMessage || "Please follow the medication label and contact the pharmacy if you need clarification."}`.trim();
+}
+
+const patientInfoReliabilityLabels: Record<PatientInfoReliability, string> = {
+  confirmed_today: "Confirmed today",
+  patient_reported: "Patient reported",
+  previous_record: "Previous record",
+  incomplete: "Incomplete",
+};
+
+const patientAgeGroupLabels: Record<PatientAgeGroup, string> = {
+  child: "Child",
+  adult: "Adult",
+  older_adult: "Older adult",
+};
+
+const pharmacistReviewOutcomeLabels: Record<PharmacistReviewOutcome, string> = {
+  none: "No override",
+  counselled: "Counselled patient",
+  doctor_contacted: "Doctor contacted",
+  changed_recommendation: "Recommendation changed",
+  system_missed: "System missed issue",
+  dismissed: "Reviewed and dismissed",
+};
+
+type SafetyReviewPrompt = {
+  id: string;
+  tone: "danger" | "warning" | "info";
+  title: string;
+  detail: string;
+  why: string;
+};
+
+function medicineSafetyText(medicine: Medicine) {
+  return `${medicine.brandName} ${medicine.genericName} ${medicine.category} ${medicine.form} ${medicine.strength}`.toLowerCase();
+}
+
+function includesAny(text: string, terms: string[]) {
+  return terms.some((term) => text.includes(term));
+}
+
+function buildPharmacistSafetyReview(
+  medicines: Medicine[],
+  previousSales: Sale[],
+  risk: PatientRiskContext,
+  reliability: PatientInfoReliability,
+): SafetyReviewPrompt[] {
+  const prompts: SafetyReviewPrompt[] = [];
+  const add = (prompt: SafetyReviewPrompt) => {
+    if (!prompts.some((item) => item.id === prompt.id)) prompts.push(prompt);
+  };
+  if (reliability !== "confirmed_today") {
+    add({
+      id: `patient-info-${reliability}`,
+      tone: reliability === "incomplete" ? "warning" : "info",
+      title: "Patient information needs context",
+      detail: `${patientInfoReliabilityLabels[reliability]} information. Confirm allergies, pregnancy, age, renal/liver risk, and current medicines where relevant.`,
+      why: "Triggered by the patient information reliability selected for this transaction.",
+    });
+  }
+  const genericGroups = new Map<string, Medicine[]>();
+  medicines.forEach((medicine) => {
+    const generic = medicine.genericName.trim().toLowerCase();
+    if (generic) genericGroups.set(generic, [...(genericGroups.get(generic) ?? []), medicine]);
+  });
+  genericGroups.forEach((items, generic) => {
+    if (items.length > 1)
+      add({
+        id: `duplicate-${generic}`,
+        tone: "warning",
+        title: "Possible duplicate therapy",
+        detail: `${items.map((item) => item.brandName).join(", ")} share ${generic}.`,
+        why: "Triggered because more than one basket medicine has the same generic name.",
+      });
+  });
+  const antibioticTerms = ["amoxicillin", "azithromycin", "ciprofloxacin", "cef", "doxycycline", "metronidazole", "clavulanate", "levofloxacin"];
+  const highRiskTerms = ["warfarin", "insulin", "lithium", "digoxin", "methotrexate", "tramadol", "morphine", "diazepam", "clonazepam"];
+  const hasAntibiotic = medicines.some((medicine) => includesAny(medicineSafetyText(medicine), antibioticTerms));
+  if (hasAntibiotic) {
+    const recentAntibiotic = previousSales.some((sale) => {
+      const days = Math.floor((Date.now() - new Date(sale.soldAt).getTime()) / 86400000);
+      return (
+        days <= 60 &&
+        sale.items.some((item) =>
+          includesAny(`${item.itemName ?? ""} ${item.counselingNote ?? ""}`.toLowerCase(), antibioticTerms),
+        )
+      );
+    });
+    add({
+      id: "antibiotic-review",
+      tone: recentAntibiotic ? "warning" : "info",
+      title: "Antibiotic counselling review",
+      detail: recentAntibiotic
+        ? "Recent antibiotic history found. Check indication, adherence, and repeated antibiotic use."
+        : "Confirm allergy history, dose, duration, and completion counselling.",
+      why: "Triggered because an antibiotic-like medicine is in the basket.",
+    });
+  }
+  medicines.forEach((medicine) => {
+    const text = medicineSafetyText(medicine);
+    if (includesAny(text, highRiskTerms))
+      add({
+        id: `high-risk-${medicine.id}`,
+        tone: "danger",
+        title: "High-risk medicine review",
+        detail: `${medicine.brandName} may need dose confirmation, counselling, or monitoring context.`,
+        why: "Triggered by a high-risk medicine keyword in catalog fields.",
+      });
+    if (text.includes("metronidazole"))
+      add({
+        id: "metronidazole-alcohol",
+        tone: "info",
+        title: "Alcohol counselling",
+        detail: "Counsel patient to avoid alcohol during treatment and shortly after completion.",
+        why: "Triggered because metronidazole is in the basket.",
+      });
+    if (risk.pregnant && includesAny(text, ["warfarin", "doxycycline", "ciprofloxacin", "lisinopril", "losartan", "isotretinoin", "misoprostol"]))
+      add({
+        id: `pregnancy-${medicine.id}`,
+        tone: "danger",
+        title: "Pregnancy review recommended",
+        detail: `${medicine.brandName} requires pharmacist review against pregnancy context.`,
+        why: "Triggered because pregnancy was ticked and this medicine matches a pregnancy-caution keyword.",
+      });
+    if (risk.renalRisk && includesAny(text, ["metformin", "gentamicin", "ibuprofen", "diclofenac", "naproxen", "acyclovir", "lithium"]))
+      add({
+        id: `renal-${medicine.id}`,
+        tone: "warning",
+        title: "Renal-risk review",
+        detail: `${medicine.brandName} may need renal function or dose context.`,
+        why: "Triggered because renal risk was ticked and this medicine matches a renal-caution keyword.",
+      });
+    if (risk.liverRisk && includesAny(text, ["paracetamol", "isoniazid", "ketoconazole", "fluconazole", "methotrexate", "valproate"]))
+      add({
+        id: `liver-${medicine.id}`,
+        tone: "warning",
+        title: "Liver-risk review",
+        detail: `${medicine.brandName} may need liver disease, alcohol use, or dose context.`,
+        why: "Triggered because liver risk was ticked and this medicine matches a liver-caution keyword.",
+      });
+  });
+  if (risk.ageGroup === "child" || risk.ageGroup === "older_adult")
+    add({
+      id: `age-${risk.ageGroup}`,
+      tone: "info",
+      title: `${patientAgeGroupLabels[risk.ageGroup]} dose context`,
+      detail: "Confirm age/weight, dose, formulation, and counselling suitability.",
+      why: `Triggered because patient age group is marked as ${patientAgeGroupLabels[risk.ageGroup].toLowerCase()}.`,
+    });
+  return prompts.slice(0, 8);
 }
 
 function buildPatientProfiles(db: Database) {
@@ -7805,6 +7984,21 @@ function POSView({
   const [followUpMessage, setFollowUpMessage] = useState(
     currentDraft?.followUpMessage ?? "",
   );
+  const [patientInfoReliability, setPatientInfoReliability] =
+    useState<PatientInfoReliability>(
+      currentDraft?.patientInfoReliability ?? "patient_reported",
+    );
+  const [patientRiskContext, setPatientRiskContext] =
+    useState<PatientRiskContext>(
+      currentDraft?.patientRiskContext ?? { ageGroup: "adult" },
+    );
+  const [pharmacistReviewOutcome, setPharmacistReviewOutcome] =
+    useState<PharmacistReviewOutcome>(
+      currentDraft?.pharmacistReviewOutcome ?? "none",
+    );
+  const [pharmacistReviewNote, setPharmacistReviewNote] = useState(
+    currentDraft?.pharmacistReviewNote ?? "",
+  );
   const [selectedDraftId, setSelectedDraftId] = useState(
     currentDraft?.id ?? "",
   );
@@ -8020,6 +8214,29 @@ function POSView({
       (profile) => normalizePhone(profile.phone) === phone,
     );
   }, [customerPhone, patientProfiles]);
+  const safetyReviewMedicines = useMemo(
+    () =>
+      cart
+        .filter((item) => item.itemType === "medicine")
+        .map((item) => db.medicines.find((medicine) => medicine.id === item.itemId))
+        .filter((medicine): medicine is Medicine => Boolean(medicine)),
+    [cart, db.medicines],
+  );
+  const safetyReviewPrompts = useMemo(
+    () =>
+      buildPharmacistSafetyReview(
+        safetyReviewMedicines,
+        selectedPatient?.sales ?? [],
+        patientRiskContext,
+        patientInfoReliability,
+      ),
+    [
+      patientInfoReliability,
+      patientRiskContext,
+      safetyReviewMedicines,
+      selectedPatient?.sales,
+    ],
+  );
   const nameMatches = useMemo(() => {
     const queryText = customerName.trim().toLowerCase();
     if (queryText.length < 2) return [];
@@ -8244,10 +8461,17 @@ function POSView({
       draftId: selectedDraftId,
       customerName,
       customerPhone,
+      patientInfoReliability,
+      patientRiskContext,
       paymentMethod,
       discount: safeDiscount,
       note,
       followUpMessage: followUpMessage.trim() || suggestedFollowUpMessage,
+      pharmacistReviewOutcome,
+      pharmacistReviewNote,
+      safetyReviewSummary: safetyReviewPrompts.map(
+        (prompt) => `${prompt.title}: ${prompt.detail} Why: ${prompt.why}`,
+      ),
       items: cart.map((item) => ({
         itemType: item.itemType,
         itemId: item.itemId,
@@ -8302,6 +8526,10 @@ function POSView({
     setCashPaid(0);
     setNote("");
     setFollowUpMessage("");
+    setPatientInfoReliability("patient_reported");
+    setPatientRiskContext({ ageGroup: "adult" });
+    setPharmacistReviewOutcome("none");
+    setPharmacistReviewNote("");
     setScan("");
     setSelectedDraftId("");
   }
@@ -8341,6 +8569,12 @@ function POSView({
     setCashPaid(0);
     setNote(draft.note);
     setFollowUpMessage(draft.followUpMessage ?? "");
+    setPatientInfoReliability(
+      draft.patientInfoReliability ?? "patient_reported",
+    );
+    setPatientRiskContext(draft.patientRiskContext ?? { ageGroup: "adult" });
+    setPharmacistReviewOutcome(draft.pharmacistReviewOutcome ?? "none");
+    setPharmacistReviewNote(draft.pharmacistReviewNote ?? "");
     setDraftsOpen(false);
     flash(`Draft ${draft.bookingCode} loaded`);
   }
@@ -8972,6 +9206,138 @@ function POSView({
                   </span>
                 </button>
               )}
+              <section className="pharmacist-review-panel full">
+                <header>
+                  <div>
+                    <strong>Pharmacist Safety Review</strong>
+                    <span>
+                      Explainable prompts, not automatic blocks. Document what
+                      the pharmacist checked.
+                    </span>
+                  </div>
+                  <span className="pill warning">
+                    {safetyReviewPrompts.length} prompt
+                    {safetyReviewPrompts.length === 1 ? "" : "s"}
+                  </span>
+                </header>
+                <div className="review-context-grid">
+                  <label>
+                    Patient info
+                    <select
+                      value={patientInfoReliability}
+                      onChange={(event) =>
+                        setPatientInfoReliability(
+                          event.target.value as PatientInfoReliability,
+                        )
+                      }
+                      disabled={!canSell}
+                    >
+                      {Object.entries(patientInfoReliabilityLabels).map(
+                        ([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  </label>
+                  <label>
+                    Age context
+                    <select
+                      value={patientRiskContext.ageGroup ?? "adult"}
+                      onChange={(event) =>
+                        setPatientRiskContext((current) => ({
+                          ...current,
+                          ageGroup: event.target.value as PatientAgeGroup,
+                        }))
+                      }
+                      disabled={!canSell}
+                    >
+                      {Object.entries(patientAgeGroupLabels).map(
+                        ([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  </label>
+                  {[
+                    ["pregnant", "Pregnancy context"],
+                    ["renalRisk", "Renal risk"],
+                    ["liverRisk", "Liver risk"],
+                  ].map(([key, label]) => (
+                    <label className="checkbox-row" key={key}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(
+                          patientRiskContext[key as keyof PatientRiskContext],
+                        )}
+                        onChange={(event) =>
+                          setPatientRiskContext((current) => ({
+                            ...current,
+                            [key]: event.target.checked,
+                          }))
+                        }
+                        disabled={!canSell}
+                      />{" "}
+                      {label}
+                    </label>
+                  ))}
+                </div>
+                <div className="safety-prompt-list">
+                  {safetyReviewPrompts.length ? (
+                    safetyReviewPrompts.map((prompt) => (
+                      <article
+                        className={`safety-prompt is-${prompt.tone}`}
+                        key={prompt.id}
+                      >
+                        <strong>{prompt.title}</strong>
+                        <p>{prompt.detail}</p>
+                        <small>{prompt.why}</small>
+                      </article>
+                    ))
+                  ) : (
+                    <div className="empty-state">
+                      No safety prompts for this basket yet.
+                    </div>
+                  )}
+                </div>
+                <div className="review-context-grid">
+                  <label>
+                    Pharmacist action
+                    <select
+                      value={pharmacistReviewOutcome}
+                      onChange={(event) =>
+                        setPharmacistReviewOutcome(
+                          event.target.value as PharmacistReviewOutcome,
+                        )
+                      }
+                      disabled={!canSell}
+                    >
+                      {Object.entries(pharmacistReviewOutcomeLabels).map(
+                        ([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  </label>
+                  <label className="full">
+                    Review note or feedback
+                    <textarea
+                      value={pharmacistReviewNote}
+                      onChange={(event) =>
+                        setPharmacistReviewNote(event.target.value)
+                      }
+                      placeholder="Example: counselled patient, doctor contacted, system missed allergy context..."
+                      disabled={!canSell}
+                      rows={3}
+                    />
+                  </label>
+                </div>
+              </section>
               <div className="pos-payment-block">
                 <span>
                   <Wallet size={15} /> Payment method

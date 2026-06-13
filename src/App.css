@@ -2155,6 +2155,84 @@ td strong {
   color: #d28a00;
 }
 
+.pharmacist-review-panel {
+  background: #f8fbfb;
+  border: 1px solid #d7e4e3;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.pharmacist-review-panel header,
+.review-context-grid {
+  align-items: start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.pharmacist-review-panel header {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.pharmacist-review-panel header span,
+.safety-prompt small {
+  color: #60727a;
+  font-size: 12px;
+}
+
+.review-context-grid label {
+  color: #435056;
+  display: grid;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 5px;
+}
+
+.review-context-grid label.full {
+  grid-column: 1 / -1;
+}
+
+.review-context-grid select,
+.review-context-grid textarea {
+  border: 1px solid #d5e1e0;
+  border-radius: 8px;
+  font: inherit;
+  min-height: 38px;
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.safety-prompt-list {
+  display: grid;
+  gap: 8px;
+}
+
+.safety-prompt {
+  background: #ffffff;
+  border: 1px solid #dfe9e8;
+  border-left: 4px solid #5b8def;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+}
+
+.safety-prompt.is-warning {
+  border-left-color: #d28a00;
+}
+
+.safety-prompt.is-danger {
+  border-left-color: #f43f4f;
+}
+
+.safety-prompt p {
+  color: #435056;
+  font-size: 13px;
+  margin: 0;
+}
+
 .pos-branch-options {
   border-top: 1px solid #dce6e7;
   display: grid;
@@ -5133,6 +5211,8 @@ button:disabled {
   .pos-period-filter,
   .pos-sales-summary,
   .pos-care-fields,
+  .pharmacist-review-panel header,
+  .review-context-grid,
   .patients-layout,
   .patient-profile-grid,
   .patient-profile-edit,

@@ -146,6 +146,21 @@ assertPresent(
   /The assistant should not diagnose, prescribe, or autonomously block dispensing/,
   "RxLedger clinical safety guidance should keep pharmacists in control.",
 );
+assertPresent(
+  app,
+  /Pharmacist Safety Review/,
+  "RxLedger should expose explainable pharmacist safety review prompts inside POS.",
+);
+assertPresent(
+  app,
+  /buildPharmacistSafetyReview[\s\S]*why:/,
+  "RxLedger safety prompts should explain why they appeared.",
+);
+assertPresent(
+  action,
+  /pharmacistReviewOutcome[\s\S]*safetyReviewSummary/,
+  "RxLedger should persist pharmacist review outcome and prompt summary.",
+);
 
 for (const source of [app, action, shared, types]) {
   assertAbsent(

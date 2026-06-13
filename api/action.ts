@@ -187,6 +187,49 @@ function normalizePatientPhone(value: string) {
   return value.replace(/\D/g, "");
 }
 
+function normalizePatientRiskContext(
+  value: unknown,
+): NonNullable<Sale["patientRiskContext"]> {
+  const input = (value ?? {}) as Record<string, unknown>;
+  const ageGroup: NonNullable<Sale["patientRiskContext"]>["ageGroup"] =
+    input.ageGroup === "child" ||
+    input.ageGroup === "older_adult" ||
+    input.ageGroup === "adult"
+      ? input.ageGroup
+      : undefined;
+  return {
+    ageGroup,
+    pregnant: Boolean(input.pregnant),
+    renalRisk: Boolean(input.renalRisk),
+    liverRisk: Boolean(input.liverRisk),
+    notes: optionalString(input.notes) || undefined,
+  };
+}
+
+function normalizePatientInfoReliability(value: unknown) {
+  return value === "confirmed_today" ||
+    value === "previous_record" ||
+    value === "incomplete"
+    ? value
+    : "patient_reported";
+}
+
+function normalizePharmacistReviewOutcome(value: unknown) {
+  return value === "counselled" ||
+    value === "doctor_contacted" ||
+    value === "changed_recommendation" ||
+    value === "system_missed" ||
+    value === "dismissed"
+    ? value
+    : "none";
+}
+
+function normalizeSafetyReviewSummary(value: unknown) {
+  return Array.isArray(value)
+    ? value.map((item) => optionalString(item)).filter(Boolean).slice(0, 8)
+    : [];
+}
+
 function normalizeSubscriptionPlanId(
   value: unknown,
   fallback: SubscriptionPlanId,
@@ -2048,6 +2091,12 @@ function savePosDraft(
       optionalString(payload?.customerName) || existing?.customerName || "",
     customerPhone:
       optionalString(payload?.customerPhone) || existing?.customerPhone || "",
+    patientInfoReliability: normalizePatientInfoReliability(
+      payload?.patientInfoReliability || existing?.patientInfoReliability,
+    ),
+    patientRiskContext: normalizePatientRiskContext(
+      payload?.patientRiskContext || existing?.patientRiskContext,
+    ),
     paymentMethod: (optionalString(payload?.paymentMethod) ||
       existing?.paymentMethod ||
       "cash") as Sale["paymentMethod"],
@@ -2057,6 +2106,16 @@ function savePosDraft(
       optionalString(payload?.followUpMessage) ||
       existing?.followUpMessage ||
       "",
+    pharmacistReviewOutcome: normalizePharmacistReviewOutcome(
+      payload?.pharmacistReviewOutcome || existing?.pharmacistReviewOutcome,
+    ),
+    pharmacistReviewNote:
+      optionalString(payload?.pharmacistReviewNote) ||
+      existing?.pharmacistReviewNote ||
+      "",
+    safetyReviewSummary: normalizeSafetyReviewSummary(
+      payload?.safetyReviewSummary || existing?.safetyReviewSummary,
+    ),
     items,
     createdAt: existing?.createdAt || now,
     updatedAt: now,
@@ -2270,6 +2329,12 @@ function recordSale(
       optionalString(payload?.customerName) || draft?.customerName || "",
     customerPhone:
       optionalString(payload?.customerPhone) || draft?.customerPhone || "",
+    patientInfoReliability: normalizePatientInfoReliability(
+      payload?.patientInfoReliability || draft?.patientInfoReliability,
+    ),
+    patientRiskContext: normalizePatientRiskContext(
+      payload?.patientRiskContext || draft?.patientRiskContext,
+    ),
     paymentMethod: (optionalString(payload?.paymentMethod) ||
       draft?.paymentMethod ||
       "cash") as Sale["paymentMethod"],
@@ -2277,6 +2342,16 @@ function recordSale(
     note: optionalString(payload?.note) || draft?.note || "",
     followUpMessage:
       optionalString(payload?.followUpMessage) || draft?.followUpMessage || "",
+    pharmacistReviewOutcome: normalizePharmacistReviewOutcome(
+      payload?.pharmacistReviewOutcome || draft?.pharmacistReviewOutcome,
+    ),
+    pharmacistReviewNote:
+      optionalString(payload?.pharmacistReviewNote) ||
+      draft?.pharmacistReviewNote ||
+      "",
+    safetyReviewSummary: normalizeSafetyReviewSummary(
+      payload?.safetyReviewSummary || draft?.safetyReviewSummary,
+    ),
     soldAt: nowIso(),
     subtotal,
     discount,
