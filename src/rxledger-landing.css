@@ -268,66 +268,6 @@ html {
   }
 }
 
-/* Clinical Frosted Enterprise landing layer. */
-.rxledger-landing {
-  padding-top: 64px;
-}
-
-.rxledger-landing header.sticky {
-  background:
-    linear-gradient(135deg, oklch(0.995 0.003 150 / 84%), oklch(0.96 0.04 180 / 66%));
-  border-bottom: 1px solid oklch(0.92 0.01 200 / 72%);
-  box-shadow: 0 16px 44px rgb(15 23 42 / 8%);
-  position: fixed;
-  top: 0;
-  width: 100%;
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
-  backdrop-filter: blur(20px) saturate(150%);
-}
-
-.rxledger-landing .rounded-xl.border,
-.rxledger-landing .rounded-2xl.border,
-.rxledger-landing .rounded-3xl.border,
-.rxledger-landing .landing-testimonial-panel {
-  background:
-    linear-gradient(145deg, oklch(1 0 0 / 82%), oklch(0.96 0.04 180 / 48%)),
-    oklch(1 0 0 / 72%);
-  border-color: oklch(1 0 0 / 68%);
-  box-shadow:
-    0 24px 70px rgb(15 23 42 / 10%),
-    inset 0 1px 0 rgb(255 255 255 / 76%);
-  -webkit-backdrop-filter: blur(16px) saturate(145%);
-  backdrop-filter: blur(16px) saturate(145%);
-}
-
-.rxledger-landing .shadow-2xl {
-  box-shadow:
-    0 34px 90px rgb(15 23 42 / 16%),
-    inset 0 1px 0 rgb(255 255 255 / 72%);
-}
-
-.rxledger-landing .bg-surface\/60,
-.rxledger-landing .bg-card\/60 {
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
-}
-
-.rxledger-landing .bg-brand {
-  box-shadow:
-    0 14px 34px oklch(0.42 0.12 165 / 24%),
-    inset 0 1px 0 rgb(255 255 255 / 24%);
-}
-
-@media (max-width: 760px) {
-  .rxledger-landing {
-    padding-top: 64px;
-  }
-
-  .rxledger-landing header.sticky {
-    position: fixed;
-  }
-}
-
 @media (prefers-reduced-motion: no-preference) {
   .rxledger-landing .landing-video-caption,
   .rxledger-landing .landing-video-kicker,
