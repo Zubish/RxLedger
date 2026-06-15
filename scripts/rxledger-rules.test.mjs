@@ -182,8 +182,13 @@ for (const source of [app, action, shared, types]) {
 
 assertPresent(
   app,
-  /ContinuityCentre[\s\S]*Action queue, not alert flood/,
-  "RxLedger should keep Continuity Centre as a calm action queue.",
+  /ContinuityCentre[\s\S]*Patient-linked follow-up for unavailable medicines/,
+  "RxLedger should keep Continuity Centre as the patient-linked action queue.",
+);
+assertAbsent(
+  app,
+  /Action queue, not alert flood[\s\S]*Smarter alerts: grouped and actionable/,
+  "RxLedger should not show the removed Continuity Centre principle cards.",
 );
 assertPresent(
   shared,
@@ -194,6 +199,11 @@ assertPresent(
   action,
   /createContinuityRequest[\s\S]*updateContinuityRequest[\s\S]*Matched continuity request to available stock/s,
   "RxLedger should support auditable continuity creation, updates, and stock matching.",
+);
+assertPresent(
+  app,
+  /receivedStock[\s\S]*ReceivedStockModal[\s\S]*Close notification/s,
+  "RxLedger received-medication notifications should open a received-items modal before dismissal.",
 );
 assertPresent(
   action,

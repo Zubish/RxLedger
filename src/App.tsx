@@ -578,6 +578,24 @@ type AppNotification = {
   audience?: "branch" | "super-admin";
   requiredPermission?: "manage-branch";
   createdAt?: string;
+  receivedStock?: ReceivedStockNotification;
+};
+
+type ReceivedStockNotification = {
+  type: "receipt" | "requisition";
+  sourceLabel: string;
+  destinationLabel: string;
+  receivedBy: string;
+  receivedAt: string;
+  items: Array<{
+    id: string;
+    name: string;
+    meta: string;
+    quantity: number;
+    unit: string;
+    batchNumber?: string;
+    expiryDate?: string;
+  }>;
 };
 
 const views: Array<{
@@ -1964,6 +1982,25 @@ function receivedReceiptNotification(
     detail: `${summary}. ${supplier ? `Source: ${supplier.name}. ` : ""}Received by ${receiver} on ${new Date(receipt.receivedAt).toLocaleString()}.`,
     view: "receive",
     createdAt: receipt.receivedAt,
+    receivedStock: {
+      type: "receipt",
+      sourceLabel: supplier?.name ?? "Supplier",
+      destinationLabel: branchName,
+      receivedBy: receiver,
+      receivedAt: receipt.receivedAt,
+      items: medicineItems.map((item) => {
+        const medicine = db.medicines.find((entry) => entry.id === item.medicineId);
+        return {
+          id: item.batchId || `${receipt.id}-${item.medicineId}`,
+          name: medicine ? medicineOptionLabel(medicine) : "Medicine",
+          meta: medicine ? medicineMeta(medicine) : "",
+          quantity: item.quantity,
+          unit: medicine ? medicineSellableUnit(medicine) : "units",
+          batchNumber: item.batchNumber,
+          expiryDate: item.expiryDate,
+        };
+      }),
+    },
   };
 }
 
@@ -1999,6 +2036,28 @@ function receivedRequisitionNotification(
     detail: `${summary}${extraCount > 0 ? `, +${extraCount} more` : ""}. Originating branch: ${source}. Received by ${getUserName(db, request.receivedBy)} on ${new Date(request.receivedAt).toLocaleString()}.`,
     view: "medicines",
     createdAt: request.receivedAt,
+    receivedStock: {
+      type: "requisition",
+      sourceLabel: source,
+      destinationLabel: destination,
+      receivedBy: getUserName(db, request.receivedBy),
+      receivedAt: request.receivedAt,
+      items: request.items
+        .filter((item) => (item.receivedQuantity ?? 0) > 0)
+        .map((item) => {
+          const medicine = db.medicines.find((entry) => entry.id === item.medicineId);
+          const batch = db.batches.find((entry) => entry.id === item.destinationBatchId || entry.id === item.batchId);
+          return {
+            id: item.id,
+            name: medicine ? medicineOptionLabel(medicine) : "Medicine",
+            meta: medicine ? medicineMeta(medicine) : "",
+            quantity: item.receivedQuantity ?? 0,
+            unit: medicine ? medicineSellableUnit(medicine) : "units",
+            batchNumber: batch?.batchNumber,
+            expiryDate: batch?.expiryDate,
+          };
+        }),
+    },
   };
 }
 
@@ -2530,6 +2589,8 @@ function App() {
     const dismissed = new Set(dismissedNotificationIds);
     return rawNotifications.filter((notification) => !dismissed.has(notification.id));
   }, [dismissedNotificationIds, rawNotifications]);
+  const [receivedStockNotification, setReceivedStockNotification] =
+    useState<AppNotification | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -2775,16 +2836,31 @@ function App() {
     }
   }
 
-  function openNotification(notification: AppNotification) {
+  function dismissNotification(notificationId: string) {
     if (notificationDismissedKey && typeof window !== "undefined") {
       setDismissedNotificationsByKey((currentByKey) => {
         const current = currentByKey[notificationDismissedKey] ?? dismissedNotificationIds;
-        const next = Array.from(new Set([...current, notification.id])).slice(-80);
+        const next = Array.from(new Set([...current, notificationId])).slice(-80);
         window.localStorage.setItem(notificationDismissedKey, JSON.stringify(next));
         return { ...currentByKey, [notificationDismissedKey]: next };
       });
     }
+  }
+
+  function openNotification(notification: AppNotification) {
+    if (notification.receivedStock) {
+      setReceivedStockNotification(notification);
+      return;
+    }
+    dismissNotification(notification.id);
     navigate(notification.view);
+  }
+
+  function closeReceivedStockNotification() {
+    if (receivedStockNotification) {
+      dismissNotification(receivedStockNotification.id);
+    }
+    setReceivedStockNotification(null);
   }
 
   function switchActiveBranch(branchId: string) {
@@ -3355,6 +3431,12 @@ function App() {
           activeBranchId={activeBranch?.id}
           setActiveView={setActiveView}
         />
+        {receivedStockNotification?.receivedStock && (
+          <ReceivedStockModal
+            notification={receivedStockNotification}
+            onClose={closeReceivedStockNotification}
+          />
+        )}
       </main>
     </div>
   );
@@ -9604,12 +9686,6 @@ function ContinuityCentre({
               while pharmacists keep the context.
             </p>
           </div>
-          <span className="pill active">Action queue, not alert flood</span>
-        </div>
-        <div className="continuity-principles">
-          <span>Smarter alerts: grouped and actionable.</span>
-          <span>Context first: patient, medicine, branch, timing.</span>
-          <span>Pharmacist led: review, contact, resolve, audit.</span>
         </div>
       </section>
 
@@ -11687,6 +11763,85 @@ function NotificationsView({
         )}
       </div>
     </section>
+  );
+}
+
+function ReceivedStockModal({
+  notification,
+  onClose,
+}: {
+  notification: AppNotification;
+  onClose: () => void;
+}) {
+  const received = notification.receivedStock;
+  if (!received) return null;
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true">
+      <section className="modal-panel wide received-stock-modal">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">
+              {received.type === "requisition"
+                ? "Branch transfer received"
+                : "Stock received"}
+            </span>
+            <h2>{notification.title}</h2>
+            <p>{notification.detail}</p>
+          </div>
+          <button
+            className="ghost-button icon-button"
+            type="button"
+            onClick={onClose}
+            aria-label="Close received items"
+            title="Close"
+          >
+            <X size={17} />
+          </button>
+        </div>
+        <div className="received-stock-summary">
+          <span>
+            From <strong>{received.sourceLabel}</strong>
+          </span>
+          <span>
+            To <strong>{received.destinationLabel}</strong>
+          </span>
+          <span>
+            Received by <strong>{received.receivedBy}</strong>
+          </span>
+          <span>{new Date(received.receivedAt).toLocaleString()}</span>
+        </div>
+        <div className="received-stock-list">
+          {received.items.map((item) => (
+            <article className="line-card" key={item.id}>
+              <div>
+                <strong>{item.name}</strong>
+                <span>{item.meta || "Medication"}</span>
+                {(item.batchNumber || item.expiryDate) && (
+                  <small>
+                    {[
+                      item.batchNumber ? `Batch ${item.batchNumber}` : "",
+                      item.expiryDate
+                        ? `Expiry ${new Date(item.expiryDate).toLocaleDateString()}`
+                        : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" / ")}
+                  </small>
+                )}
+              </div>
+              <b>
+                {number.format(item.quantity)} {item.unit}
+              </b>
+            </article>
+          ))}
+        </div>
+        <div className="form-actions">
+          <button className="primary-button" type="button" onClick={onClose}>
+            Close notification
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
 

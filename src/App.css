@@ -3017,22 +3017,6 @@ td strong {
   background: linear-gradient(145deg, #f8fbfb, #ffffff 72%);
 }
 
-.continuity-principles {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.continuity-principles span {
-  background: #ffffff;
-  border: 1px solid #d7e4e3;
-  border-radius: 8px;
-  color: #435056;
-  font-size: 13px;
-  font-weight: 700;
-  padding: 10px;
-}
-
 .segmented-control,
 .continuity-filter-row {
   align-items: center;
@@ -3934,6 +3918,54 @@ button:disabled {
 
 .modal-panel.wide {
   width: min(980px, 100%);
+}
+
+.received-stock-modal {
+  display: grid;
+  gap: 14px;
+}
+
+.received-stock-summary {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.received-stock-summary span {
+  background: #f7fbfb;
+  border: 1px solid #dfe7e8;
+  border-radius: 8px;
+  color: #52636c;
+  font-size: 13px;
+  padding: 10px 12px;
+}
+
+.received-stock-summary strong {
+  color: #182126;
+}
+
+.received-stock-list {
+  display: grid;
+  gap: 10px;
+}
+
+.received-stock-list .line-card {
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.received-stock-list .line-card span,
+.received-stock-list .line-card small {
+  color: #52636c;
+  display: block;
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.received-stock-list .line-card b {
+  color: #006b45;
+  font-size: 14px;
+  text-align: right;
 }
 
 .cart-layout {
@@ -4986,7 +5018,6 @@ button:disabled {
   .patient-profile-grid,
   .patient-profile-edit,
   .continuity-meta-grid,
-  .continuity-principles,
   .patient-reminder-list article,
   .patient-care-queue,
   .pricing-settings-grid,
