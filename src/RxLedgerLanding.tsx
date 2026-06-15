@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   ArrowRight,
   ShieldCheck,
@@ -38,7 +38,8 @@ export default function RxLedgerLanding({
   return (
     <div className="rxledger-landing min-h-screen bg-background font-sans text-ink antialiased">
       <Nav onCreateWorkspace={onCreateWorkspace} onSignIn={onSignIn} />
-      <ProductVideoIntro />
+      {/* ProductVideoIntro is paused until a real recorded product walkthrough is ready. */}
+      {/* <ProductVideoIntro /> */}
       <Hero onCreateWorkspace={onCreateWorkspace} />
       <TrustStrip />
       <FeatureBento />
@@ -113,6 +114,7 @@ function Logo() {
 }
 
 /* ---------------- Hero ---------------- */
+/* Product video implementation paused until a real screen recording is ready.
 type ProductVideoScene = {
   title: string;
   caption: string;
@@ -971,6 +973,79 @@ function roundRect(
 ) {
   context.beginPath();
   context.roundRect(x, y, width, height, radius);
+}
+
+
+*/
+
+function Hero({ onCreateWorkspace }: { onCreateWorkspace: () => void }) {
+  return (
+    <section id="hero" className="relative overflow-hidden">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10"
+        style={{
+          background:
+            "radial-gradient(900px 500px at 15% -10%, color-mix(in oklab, var(--brand) 14%, transparent), transparent 60%), radial-gradient(700px 400px at 95% 10%, color-mix(in oklab, var(--accent-2) 10%, transparent), transparent 60%)",
+        }}
+      />
+      <div className="landing-container grid min-w-0 items-center gap-14 pt-16 pb-20 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.08fr)] lg:gap-16 lg:pt-24 lg:pb-28 2xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.15fr)] 2xl:gap-24">
+        <div className="w-[calc(100vw-2rem)] min-w-0 justify-self-start text-left lg:w-auto lg:justify-self-auto">
+          <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1 text-xs font-medium text-ink-soft shadow-sm backdrop-blur">
+            <Sparkles className="size-3.5 text-brand" />
+            <span className="hidden sm:inline">
+              Free 30-day trial - no card required
+            </span>
+            <span className="sm:hidden">30-day trial - no card</span>
+            <span className="mx-1 hidden h-3 w-px bg-border sm:block" />
+            <span className="text-brand">Try workspace -&gt;</span>
+          </div>
+          <h1 className="mt-6 max-w-[calc(100vw-2rem)] text-left font-display text-[26px] font-extrabold leading-[1.05] tracking-tight text-ink min-[380px]:text-[28px] sm:text-5xl lg:max-w-4xl lg:text-[56px] 2xl:text-[62px]">
+            <span className="block 2xl:whitespace-nowrap">
+              Pharmacy Operations
+            </span>
+            <span className="block text-brand">audited by default.</span>
+          </h1>
+          <p className="mt-5 max-w-[17rem] text-base leading-relaxed text-ink-soft min-[380px]:max-w-[18rem] sm:max-w-2xl sm:text-lg 2xl:text-xl">
+            RxLedger is the multi-tenant workspace for community pharmacies,
+            hospital dispensaries, and multi-branch retailers - FEFO inventory,
+            POS checkout, role-based access, and clean day-end reconciliation in
+            one calm system.
+          </p>
+          <div className="mt-8 flex flex-col items-stretch justify-start gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+            <button
+              className="group inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-brand px-5 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:bg-brand/90 sm:w-auto"
+              type="button"
+              onClick={onCreateWorkspace}
+            >
+              Start free 30-day trial
+              <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+            </button>
+            <button
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-border bg-card px-5 text-sm font-semibold text-ink shadow-sm transition-colors hover:bg-surface sm:w-auto"
+              type="button"
+            >
+              Book a 20-min demo
+            </button>
+          </div>
+          <ul className="mt-6 flex max-w-[17rem] flex-col items-start justify-start gap-x-5 gap-y-2 text-xs text-ink-soft min-[380px]:max-w-[18rem] sm:max-w-none sm:flex-row sm:flex-wrap">
+            <li className="inline-flex items-center gap-1.5">
+              <CheckCircle2 className="size-3.5 text-brand" /> No card to start
+            </li>
+            <li className="inline-flex items-center gap-1.5">
+              <CheckCircle2 className="size-3.5 text-brand" /> Setup in under 15
+              minutes
+            </li>
+            <li className="inline-flex items-center gap-1.5">
+              <CheckCircle2 className="size-3.5 text-brand" /> Cancel anytime
+            </li>
+          </ul>
+        </div>
+
+        <DashboardPreview />
+      </div>
+    </section>
+  );
 }
 
 /* ---------------- Dashboard Preview (software preview, merged from v1+v2+v3) ---------------- */
