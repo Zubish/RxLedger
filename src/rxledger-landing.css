@@ -78,35 +78,6 @@ html {
   scroll-behavior: smooth;
 }
 
-.rxledger-landing header.sticky {
-  background: linear-gradient(180deg, rgb(2 11 15 / 78%), rgb(2 11 15 / 28%));
-  border-bottom-color: rgb(255 255 255 / 10%);
-  box-shadow: none;
-  color: #ffffff;
-  inset: 0 0 auto;
-  position: fixed;
-}
-
-.rxledger-landing header.sticky a,
-.rxledger-landing header.sticky button {
-  color: rgb(255 255 255 / 78%);
-}
-
-.rxledger-landing header.sticky a:hover,
-.rxledger-landing header.sticky button:hover {
-  color: #ffffff;
-}
-
-.rxledger-landing header.sticky button.bg-brand {
-  background: #ffffff;
-  color: var(--ink);
-}
-
-.rxledger-landing header.sticky button.bg-brand:hover {
-  background: #ecfeff;
-  color: var(--ink);
-}
-
 .rxledger-landing .landing-video-hero {
   background: #041216;
   color: #ffffff;
@@ -193,22 +164,13 @@ html {
 }
 
 .rxledger-landing .landing-video-copy {
-  align-content: end;
+  align-items: end;
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(18rem, 0.55fr);
-  gap: clamp(1.5rem, 4vw, 4rem);
+  grid-template-columns: minmax(18rem, 31rem) 1fr auto;
+  gap: clamp(1rem, 3vw, 2rem);
   inset: auto clamp(1rem, 5vw, 5rem) clamp(1rem, 5vw, 4rem);
   position: absolute;
   z-index: 3;
-}
-
-.rxledger-landing .landing-video-headline {
-  max-width: 62rem;
-}
-
-.rxledger-landing .landing-video-headline h1 {
-  font-size: clamp(2.45rem, 6vw, 4rem);
-  text-wrap: balance;
 }
 
 .rxledger-landing .landing-video-caption {
@@ -217,8 +179,6 @@ html {
   border: 1px solid rgb(255 255 255 / 18%);
   border-radius: 22px;
   box-shadow: 0 26px 80px rgb(0 0 0 / 26%);
-  grid-column: 2;
-  grid-row: 1 / span 4;
   max-width: 31rem;
   padding: clamp(1rem, 2vw, 1.4rem);
   backdrop-filter: blur(18px);
@@ -254,31 +214,11 @@ html {
 }
 
 .rxledger-landing .landing-video-actions {
+  align-self: end;
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
-  margin-top: clamp(1.2rem, 3vw, 2rem);
-}
-
-.rxledger-landing .landing-video-proof {
-  color: rgb(255 255 255 / 72%);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.7rem 1rem;
-  list-style: none;
-  margin: 1rem 0 0;
-  padding: 0;
-}
-
-.rxledger-landing .landing-video-proof li {
-  align-items: center;
-  display: inline-flex;
-  gap: 0.4rem;
-  font-size: 0.78rem;
-}
-
-.rxledger-landing .landing-video-proof svg {
-  color: #67e8f9;
+  justify-content: flex-end;
 }
 
 .rxledger-landing .landing-scroll-cue {
@@ -291,7 +231,6 @@ html {
   gap: 0.7rem;
   justify-self: start;
   letter-spacing: 0.12em;
-  margin-top: 1.4rem;
   text-transform: uppercase;
 }
 
@@ -331,22 +270,17 @@ html {
 
 @media (prefers-reduced-motion: no-preference) {
   .rxledger-landing .landing-video-caption,
-  .rxledger-landing .landing-video-headline,
-  .rxledger-landing .landing-video-actions,
-  .rxledger-landing .landing-video-proof {
+  .rxledger-landing .landing-video-kicker,
+  .rxledger-landing .landing-video-actions {
     animation: landing-hero-enter 760ms ease-out both;
   }
 
-  .rxledger-landing .landing-video-headline {
+  .rxledger-landing .landing-video-kicker {
     animation-delay: 120ms;
   }
 
   .rxledger-landing .landing-video-actions {
     animation-delay: 210ms;
-  }
-
-  .rxledger-landing .landing-video-proof {
-    animation-delay: 300ms;
   }
 
   .rxledger-landing section:not(.landing-video-hero) {
@@ -386,41 +320,18 @@ html {
   }
 
   .rxledger-landing .landing-video-caption {
-    grid-column: 1;
-    grid-row: auto;
     max-width: none;
     order: -1;
-  }
-
-  .rxledger-landing .landing-video-headline h1 {
-    font-size: clamp(2rem, 8.4vw, 2.55rem);
   }
 }
 
 @media (max-width: 640px) {
-  .rxledger-landing header.sticky {
-    background: rgb(2 11 15 / 78%);
-  }
-
-  .rxledger-landing header.sticky .landing-container {
-    width: min(100% - 1rem, 80rem);
-  }
-
-  .rxledger-landing header.sticky button.bg-brand {
-    min-width: 2.75rem;
-    padding-inline: 0.72rem;
-  }
-
   .rxledger-landing .landing-video-copy {
     inset: auto 1rem 1rem;
   }
 
   .rxledger-landing .landing-video-caption {
     display: none;
-  }
-
-  .rxledger-landing .landing-video-headline p {
-    font-size: 0.95rem;
   }
 
   .rxledger-landing .landing-video-actions {
