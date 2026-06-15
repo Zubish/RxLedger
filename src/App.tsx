@@ -3779,6 +3779,21 @@ function AuthScreen({
           </button>
         )}
 
+        <div className="auth-product-proof" aria-label="RxLedger product strengths">
+          <div>
+            <strong>Continuity memory</strong>
+            <span>Pending medicines, follow-up, and branch context stay visible.</span>
+          </div>
+          <div>
+            <strong>Protected stock logic</strong>
+            <span>FEFO, pricing, roles, and audit trails remain system-led.</span>
+          </div>
+          <div>
+            <strong>Pharmacist review</strong>
+            <span>Safety prompts support judgement without replacing it.</span>
+          </div>
+        </div>
+
         {activeMode !== "setup" && (
           <div className="tabs auth-tabs">
             <button

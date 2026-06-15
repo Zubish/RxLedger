@@ -5516,3 +5516,438 @@ button:disabled {
     font-size: 11px;
   }
 }
+
+/* UI/UX Pro Max modernization layer: presentation-only, no business logic changes. */
+:root {
+  --rx-purple: #0891b2;
+  --rx-purple-deep: #0f766e;
+  --rx-cyan: #06b6d4;
+  --rx-cyan-soft: #ecfeff;
+  --rx-green: #059669;
+  --rx-green-deep: #047857;
+  --rx-pos-green: #047857;
+  --rx-pos-ink: #071114;
+  --rx-pos-surface: #f8fafc;
+  --rx-amber: #d97706;
+  --rx-ink: #0f172a;
+  --rx-muted: #52636c;
+  --rx-surface: #f8fafc;
+  --rx-border: #dbe7ea;
+  --rx-focus-ring: rgba(8, 145, 178, 0.26);
+  --rx-shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.08);
+  --rx-shadow-card: 0 10px 26px rgba(15, 23, 42, 0.055);
+}
+
+.app-shell {
+  background:
+    radial-gradient(circle at 8% 4%, rgba(8, 145, 178, 0.11), transparent 28%),
+    radial-gradient(circle at 96% 0%, rgba(5, 150, 105, 0.08), transparent 26%),
+    linear-gradient(180deg, #f8fbfc 0%, #eef6f7 100%);
+  color: var(--rx-ink);
+}
+
+.sidebar {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), transparent 38%),
+    #08181d;
+  border-right: 1px solid rgba(219, 231, 234, 0.12);
+  box-shadow: 18px 0 44px rgba(15, 23, 42, 0.14);
+}
+
+.brand-block,
+.user-panel,
+.sidebar-security-button {
+  border-color: rgba(196, 219, 223, 0.22);
+}
+
+.brand-mark,
+.rxledger-logo {
+  border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(8, 145, 178, 0.18);
+}
+
+.nav-list {
+  gap: 7px;
+}
+
+.nav-item {
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: #d7e8e9;
+  min-height: 44px;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 120ms ease;
+}
+
+.nav-item:hover {
+  background: rgba(236, 254, 255, 0.075);
+  border-color: rgba(125, 211, 252, 0.18);
+  transform: translateX(2px);
+}
+
+.nav-item.active {
+  background:
+    linear-gradient(90deg, rgba(5, 150, 105, 0.28), rgba(8, 145, 178, 0.2));
+  border-color: rgba(103, 232, 249, 0.28);
+  box-shadow: inset 3px 0 0 #67e8f9;
+  color: #ffffff;
+}
+
+.workspace {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.66), transparent 280px),
+    transparent;
+}
+
+.topbar {
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(219, 231, 234, 0.86);
+  border-radius: 18px;
+  box-shadow: var(--rx-shadow-card);
+  margin-bottom: 18px;
+  position: sticky;
+  top: 14px;
+  z-index: 30;
+  backdrop-filter: blur(16px);
+}
+
+.topbar h1,
+.login-panel h1,
+.section-heading h2 {
+  color: var(--rx-ink);
+  letter-spacing: -0.025em;
+}
+
+.eyebrow,
+.topbar .eyebrow {
+  color: var(--rx-green-deep);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.page-grid {
+  gap: 20px;
+}
+
+.metric-grid {
+  grid-template-columns: repeat(auto-fit, minmax(172px, 1fr));
+  gap: 14px;
+}
+
+.metric {
+  border-radius: 16px;
+  border-color: rgba(219, 231, 234, 0.92);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98)),
+    radial-gradient(circle at 100% 0%, rgba(8, 145, 178, 0.1), transparent 34%);
+  box-shadow: var(--rx-shadow-card);
+  min-height: 112px;
+  padding: 18px;
+  position: relative;
+  overflow: hidden;
+}
+
+.metric::after {
+  background: linear-gradient(180deg, rgba(8, 145, 178, 0.16), rgba(5, 150, 105, 0.02));
+  border-radius: 999px;
+  content: "";
+  height: 58px;
+  position: absolute;
+  right: -18px;
+  top: -18px;
+  width: 58px;
+}
+
+.metric svg {
+  background: #ecfeff;
+  border-radius: 10px;
+  color: var(--rx-green-deep);
+  padding: 7px;
+  width: 36px;
+  height: 36px;
+}
+
+.metric span {
+  color: #52636c;
+  font-weight: 700;
+}
+
+.metric strong {
+  color: var(--rx-ink);
+  font-size: clamp(22px, 2.1vw, 30px);
+}
+
+.content-section,
+.modal-panel,
+.login-panel,
+.branch-loading-panel,
+.workspace-finder,
+.workspace-confirmation,
+.patient-profile-panel,
+.patient-timeline,
+.patient-message-list,
+.patient-reminder-list,
+.patient-care-queue,
+.pos-sale-cart,
+.pos-customer-panel,
+.pos-total-panel,
+.pos-catalog-panel,
+.pharmacist-review-panel {
+  border-color: rgba(219, 231, 234, 0.92);
+  border-radius: 16px;
+  box-shadow: var(--rx-shadow-card);
+}
+
+.content-section {
+  padding: 20px;
+}
+
+.section-heading {
+  align-items: flex-start;
+}
+
+.section-heading h2::after {
+  background: linear-gradient(90deg, var(--rx-green), var(--rx-cyan));
+  border-radius: 999px;
+  content: "";
+  display: block;
+  height: 3px;
+  margin-top: 8px;
+  width: 42px;
+}
+
+.alert-item,
+.audit-item,
+.supplier-card,
+.branch-card,
+.line-card,
+.cart-item,
+.patient-list-item,
+.patient-timeline article,
+.patient-message-list article,
+.patient-reminder-list article,
+.pending-medication-card,
+.notification-item,
+.pos-catalog-card,
+.pos-line-item,
+.pos-draft-item,
+.user-profile-card,
+.workspace-access-card,
+.copy-value-card {
+  border-radius: 14px;
+  border-color: rgba(219, 231, 234, 0.92);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.035);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 120ms ease,
+    background 160ms ease;
+}
+
+.alert-item:hover,
+.supplier-card:hover,
+.branch-card:hover,
+.patient-list-item:hover,
+.notification-item:hover,
+.pos-catalog-card:hover {
+  border-color: rgba(8, 145, 178, 0.32);
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.075);
+  transform: translateY(-1px);
+}
+
+.table-wrap {
+  border-radius: 14px;
+  border: 1px solid rgba(219, 231, 234, 0.92);
+  overflow: auto;
+}
+
+table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+th {
+  background: #f1f8f8;
+  color: #334155;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  position: sticky;
+  text-transform: uppercase;
+  top: 0;
+  z-index: 2;
+}
+
+td {
+  border-color: #edf3f4;
+}
+
+tbody tr {
+  transition: background 140ms ease;
+}
+
+tbody tr:hover {
+  background: rgba(236, 254, 255, 0.55);
+}
+
+input,
+select,
+textarea {
+  border-radius: 12px;
+  border-color: #d7e4e6;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    background 150ms ease;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible {
+  outline: 3px solid var(--rx-focus-ring);
+  outline-offset: 2px;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--rx-cyan);
+  box-shadow: 0 0 0 4px rgba(8, 145, 178, 0.1);
+}
+
+.primary-button,
+.ghost-button,
+.file-button,
+.icon-button,
+.tabs button,
+.pos-action-row button {
+  border-radius: 12px;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    color 150ms ease,
+    transform 120ms ease;
+}
+
+.primary-button {
+  background: linear-gradient(135deg, #047857, #0891b2);
+  box-shadow: 0 12px 24px rgba(4, 120, 87, 0.2);
+}
+
+.primary-button:hover {
+  background: linear-gradient(135deg, #065f46, #0e7490);
+  box-shadow: 0 16px 30px rgba(4, 120, 87, 0.25);
+  transform: translateY(-1px);
+}
+
+.ghost-button:hover,
+.file-button:hover,
+.icon-button:hover,
+.tabs button:hover {
+  border-color: rgba(8, 145, 178, 0.35);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.06);
+  transform: translateY(-1px);
+}
+
+.pill {
+  border-radius: 999px;
+  font-weight: 800;
+}
+
+.login-screen {
+  background:
+    radial-gradient(circle at 16% 16%, rgba(8, 145, 178, 0.14), transparent 30%),
+    radial-gradient(circle at 84% 12%, rgba(5, 150, 105, 0.1), transparent 28%),
+    linear-gradient(135deg, #f8fbfc 0%, #eaf7f8 100%);
+}
+
+.login-panel {
+  border-radius: 20px;
+  box-shadow: 0 26px 70px rgba(15, 23, 42, 0.13);
+}
+
+.login-panel.auth-panel {
+  width: min(680px, 100%);
+}
+
+.auth-product-proof {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.auth-product-proof div {
+  background:
+    linear-gradient(180deg, rgba(236, 254, 255, 0.8), rgba(255, 255, 255, 0.96));
+  border: 1px solid #d8eaed;
+  border-radius: 14px;
+  padding: 13px;
+}
+
+.auth-product-proof strong,
+.auth-product-proof span {
+  display: block;
+}
+
+.auth-product-proof strong {
+  color: var(--rx-ink);
+  font-size: 13px;
+  margin-bottom: 5px;
+}
+
+.auth-product-proof span {
+  color: #52636c;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.workspace-finder {
+  background:
+    linear-gradient(135deg, rgba(236, 254, 255, 0.78), rgba(240, 253, 250, 0.72)),
+    #ffffff;
+}
+
+.drawer-handle {
+  background: linear-gradient(135deg, #047857, #0891b2);
+}
+
+.pos-terminal-grid {
+  border-radius: 18px;
+}
+
+.pharmacist-review-panel {
+  background:
+    linear-gradient(135deg, rgba(236, 254, 255, 0.82), rgba(255, 255, 255, 0.98));
+}
+
+@media (max-width: 760px) {
+  .topbar {
+    border-radius: 14px;
+    position: static;
+  }
+
+  .auth-product-proof {
+    grid-template-columns: 1fr;
+  }
+
+  .metric {
+    min-height: 100px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
+}

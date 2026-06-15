@@ -165,6 +165,113 @@
   }
 }
 
+/* UI/UX Pro Max landing polish: conversion, accessibility, and trust cues. */
+.rxledger-landing {
+  background:
+    radial-gradient(circle at 10% 0%, color-mix(in oklab, var(--brand) 12%, transparent), transparent 28%),
+    radial-gradient(circle at 95% 8%, color-mix(in oklab, var(--success) 10%, transparent), transparent 26%),
+    linear-gradient(180deg, var(--background) 0%, var(--surface) 100%);
+}
+
+.rxledger-landing header.sticky {
+  border-bottom-color: color-mix(in oklab, var(--border) 72%, transparent);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.055);
+}
+
+.rxledger-landing a:focus-visible,
+.rxledger-landing button:focus-visible,
+.rxledger-landing summary:focus-visible {
+  outline: 3px solid color-mix(in oklab, var(--brand) 28%, transparent);
+  outline-offset: 3px;
+}
+
+.rxledger-landing h1,
+.rxledger-landing h2,
+.rxledger-landing h3 {
+  letter-spacing: -0.035em;
+}
+
+.rxledger-landing h1 {
+  text-wrap: balance;
+}
+
+.rxledger-landing .landing-container {
+  position: relative;
+}
+
+.rxledger-landing .rounded-2xl,
+.rxledger-landing .rounded-3xl,
+.rxledger-landing .rounded-\[28px\] {
+  box-shadow: 0 20px 55px rgba(15, 23, 42, 0.08);
+}
+
+.rxledger-landing .bg-brand,
+.rxledger-landing .text-brand {
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease,
+    transform 120ms ease;
+}
+
+.rxledger-landing button.bg-brand:hover {
+  box-shadow: 0 16px 34px color-mix(in oklab, var(--brand) 24%, transparent);
+  transform: translateY(-1px);
+}
+
+.rxledger-landing button.border:hover,
+.rxledger-landing a.border:hover {
+  border-color: color-mix(in oklab, var(--brand) 34%, var(--border));
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.07);
+}
+
+.rxledger-landing .grid .border {
+  border-color: color-mix(in oklab, var(--border) 84%, transparent);
+}
+
+.rxledger-landing .shadow-2xl {
+  box-shadow:
+    0 30px 80px rgba(15, 23, 42, 0.14),
+    0 0 0 1px rgba(255, 255, 255, 0.62) inset;
+}
+
+.rxledger-landing .font-mono {
+  letter-spacing: 0.02em;
+}
+
+.rxledger-landing section {
+  scroll-margin-top: 88px;
+}
+
+.rxledger-landing .landing-testimonial-panel {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.rxledger-landing .landing-testimonial-panel blockquote {
+  text-wrap: balance;
+}
+
+@media (max-width: 760px) {
+  .rxledger-landing .landing-container {
+    width: min(100% - 1.25rem, 80rem);
+  }
+
+  .rxledger-landing .shadow-2xl {
+    box-shadow: 0 18px 42px rgba(15, 23, 42, 0.12);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rxledger-landing *,
+  .rxledger-landing *::before,
+  .rxledger-landing *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
 @layer components {
   .rxledger-landing {
     overflow-x: hidden;
