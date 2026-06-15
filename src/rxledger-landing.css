@@ -73,6 +73,380 @@
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+/* Video-first enterprise landing direction. Presentation-only. */
+html {
+  scroll-behavior: smooth;
+}
+
+.rxledger-landing header.sticky {
+  background: linear-gradient(180deg, rgb(2 11 15 / 78%), rgb(2 11 15 / 28%));
+  border-bottom-color: rgb(255 255 255 / 10%);
+  box-shadow: none;
+  color: #ffffff;
+  inset: 0 0 auto;
+  position: fixed;
+}
+
+.rxledger-landing header.sticky a,
+.rxledger-landing header.sticky button {
+  color: rgb(255 255 255 / 78%);
+}
+
+.rxledger-landing header.sticky a:hover,
+.rxledger-landing header.sticky button:hover {
+  color: #ffffff;
+}
+
+.rxledger-landing header.sticky button.bg-brand {
+  background: #ffffff;
+  color: var(--ink);
+}
+
+.rxledger-landing header.sticky button.bg-brand:hover {
+  background: #ecfeff;
+  color: var(--ink);
+}
+
+.rxledger-landing .landing-video-hero {
+  background: #041216;
+  color: #ffffff;
+  isolation: isolate;
+  min-height: 100svh;
+  overflow: hidden;
+  position: relative;
+}
+
+.rxledger-landing .landing-video-hero:fullscreen {
+  min-height: 100vh;
+}
+
+.rxledger-landing .landing-video-canvas {
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  width: 0;
+}
+
+.rxledger-landing .landing-video-player,
+.rxledger-landing .landing-video-fallback {
+  height: 100%;
+  inset: 0;
+  min-height: 100svh;
+  position: absolute;
+  width: 100%;
+}
+
+.rxledger-landing .landing-video-player {
+  object-fit: cover;
+  opacity: 0;
+  transform: scale(1.01);
+  transition:
+    opacity 700ms ease,
+    transform 1200ms ease;
+  z-index: 0;
+}
+
+.rxledger-landing .landing-video-player.is-ready {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.rxledger-landing .landing-video-fallback {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  padding: clamp(1rem, 4vw, 4rem);
+  z-index: 0;
+}
+
+.rxledger-landing .landing-video-fallback > div {
+  max-width: min(74rem, 92vw);
+  opacity: 0.88;
+  transform: scale(1.05);
+}
+
+.rxledger-landing .landing-video-scrim,
+.rxledger-landing .landing-video-glow {
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.rxledger-landing .landing-video-scrim {
+  background:
+    linear-gradient(180deg, rgb(2 11 15 / 38%) 0%, rgb(2 11 15 / 3%) 34%, rgb(2 11 15 / 78%) 100%),
+    linear-gradient(90deg, rgb(2 11 15 / 64%) 0%, rgb(2 11 15 / 18%) 46%, rgb(2 11 15 / 48%) 100%);
+  z-index: 1;
+}
+
+.rxledger-landing .landing-video-glow {
+  background:
+    radial-gradient(circle at 14% 78%, rgb(34 211 238 / 24%), transparent 26%),
+    radial-gradient(circle at 82% 72%, rgb(16 185 129 / 18%), transparent 24%);
+  mix-blend-mode: screen;
+  z-index: 2;
+}
+
+.rxledger-landing .landing-video-nav-spacer {
+  height: 4rem;
+}
+
+.rxledger-landing .landing-video-copy {
+  align-content: end;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(18rem, 0.55fr);
+  gap: clamp(1.5rem, 4vw, 4rem);
+  inset: auto clamp(1rem, 5vw, 5rem) clamp(1rem, 5vw, 4rem);
+  position: absolute;
+  z-index: 3;
+}
+
+.rxledger-landing .landing-video-headline {
+  max-width: 62rem;
+}
+
+.rxledger-landing .landing-video-headline h1 {
+  font-size: clamp(2.45rem, 6vw, 4rem);
+  text-wrap: balance;
+}
+
+.rxledger-landing .landing-video-caption {
+  align-self: end;
+  background: rgb(255 255 255 / 10%);
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 22px;
+  box-shadow: 0 26px 80px rgb(0 0 0 / 26%);
+  grid-column: 2;
+  grid-row: 1 / span 4;
+  max-width: 31rem;
+  padding: clamp(1rem, 2vw, 1.4rem);
+  backdrop-filter: blur(18px);
+}
+
+.rxledger-landing .landing-video-caption span,
+.rxledger-landing .landing-video-caption strong,
+.rxledger-landing .landing-video-caption p {
+  display: block;
+}
+
+.rxledger-landing .landing-video-caption span {
+  color: rgb(165 243 252 / 90%);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.rxledger-landing .landing-video-caption strong {
+  color: #ffffff;
+  font-size: clamp(1.1rem, 2vw, 1.6rem);
+  line-height: 1.08;
+  margin-top: 0.7rem;
+}
+
+.rxledger-landing .landing-video-caption p {
+  color: rgb(255 255 255 / 72%);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin-top: 0.7rem;
+}
+
+.rxledger-landing .landing-video-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: clamp(1.2rem, 3vw, 2rem);
+}
+
+.rxledger-landing .landing-video-proof {
+  color: rgb(255 255 255 / 72%);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem 1rem;
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+}
+
+.rxledger-landing .landing-video-proof li {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+}
+
+.rxledger-landing .landing-video-proof svg {
+  color: #67e8f9;
+}
+
+.rxledger-landing .landing-scroll-cue {
+  align-items: center;
+  bottom: -0.1rem;
+  color: rgb(255 255 255 / 68%);
+  display: inline-flex;
+  font-size: 0.74rem;
+  font-weight: 800;
+  gap: 0.7rem;
+  justify-self: start;
+  letter-spacing: 0.12em;
+  margin-top: 1.4rem;
+  text-transform: uppercase;
+}
+
+.rxledger-landing .landing-scroll-cue span:last-child {
+  border: 1px solid rgb(255 255 255 / 38%);
+  border-radius: 999px;
+  height: 2rem;
+  position: relative;
+  width: 1.15rem;
+}
+
+.rxledger-landing .landing-scroll-cue span:last-child::after {
+  animation: landing-scroll-dot 1500ms ease-in-out infinite;
+  background: #67e8f9;
+  border-radius: 999px;
+  content: "";
+  height: 0.36rem;
+  left: 50%;
+  position: absolute;
+  top: 0.34rem;
+  transform: translateX(-50%);
+  width: 0.36rem;
+}
+
+@keyframes landing-scroll-dot {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: translate(-50%, 0);
+  }
+
+  45% {
+    opacity: 1;
+    transform: translate(-50%, 0.78rem);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rxledger-landing .landing-video-caption,
+  .rxledger-landing .landing-video-headline,
+  .rxledger-landing .landing-video-actions,
+  .rxledger-landing .landing-video-proof {
+    animation: landing-hero-enter 760ms ease-out both;
+  }
+
+  .rxledger-landing .landing-video-headline {
+    animation-delay: 120ms;
+  }
+
+  .rxledger-landing .landing-video-actions {
+    animation-delay: 210ms;
+  }
+
+  .rxledger-landing .landing-video-proof {
+    animation-delay: 300ms;
+  }
+
+  .rxledger-landing section:not(.landing-video-hero) {
+    animation: landing-section-reveal both ease-out;
+    animation-range: entry 8% cover 30%;
+    animation-timeline: view();
+  }
+}
+
+@keyframes landing-hero-enter {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes landing-section-reveal {
+  from {
+    opacity: 0.66;
+    transform: translateY(30px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 980px) {
+  .rxledger-landing .landing-video-copy {
+    grid-template-columns: 1fr;
+  }
+
+  .rxledger-landing .landing-video-caption {
+    grid-column: 1;
+    grid-row: auto;
+    max-width: none;
+    order: -1;
+  }
+
+  .rxledger-landing .landing-video-headline h1 {
+    font-size: clamp(2rem, 8.4vw, 2.55rem);
+  }
+}
+
+@media (max-width: 640px) {
+  .rxledger-landing header.sticky {
+    background: rgb(2 11 15 / 78%);
+  }
+
+  .rxledger-landing header.sticky .landing-container {
+    width: min(100% - 1rem, 80rem);
+  }
+
+  .rxledger-landing header.sticky button.bg-brand {
+    min-width: 2.75rem;
+    padding-inline: 0.72rem;
+  }
+
+  .rxledger-landing .landing-video-copy {
+    inset: auto 1rem 1rem;
+  }
+
+  .rxledger-landing .landing-video-caption {
+    display: none;
+  }
+
+  .rxledger-landing .landing-video-headline p {
+    font-size: 0.95rem;
+  }
+
+  .rxledger-landing .landing-video-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .rxledger-landing .landing-video-actions button {
+    width: 100%;
+  }
+
+  .rxledger-landing .landing-scroll-cue {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .rxledger-landing .landing-scroll-cue span:last-child::after {
+    animation: none;
+  }
+}
+
 :root {
   --radius: 0.625rem;
   --background: oklch(0.995 0.003 150);
