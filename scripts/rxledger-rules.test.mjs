@@ -146,30 +146,25 @@ assertPresent(
   /The assistant should not diagnose, prescribe, or autonomously block dispensing/,
   "RxLedger clinical safety guidance should keep pharmacists in control.",
 );
-assertPresent(
+assertAbsent(
   app,
   /Pharmacist Safety Review/,
-  "RxLedger should expose explainable pharmacist safety review prompts inside POS.",
+  "RxLedger POS should not expose the removed pharmacist safety review panel.",
 );
-assertPresent(
+assertAbsent(
   app,
   /buildPharmacistSafetyReview[\s\S]*why:/,
-  "RxLedger safety prompts should explain why they appeared.",
+  "RxLedger should not keep the removed live safety review prompt builder in App.tsx.",
 );
-assertPresent(
-  action,
-  /pharmacistReviewOutcome[\s\S]*safetyReviewSummary/,
-  "RxLedger should persist pharmacist review outcome and prompt summary.",
-);
-assertPresent(
+assertAbsent(
   app,
   /Allergies or reactions[\s\S]*Current\/chronic medicines/,
-  "RxLedger safety review should include allergy, chronic medicine, and controlled medicine context.",
+  "RxLedger should not expose the removed allergy/chronic medicine safety-review inputs in POS.",
 );
-assertPresent(
+assertAbsent(
   app,
   /Controlled\/monitored medicine review/,
-  "RxLedger safety review should flag controlled or monitored medicine context.",
+  "RxLedger should not expose the removed controlled-medicine safety-review prompt in POS.",
 );
 assertPresent(
   app,

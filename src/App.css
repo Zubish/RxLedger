@@ -2155,85 +2155,6 @@ td strong {
   color: #d28a00;
 }
 
-.pharmacist-review-panel {
-  background: #f8fbfb;
-  border: 1px solid #d7e4e3;
-  border-radius: 8px;
-  display: grid;
-  gap: 12px;
-  padding: 12px;
-}
-
-.pharmacist-review-panel header,
-.review-context-grid {
-  align-items: start;
-  display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.pharmacist-review-panel header {
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.pharmacist-review-panel header span,
-.safety-prompt small {
-  color: #60727a;
-  font-size: 12px;
-}
-
-.review-context-grid label {
-  color: #435056;
-  display: grid;
-  font-size: 12px;
-  font-weight: 800;
-  gap: 5px;
-}
-
-.review-context-grid label.full {
-  grid-column: 1 / -1;
-}
-
-.review-context-grid input,
-.review-context-grid select,
-.review-context-grid textarea {
-  border: 1px solid #d5e1e0;
-  border-radius: 8px;
-  font: inherit;
-  min-height: 38px;
-  min-width: 0;
-  padding: 8px 10px;
-}
-
-.safety-prompt-list {
-  display: grid;
-  gap: 8px;
-}
-
-.safety-prompt {
-  background: #ffffff;
-  border: 1px solid #dfe9e8;
-  border-left: 4px solid #5b8def;
-  border-radius: 8px;
-  display: grid;
-  gap: 4px;
-  padding: 10px;
-}
-
-.safety-prompt.is-warning {
-  border-left-color: #d28a00;
-}
-
-.safety-prompt.is-danger {
-  border-left-color: #f43f4f;
-}
-
-.safety-prompt p {
-  color: #435056;
-  font-size: 13px;
-  margin: 0;
-}
-
 .pos-branch-options {
   border-top: 1px solid #dce6e7;
   display: grid;
@@ -4416,8 +4337,7 @@ button:disabled {
 
 .quest-coach-head,
 .quest-status,
-.quest-actions,
-.quest-guide-link {
+.quest-actions {
   align-items: center;
   display: flex;
 }
@@ -4426,8 +4346,7 @@ button:disabled {
   justify-content: space-between;
 }
 
-.quest-drag-handle,
-.quest-guide-link {
+.quest-drag-handle {
   color: #006b45;
   font-size: 12px;
   font-weight: 800;
@@ -4435,8 +4354,7 @@ button:disabled {
   text-transform: uppercase;
 }
 
-.quest-coach-head button,
-.quest-guide-link {
+.quest-coach-head button {
   background: transparent;
   border: 0;
   cursor: pointer;
@@ -4530,154 +4448,6 @@ button:disabled {
 
 .quest-actions button {
   min-height: 34px;
-}
-
-.quest-guide-link {
-  justify-content: center;
-  min-height: 28px;
-}
-
-.guide-section {
-  display: grid;
-  gap: 16px;
-}
-
-.guide-hero {
-  align-items: center;
-  background:
-    linear-gradient(135deg, rgba(47, 163, 125, 0.12), rgba(71, 191, 255, 0.1)),
-    #f8fbfb;
-  border: 1px solid #d7e4e3;
-  border-radius: 12px;
-  display: flex;
-  gap: 12px;
-  padding: 14px;
-}
-
-.guide-hero svg {
-  color: #006b45;
-  flex: 0 0 auto;
-}
-
-.guide-hero strong,
-.guide-hero span {
-  display: block;
-}
-
-.guide-hero span {
-  color: #52636c;
-  font-size: 13px;
-  margin-top: 3px;
-}
-
-.guide-grid {
-  display: grid;
-  gap: 14px;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-}
-
-.guide-card {
-  background: #ffffff;
-  border: 1px solid #d7e4e3;
-  border-radius: 12px;
-  display: grid;
-  gap: 12px;
-  padding: 12px;
-}
-
-.guide-card h3 {
-  font-size: 16px;
-  margin: 0 0 5px;
-}
-
-.guide-card p {
-  color: #52636c;
-  font-size: 13px;
-  line-height: 1.5;
-  margin: 0 0 10px;
-}
-
-.guide-card ol {
-  color: #435056;
-  display: grid;
-  font-size: 13px;
-  gap: 6px;
-  margin: 0;
-  padding-left: 18px;
-}
-
-.guide-card .ghost-button {
-  justify-self: start;
-}
-
-.guide-shot {
-  background:
-    radial-gradient(
-      circle at 85% 12%,
-      rgba(71, 191, 255, 0.22),
-      transparent 28%
-    ),
-    linear-gradient(135deg, #f8fbfb, #ffffff);
-  border: 1px solid #d7e4e3;
-  border-radius: 10px;
-  min-height: 128px;
-  overflow: hidden;
-}
-
-.guide-shot-top {
-  background: #eef4f3;
-  display: flex;
-  gap: 5px;
-  padding: 9px;
-}
-
-.guide-shot-top span {
-  border-radius: 999px;
-  height: 9px;
-  width: 9px;
-}
-
-.guide-shot-top span:nth-child(1) {
-  background: #ff5f57;
-}
-
-.guide-shot-top span:nth-child(2) {
-  background: #ffbd2e;
-}
-
-.guide-shot-top span:nth-child(3) {
-  background: #28c840;
-}
-
-.guide-shot-body {
-  display: grid;
-  gap: 8px;
-  padding: 16px;
-}
-
-.guide-shot-body b {
-  color: #071114;
-  font-size: 15px;
-}
-
-.guide-shot-body span,
-.guide-shot-body em {
-  border-radius: 8px;
-  display: block;
-  font-style: normal;
-  min-height: 24px;
-  padding: 6px 8px;
-}
-
-.guide-shot-body span {
-  background: #e8f6f1;
-  color: #006b45;
-}
-
-.guide-shot-body em {
-  background: #071114;
-  color: #ffffff;
-  width: 70%;
 }
 
 .audit-item {
@@ -5212,8 +4982,6 @@ button:disabled {
   .pos-period-filter,
   .pos-sales-summary,
   .pos-care-fields,
-  .pharmacist-review-panel header,
-  .review-context-grid,
   .patients-layout,
   .patient-profile-grid,
   .patient-profile-edit,
@@ -5694,8 +5462,7 @@ button:disabled {
 .pos-sale-cart,
 .pos-customer-panel,
 .pos-total-panel,
-.pos-catalog-panel,
-.pharmacist-review-panel {
+.pos-catalog-panel {
   border-color: rgba(219, 231, 234, 0.92);
   border-radius: 16px;
   box-shadow: var(--rx-shadow-card);
@@ -5876,37 +5643,6 @@ textarea:focus {
   width: min(680px, 100%);
 }
 
-.auth-product-proof {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.auth-product-proof div {
-  background:
-    linear-gradient(180deg, rgba(236, 254, 255, 0.8), rgba(255, 255, 255, 0.96));
-  border: 1px solid #d8eaed;
-  border-radius: 14px;
-  padding: 13px;
-}
-
-.auth-product-proof strong,
-.auth-product-proof span {
-  display: block;
-}
-
-.auth-product-proof strong {
-  color: var(--rx-ink);
-  font-size: 13px;
-  margin-bottom: 5px;
-}
-
-.auth-product-proof span {
-  color: #52636c;
-  font-size: 12px;
-  line-height: 1.45;
-}
-
 .workspace-finder {
   background:
     linear-gradient(135deg, rgba(236, 254, 255, 0.78), rgba(240, 253, 250, 0.72)),
@@ -5921,19 +5657,10 @@ textarea:focus {
   border-radius: 18px;
 }
 
-.pharmacist-review-panel {
-  background:
-    linear-gradient(135deg, rgba(236, 254, 255, 0.82), rgba(255, 255, 255, 0.98));
-}
-
 @media (max-width: 760px) {
   .topbar {
     border-radius: 14px;
     position: static;
-  }
-
-  .auth-product-proof {
-    grid-template-columns: 1fr;
   }
 
   .metric {

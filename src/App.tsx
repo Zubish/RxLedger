@@ -12,7 +12,6 @@ import {
   Archive,
   Barcode,
   Bell,
-  BookOpen,
   Boxes,
   Building2,
   Calculator,
@@ -135,7 +134,6 @@ type View =
   | "audit"
   | "users"
   | "branches"
-  | "guide"
   | "settings";
 
 type User = {
@@ -589,22 +587,21 @@ const views: Array<{
   adminOnly?: boolean;
 }> = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "medicines", label: "Pharmacy", icon: Pill },
-  { id: "products", label: "Mart", icon: Boxes },
-  { id: "suppliers", label: "Suppliers", icon: Truck },
-  { id: "receive", label: "Receive", icon: PackagePlus },
   { id: "pos", label: "POS", icon: Calculator },
   { id: "patients", label: "Patients", icon: User2 },
   { id: "continuity", label: "Continuity", icon: HeartPulse },
+  { id: "medicines", label: "Pharmacy", icon: Pill },
+  { id: "receive", label: "Receive", icon: PackagePlus },
   { id: "issue", label: "Issue Stock", icon: PackageMinus },
   { id: "adjust", label: "Adjust/Returns", icon: RotateCcw },
+  { id: "suppliers", label: "Suppliers", icon: Truck },
+  { id: "products", label: "Mart", icon: Boxes },
   { id: "reports", label: "Reports", icon: FileText },
-  { id: "chat", label: "Team Chat", icon: MessageSquare },
   { id: "notifications", label: "Notifications", icon: Bell },
-  { id: "audit", label: "Audit", icon: ShieldCheck },
-  { id: "users", label: "Users", icon: Users, adminOnly: true },
+  { id: "chat", label: "Team Chat", icon: MessageSquare },
   { id: "branches", label: "Branches", icon: Building2 },
-  { id: "guide", label: "Guide", icon: BookOpen },
+  { id: "users", label: "Users", icon: Users, adminOnly: true },
+  { id: "audit", label: "Audit", icon: ShieldCheck, adminOnly: true },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
@@ -1566,202 +1563,6 @@ function buildPurchaseFollowUpMessage(
   return `${uniqueMessages.join(" ")} ${defaultMessage || "Please follow the medication label and contact the pharmacy if you need clarification."}`.trim();
 }
 
-const patientInfoReliabilityLabels: Record<PatientInfoReliability, string> = {
-  confirmed_today: "Confirmed today",
-  patient_reported: "Patient reported",
-  previous_record: "Previous record",
-  incomplete: "Incomplete",
-};
-
-const patientAgeGroupLabels: Record<PatientAgeGroup, string> = {
-  child: "Child",
-  adult: "Adult",
-  older_adult: "Older adult",
-};
-
-const pharmacistReviewOutcomeLabels: Record<PharmacistReviewOutcome, string> = {
-  none: "No override",
-  counselled: "Counselled patient",
-  doctor_contacted: "Doctor contacted",
-  changed_recommendation: "Recommendation changed",
-  system_missed: "System missed issue",
-  dismissed: "Reviewed and dismissed",
-};
-
-type SafetyReviewPrompt = {
-  id: string;
-  tone: "danger" | "warning" | "info";
-  title: string;
-  detail: string;
-  why: string;
-};
-
-function medicineSafetyText(medicine: Medicine) {
-  return `${medicine.brandName} ${medicine.genericName} ${medicine.category} ${medicine.form} ${medicine.strength}`.toLowerCase();
-}
-
-function includesAny(text: string, terms: string[]) {
-  return terms.some((term) => text.includes(term));
-}
-
-function buildPharmacistSafetyReview(
-  medicines: Medicine[],
-  previousSales: Sale[],
-  risk: PatientRiskContext,
-  reliability: PatientInfoReliability,
-): SafetyReviewPrompt[] {
-  const prompts: SafetyReviewPrompt[] = [];
-  const add = (prompt: SafetyReviewPrompt) => {
-    if (!prompts.some((item) => item.id === prompt.id)) prompts.push(prompt);
-  };
-  if (reliability !== "confirmed_today") {
-    add({
-      id: `patient-info-${reliability}`,
-      tone: reliability === "incomplete" ? "warning" : "info",
-      title: "Patient information needs context",
-      detail: `${patientInfoReliabilityLabels[reliability]} information. Confirm allergies, pregnancy, age, renal/liver risk, and current medicines where relevant.`,
-      why: "Triggered by the patient information reliability selected for this transaction.",
-    });
-  }
-  if (risk.allergies?.trim()) {
-    const allergyText = risk.allergies.toLowerCase();
-    medicines.forEach((medicine) => {
-      const text = medicineSafetyText(medicine);
-      const terms = [
-        medicine.brandName,
-        medicine.genericName,
-        medicine.category,
-      ]
-        .filter(Boolean)
-        .flatMap((value) => value.toLowerCase().split(/[^a-z0-9]+/))
-        .filter((value) => value.length > 3);
-      if (terms.some((term) => allergyText.includes(term) || (text.includes(term) && allergyText.includes(term)))) {
-        add({
-          id: `allergy-${medicine.id}`,
-          tone: "danger",
-          title: "Allergy review recommended",
-          detail: `${medicine.brandName} may match the recorded allergy/context note.`,
-          why: "Triggered because the allergy field overlaps with medicine brand, generic, or category text.",
-        });
-      }
-    });
-  }
-  if (risk.chronicMedicines?.trim()) {
-    const chronicText = risk.chronicMedicines.toLowerCase();
-    medicines.forEach((medicine) => {
-      const generic = medicine.genericName.trim().toLowerCase();
-      if (generic && chronicText.includes(generic)) {
-        add({
-          id: `chronic-duplicate-${medicine.id}`,
-          tone: "warning",
-          title: "Current medicine overlap",
-          detail: `${medicine.brandName} appears similar to a medicine recorded as current/chronic.`,
-          why: "Triggered because the current/chronic medicines field contains the same generic name.",
-        });
-      }
-    });
-  }
-  const genericGroups = new Map<string, Medicine[]>();
-  medicines.forEach((medicine) => {
-    const generic = medicine.genericName.trim().toLowerCase();
-    if (generic) genericGroups.set(generic, [...(genericGroups.get(generic) ?? []), medicine]);
-  });
-  genericGroups.forEach((items, generic) => {
-    if (items.length > 1)
-      add({
-        id: `duplicate-${generic}`,
-        tone: "warning",
-        title: "Possible duplicate therapy",
-        detail: `${items.map((item) => item.brandName).join(", ")} share ${generic}.`,
-        why: "Triggered because more than one basket medicine has the same generic name.",
-      });
-  });
-  const antibioticTerms = ["amoxicillin", "azithromycin", "ciprofloxacin", "cef", "doxycycline", "metronidazole", "clavulanate", "levofloxacin"];
-  const highRiskTerms = ["warfarin", "insulin", "lithium", "digoxin", "methotrexate", "tramadol", "morphine", "diazepam", "clonazepam"];
-  const controlledTerms = ["tramadol", "morphine", "codeine", "diazepam", "clonazepam", "alprazolam", "phenobarbital", "pregabalin", "gabapentin", "zolpidem"];
-  const hasAntibiotic = medicines.some((medicine) => includesAny(medicineSafetyText(medicine), antibioticTerms));
-  if (hasAntibiotic) {
-    const recentAntibiotic = previousSales.some((sale) => {
-      const days = Math.floor((Date.now() - new Date(sale.soldAt).getTime()) / 86400000);
-      return (
-        days <= 60 &&
-        sale.items.some((item) =>
-          includesAny(`${item.itemName ?? ""} ${item.counselingNote ?? ""}`.toLowerCase(), antibioticTerms),
-        )
-      );
-    });
-    add({
-      id: "antibiotic-review",
-      tone: recentAntibiotic ? "warning" : "info",
-      title: "Antibiotic counselling review",
-      detail: recentAntibiotic
-        ? "Recent antibiotic history found. Check indication, adherence, and repeated antibiotic use."
-        : "Confirm allergy history, dose, duration, and completion counselling.",
-      why: "Triggered because an antibiotic-like medicine is in the basket.",
-    });
-  }
-  medicines.forEach((medicine) => {
-    const text = medicineSafetyText(medicine);
-    if (includesAny(text, highRiskTerms))
-      add({
-        id: `high-risk-${medicine.id}`,
-        tone: "danger",
-        title: "High-risk medicine review",
-        detail: `${medicine.brandName} may need dose confirmation, counselling, or monitoring context.`,
-        why: "Triggered by a high-risk medicine keyword in catalog fields.",
-      });
-    if (includesAny(text, controlledTerms))
-      add({
-        id: `controlled-${medicine.id}`,
-        tone: "warning",
-        title: "Controlled/monitored medicine review",
-        detail: `${medicine.brandName} may require identity, prescription validity, refill timing, or misuse-risk documentation.`,
-        why: "Triggered by a controlled/monitored medicine keyword in catalog fields.",
-      });
-    if (text.includes("metronidazole"))
-      add({
-        id: "metronidazole-alcohol",
-        tone: "info",
-        title: "Alcohol counselling",
-        detail: "Counsel patient to avoid alcohol during treatment and shortly after completion.",
-        why: "Triggered because metronidazole is in the basket.",
-      });
-    if (risk.pregnant && includesAny(text, ["warfarin", "doxycycline", "ciprofloxacin", "lisinopril", "losartan", "isotretinoin", "misoprostol"]))
-      add({
-        id: `pregnancy-${medicine.id}`,
-        tone: "danger",
-        title: "Pregnancy review recommended",
-        detail: `${medicine.brandName} requires pharmacist review against pregnancy context.`,
-        why: "Triggered because pregnancy was ticked and this medicine matches a pregnancy-caution keyword.",
-      });
-    if (risk.renalRisk && includesAny(text, ["metformin", "gentamicin", "ibuprofen", "diclofenac", "naproxen", "acyclovir", "lithium"]))
-      add({
-        id: `renal-${medicine.id}`,
-        tone: "warning",
-        title: "Renal-risk review",
-        detail: `${medicine.brandName} may need renal function or dose context.`,
-        why: "Triggered because renal risk was ticked and this medicine matches a renal-caution keyword.",
-      });
-    if (risk.liverRisk && includesAny(text, ["paracetamol", "isoniazid", "ketoconazole", "fluconazole", "methotrexate", "valproate"]))
-      add({
-        id: `liver-${medicine.id}`,
-        tone: "warning",
-        title: "Liver-risk review",
-        detail: `${medicine.brandName} may need liver disease, alcohol use, or dose context.`,
-        why: "Triggered because liver risk was ticked and this medicine matches a liver-caution keyword.",
-      });
-  });
-  if (risk.ageGroup === "child" || risk.ageGroup === "older_adult")
-    add({
-      id: `age-${risk.ageGroup}`,
-      tone: "info",
-      title: `${patientAgeGroupLabels[risk.ageGroup]} dose context`,
-      detail: "Confirm age/weight, dose, formulation, and counselling suitability.",
-      why: `Triggered because patient age group is marked as ${patientAgeGroupLabels[risk.ageGroup].toLowerCase()}.`,
-    });
-  return prompts.slice(0, 8);
-}
-
 function buildPatientProfiles(db: Database) {
   const map = new Map<
     string,
@@ -2308,7 +2109,7 @@ function getQuestSteps(db: Database, currentUser: User): QuestStep[] {
       body: "Open Audit to confirm the app is recording important changes with actor, entity, and timestamp.",
       view: "audit",
       action: "Open Audit",
-      roles: ["viewer", "admin"],
+      superAdminOnly: true,
     },
   ];
   return [...baseSteps, ...roleSteps].filter((step) => {
@@ -2963,7 +2764,11 @@ function App() {
   }
 
   function navigate(view: View) {
-    setActiveView(view);
+    const nextView =
+      (view === "users" || view === "audit") && !canAdmin
+        ? "dashboard"
+        : view;
+    setActiveView(nextView);
     if (shouldAutoCollapseSidebar()) {
       setSidebarOpen(false);
       setSidebarCollapsed(true);
@@ -3209,7 +3014,9 @@ function App() {
         </div>
 
         <nav className="nav-list" aria-label="Primary navigation">
-          {views.map(({ id: viewId, label, icon: Icon, adminOnly }) => {
+          {views
+            .filter(({ adminOnly }) => !adminOnly || canAdmin)
+            .map(({ id: viewId, label, icon: Icon, adminOnly }) => {
             const disabled = adminOnly && !canAdmin;
             return (
               <button
@@ -3513,7 +3320,7 @@ function App() {
               openNotification={openNotification}
             />
           )}
-          {activeView === "audit" && <Audit db={db} />}
+          {activeView === "audit" && canAdmin && <Audit db={db} />}
           {activeView === "users" && (
             <UserManagement
               db={db}
@@ -3529,13 +3336,6 @@ function App() {
               activeBranchId={activeBranch.id}
               setActiveBranchId={switchActiveBranch}
               executeAction={executeAction}
-            />
-          )}
-          {activeView === "guide" && (
-            <GuideView
-              db={db}
-              currentUser={currentUser}
-              setActiveView={setActiveView}
             />
           )}
           {activeView === "settings" && (
@@ -3778,21 +3578,6 @@ function AuthScreen({
             Back to RxLedger
           </button>
         )}
-
-        <div className="auth-product-proof" aria-label="RxLedger product strengths">
-          <div>
-            <strong>Continuity memory</strong>
-            <span>Pending medicines, follow-up, and branch context stay visible.</span>
-          </div>
-          <div>
-            <strong>Protected stock logic</strong>
-            <span>FEFO, pricing, roles, and audit trails remain system-led.</span>
-          </div>
-          <div>
-            <strong>Pharmacist review</strong>
-            <span>Safety prompts support judgement without replacing it.</span>
-          </div>
-        </div>
 
         {activeMode !== "setup" && (
           <div className="tabs auth-tabs">
@@ -8049,21 +7834,6 @@ function POSView({
   const [followUpMessage, setFollowUpMessage] = useState(
     currentDraft?.followUpMessage ?? "",
   );
-  const [patientInfoReliability, setPatientInfoReliability] =
-    useState<PatientInfoReliability>(
-      currentDraft?.patientInfoReliability ?? "patient_reported",
-    );
-  const [patientRiskContext, setPatientRiskContext] =
-    useState<PatientRiskContext>(
-      currentDraft?.patientRiskContext ?? { ageGroup: "adult" },
-    );
-  const [pharmacistReviewOutcome, setPharmacistReviewOutcome] =
-    useState<PharmacistReviewOutcome>(
-      currentDraft?.pharmacistReviewOutcome ?? "none",
-    );
-  const [pharmacistReviewNote, setPharmacistReviewNote] = useState(
-    currentDraft?.pharmacistReviewNote ?? "",
-  );
   const [selectedDraftId, setSelectedDraftId] = useState(
     currentDraft?.id ?? "",
   );
@@ -8279,29 +8049,6 @@ function POSView({
       (profile) => normalizePhone(profile.phone) === phone,
     );
   }, [customerPhone, patientProfiles]);
-  const safetyReviewMedicines = useMemo(
-    () =>
-      cart
-        .filter((item) => item.itemType === "medicine")
-        .map((item) => db.medicines.find((medicine) => medicine.id === item.itemId))
-        .filter((medicine): medicine is Medicine => Boolean(medicine)),
-    [cart, db.medicines],
-  );
-  const safetyReviewPrompts = useMemo(
-    () =>
-      buildPharmacistSafetyReview(
-        safetyReviewMedicines,
-        selectedPatient?.sales ?? [],
-        patientRiskContext,
-        patientInfoReliability,
-      ),
-    [
-      patientInfoReliability,
-      patientRiskContext,
-      safetyReviewMedicines,
-      selectedPatient?.sales,
-    ],
-  );
   const nameMatches = useMemo(() => {
     const queryText = customerName.trim().toLowerCase();
     if (queryText.length < 2) return [];
@@ -8526,17 +8273,10 @@ function POSView({
       draftId: selectedDraftId,
       customerName,
       customerPhone,
-      patientInfoReliability,
-      patientRiskContext,
       paymentMethod,
       discount: safeDiscount,
       note,
       followUpMessage: followUpMessage.trim() || suggestedFollowUpMessage,
-      pharmacistReviewOutcome,
-      pharmacistReviewNote,
-      safetyReviewSummary: safetyReviewPrompts.map(
-        (prompt) => `${prompt.title}: ${prompt.detail} Why: ${prompt.why}`,
-      ),
       items: cart.map((item) => ({
         itemType: item.itemType,
         itemId: item.itemId,
@@ -8591,10 +8331,6 @@ function POSView({
     setCashPaid(0);
     setNote("");
     setFollowUpMessage("");
-    setPatientInfoReliability("patient_reported");
-    setPatientRiskContext({ ageGroup: "adult" });
-    setPharmacistReviewOutcome("none");
-    setPharmacistReviewNote("");
     setScan("");
     setSelectedDraftId("");
   }
@@ -8634,12 +8370,6 @@ function POSView({
     setCashPaid(0);
     setNote(draft.note);
     setFollowUpMessage(draft.followUpMessage ?? "");
-    setPatientInfoReliability(
-      draft.patientInfoReliability ?? "patient_reported",
-    );
-    setPatientRiskContext(draft.patientRiskContext ?? { ageGroup: "adult" });
-    setPharmacistReviewOutcome(draft.pharmacistReviewOutcome ?? "none");
-    setPharmacistReviewNote(draft.pharmacistReviewNote ?? "");
     setDraftsOpen(false);
     flash(`Draft ${draft.bookingCode} loaded`);
   }
@@ -9271,166 +9001,6 @@ function POSView({
                   </span>
                 </button>
               )}
-              <section className="pharmacist-review-panel full">
-                <header>
-                  <div>
-                    <strong>Pharmacist Safety Review</strong>
-                    <span>
-                      Explainable prompts, not automatic blocks. Document what
-                      the pharmacist checked.
-                    </span>
-                  </div>
-                  <span className="pill warning">
-                    {safetyReviewPrompts.length} prompt
-                    {safetyReviewPrompts.length === 1 ? "" : "s"}
-                  </span>
-                </header>
-                <div className="review-context-grid">
-                  <label>
-                    Patient info
-                    <select
-                      value={patientInfoReliability}
-                      onChange={(event) =>
-                        setPatientInfoReliability(
-                          event.target.value as PatientInfoReliability,
-                        )
-                      }
-                      disabled={!canSell}
-                    >
-                      {Object.entries(patientInfoReliabilityLabels).map(
-                        ([value, label]) => (
-                          <option key={value} value={value}>
-                            {label}
-                          </option>
-                        ),
-                      )}
-                    </select>
-                  </label>
-                  <label>
-                    Age context
-                    <select
-                      value={patientRiskContext.ageGroup ?? "adult"}
-                      onChange={(event) =>
-                        setPatientRiskContext((current) => ({
-                          ...current,
-                          ageGroup: event.target.value as PatientAgeGroup,
-                        }))
-                      }
-                      disabled={!canSell}
-                    >
-                      {Object.entries(patientAgeGroupLabels).map(
-                        ([value, label]) => (
-                          <option key={value} value={value}>
-                            {label}
-                          </option>
-                        ),
-                      )}
-                    </select>
-                  </label>
-                  {[
-                    ["pregnant", "Pregnancy context"],
-                    ["renalRisk", "Renal risk"],
-                    ["liverRisk", "Liver risk"],
-                  ].map(([key, label]) => (
-                    <label className="checkbox-row" key={key}>
-                      <input
-                        type="checkbox"
-                        checked={Boolean(
-                          patientRiskContext[key as keyof PatientRiskContext],
-                        )}
-                        onChange={(event) =>
-                          setPatientRiskContext((current) => ({
-                            ...current,
-                            [key]: event.target.checked,
-                          }))
-                        }
-                        disabled={!canSell}
-                      />{" "}
-                      {label}
-                    </label>
-                  ))}
-                  <label className="full">
-                    Allergies or reactions
-                    <input
-                      value={patientRiskContext.allergies ?? ""}
-                      onChange={(event) =>
-                        setPatientRiskContext((current) => ({
-                          ...current,
-                          allergies: event.target.value,
-                        }))
-                      }
-                      placeholder="Example: penicillin rash, NSAID reaction"
-                      disabled={!canSell}
-                    />
-                  </label>
-                  <label className="full">
-                    Current/chronic medicines
-                    <input
-                      value={patientRiskContext.chronicMedicines ?? ""}
-                      onChange={(event) =>
-                        setPatientRiskContext((current) => ({
-                          ...current,
-                          chronicMedicines: event.target.value,
-                        }))
-                      }
-                      placeholder="Example: metformin, amlodipine, warfarin"
-                      disabled={!canSell}
-                    />
-                  </label>
-                </div>
-                <div className="safety-prompt-list">
-                  {safetyReviewPrompts.length ? (
-                    safetyReviewPrompts.map((prompt) => (
-                      <article
-                        className={`safety-prompt is-${prompt.tone}`}
-                        key={prompt.id}
-                      >
-                        <strong>{prompt.title}</strong>
-                        <p>{prompt.detail}</p>
-                        <small>{prompt.why}</small>
-                      </article>
-                    ))
-                  ) : (
-                    <div className="empty-state">
-                      No safety prompts for this basket yet.
-                    </div>
-                  )}
-                </div>
-                <div className="review-context-grid">
-                  <label>
-                    Pharmacist action
-                    <select
-                      value={pharmacistReviewOutcome}
-                      onChange={(event) =>
-                        setPharmacistReviewOutcome(
-                          event.target.value as PharmacistReviewOutcome,
-                        )
-                      }
-                      disabled={!canSell}
-                    >
-                      {Object.entries(pharmacistReviewOutcomeLabels).map(
-                        ([value, label]) => (
-                          <option key={value} value={value}>
-                            {label}
-                          </option>
-                        ),
-                      )}
-                    </select>
-                  </label>
-                  <label className="full">
-                    Review note or feedback
-                    <textarea
-                      value={pharmacistReviewNote}
-                      onChange={(event) =>
-                        setPharmacistReviewNote(event.target.value)
-                      }
-                      placeholder="Example: counselled patient, doctor contacted, system missed allergy context..."
-                      disabled={!canSell}
-                      rows={3}
-                    />
-                  </label>
-                </div>
-              </section>
               <div className="pos-payment-block">
                 <span>
                   <Wallet size={15} /> Payment method
@@ -11899,242 +11469,7 @@ function QuestCoach({
           {safeIndex >= steps.length - 1 ? "Finish" : "Next"}
         </button>
       </div>
-      <button
-        className="quest-guide-link"
-        type="button"
-        onClick={() => setActiveView("guide")}
-      >
-        <BookOpen size={15} />
-        Open role guide
-      </button>
     </aside>
-  );
-}
-
-type GuideCard = {
-  id: string;
-  title: string;
-  summary: string;
-  view: View;
-  shot:
-    | "branch"
-    | "pos"
-    | "receive"
-    | "reports"
-    | "access"
-    | "settings"
-    | "chat";
-  steps: string[];
-  roles?: Role[];
-  superAdminOnly?: boolean;
-  branchManagerOnly?: boolean;
-};
-
-const guideCards: GuideCard[] = [
-  {
-    id: "branch",
-    title: "Choose the correct branch",
-    summary:
-      "Start every shift by confirming the branch/site at the top right of the workspace.",
-    view: "dashboard",
-    shot: "branch",
-    steps: [
-      "Open Dashboard.",
-      "Use the branch selector in the top bar.",
-      "Choose the branch you are working from.",
-      "Confirm cards and alerts refresh for that branch.",
-    ],
-  },
-  {
-    id: "pos",
-    title: "Complete a POS sale",
-    summary:
-      "Cashiers and pharmacists can find in-stock items, add them to cart, apply discounts, and print reconciliation history.",
-    view: "pos",
-    shot: "pos",
-    roles: ["cashier", "pharmacist"],
-    steps: [
-      "Open POS.",
-      "Search by product name, SKU, barcode, or use Frequently sold items.",
-      "Add items to cart and enter customer/payment details.",
-      "Save draft or complete sale if you are the cashier.",
-    ],
-  },
-  {
-    id: "receive",
-    title: "Receive Pharmacy and Mart stock",
-    summary:
-      "Inventory staff receive medicines and general products from the same workflow.",
-    view: "receive",
-    shot: "receive",
-    roles: ["inventory", "pharmacist", "admin"],
-    steps: [
-      "Open Receive.",
-      "Switch between Pharmacy and Mart where needed.",
-      "Search by name, SKU, or barcode.",
-      "Enter invoice, supplier, cost, selling price, quantity, and optional batch/expiry for products.",
-    ],
-  },
-  {
-    id: "reports",
-    title: "Export stock and movement reports",
-    summary:
-      "Reports help beta testers check stock at hand, stock movement, POS value, suppliers, expiry, and reorder needs.",
-    view: "reports",
-    shot: "reports",
-    steps: [
-      "Open Reports.",
-      "Choose Stock on hand or Movement ledger.",
-      "Switch between Pharmacy and Mart.",
-      "Filter by date, type, brand/product, generic, or category, then export CSV or print.",
-    ],
-  },
-  {
-    id: "access",
-    title: "Manage staff access",
-    summary:
-      "Super admins and branch managers can review which employees can work inside a selected branch.",
-    view: "branches",
-    shot: "access",
-    branchManagerOnly: true,
-    steps: [
-      "Open Branches.",
-      "Select a branch/site card.",
-      "Review Staff Access underneath the branch list.",
-      "Tick access, set expiry dates where needed, and save changes.",
-    ],
-  },
-  {
-    id: "settings",
-    title: "Brand the workspace",
-    summary:
-      "Super admins can confirm company identity, logo, default branch, and operational thresholds.",
-    view: "settings",
-    shot: "settings",
-    superAdminOnly: true,
-    steps: [
-      "Open Settings.",
-      "Upload or remove the workspace logo.",
-      "Confirm company name and licence details.",
-      "Save near-expiry and approval thresholds.",
-    ],
-  },
-  {
-    id: "chat",
-    title: "Message the team",
-    summary:
-      "Use group chat for shared updates and direct messages for employee-to-employee coordination.",
-    view: "chat",
-    shot: "chat",
-    steps: [
-      "Open Messages.",
-      "Choose Group chat or Direct message.",
-      "Select an employee for direct messages.",
-      "Send operational notes without leaving the workspace.",
-    ],
-  },
-];
-
-function visibleGuideCards(db: Database, currentUser: User) {
-  const superAdmin = isSuperAdmin(db, currentUser);
-  const managesBranch = db.branches.some((branch) =>
-    canManageBranch(db, currentUser, branch.id),
-  );
-  return guideCards.filter((card) => {
-    if (card.superAdminOnly && !superAdmin) return false;
-    if (card.branchManagerOnly && !managesBranch && !superAdmin) return false;
-    if (card.roles && !card.roles.includes(currentUser.role) && !superAdmin)
-      return false;
-    return true;
-  });
-}
-
-function GuideView({
-  db,
-  currentUser,
-  setActiveView,
-}: {
-  db: Database;
-  currentUser: User;
-  setActiveView: (view: View) => void;
-}) {
-  const cards = visibleGuideCards(db, currentUser);
-  const questSteps = getQuestSteps(db, currentUser);
-  return (
-    <section className="content-section guide-section">
-      <div className="section-heading">
-        <div>
-          <h2>{roleLabels[currentUser.role]} Guide</h2>
-          <p>
-            Role-specific walkthroughs for beta testing the workspace without
-            guessing where to start.
-          </p>
-        </div>
-        <span className="pill active">{questSteps.length} quest tasks</span>
-      </div>
-      <div className="guide-hero">
-        <Sparkles size={24} />
-        <div>
-          <strong>Beta orientation</strong>
-          <span>
-            Use the quest coach for quick practice, then use this manual when
-            you need step-by-step help.
-          </span>
-        </div>
-      </div>
-      <div className="guide-grid">
-        {cards.map((card) => (
-          <article className="guide-card" key={card.id}>
-            <GuideScreenshot type={card.shot} />
-            <div>
-              <h3>{card.title}</h3>
-              <p>{card.summary}</p>
-              <ol>
-                {card.steps.map((step) => (
-                  <li key={step}>{step}</li>
-                ))}
-              </ol>
-            </div>
-            <button
-              className="ghost-button"
-              type="button"
-              onClick={() => setActiveView(card.view)}
-            >
-              Open feature
-            </button>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function GuideScreenshot({ type }: { type: GuideCard["shot"] }) {
-  const labels: Record<GuideCard["shot"], string[]> = {
-    branch: ["Dashboard", "Port-Harcourt main store", "1 notification"],
-    pos: ["Frequently sold items", "Sale cart", "Complete sale"],
-    receive: ["Receive stock", "Search SKU/barcode", "Invoice items"],
-    reports: ["Movement ledger", "Pharmacy | Mart", "CSV / Print"],
-    access: ["Branches and Sites", "Staff Access", "Can authorize"],
-    settings: ["Workspace logo", "Account Settings", "Save settings"],
-    chat: ["Messages", "Group chat", "Direct message"],
-  };
-  return (
-    <div
-      className={`guide-shot ${type}`}
-      aria-label={`${type} screenshot illustration`}
-    >
-      <div className="guide-shot-top">
-        <span />
-        <span />
-        <span />
-      </div>
-      <div className="guide-shot-body">
-        <b>{labels[type][0]}</b>
-        <span>{labels[type][1]}</span>
-        <em>{labels[type][2]}</em>
-      </div>
-    </div>
   );
 }
 
@@ -12690,6 +12025,7 @@ function BranchesView({
 
   function submit(event: FormEvent) {
     event.preventDefault();
+    if (!form.id && !superAdmin) return;
     if (!canManageSelected && form.id) return;
     if (form.id && form.id !== selectedBranch?.id && !superAdmin) return;
     const record: Branch = {
@@ -13028,13 +12364,15 @@ function BranchesView({
             Active branch
           </label>
           <div className="form-actions full">
-            <button
-              className="ghost-button"
-              type="button"
-              onClick={() => setForm(createBlank())}
-            >
-              Clear
-            </button>
+            {superAdmin && (
+              <button
+                className="ghost-button"
+                type="button"
+                onClick={() => setForm(createBlank())}
+              >
+                New branch
+              </button>
+            )}
             <button
               className="primary-button"
               type="submit"
