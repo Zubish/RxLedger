@@ -18,6 +18,8 @@ import {
   Moon,
   TrendingUp,
   Sparkles,
+  Menu,
+  X,
 } from "lucide-react";
 import "./rxledger-landing.css";
 import {
@@ -30,6 +32,13 @@ type LandingProps = {
   onCreateWorkspace: () => void;
   onSignIn: () => void;
 };
+
+const landingNavLinks = [
+  { href: "#product", label: "Product" },
+  { href: "#why", label: "Why RxLedger" },
+  { href: "#pricing", label: "Pricing" },
+  { href: "#faq", label: "FAQ" },
+];
 
 export default function RxLedgerLanding({
   onCreateWorkspace,
@@ -56,28 +65,45 @@ export default function RxLedgerLanding({
 
 /* ---------------- Nav ---------------- */
 function Nav({ onCreateWorkspace, onSignIn }: LandingProps) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return undefined;
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setMobileMenuOpen(false);
+    }
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [mobileMenuOpen]);
+
+  function createWorkspace() {
+    setMobileMenuOpen(false);
+    onCreateWorkspace();
+  }
+
   return (
     <header className="sticky top-0 z-50 border-b border-border/70 bg-background/80 backdrop-blur-md">
       <div className="landing-container flex h-16 items-center justify-between">
-        <a href="/" className="flex items-center gap-2.5">
+        <a
+          href="/"
+          className="flex min-w-0 items-center gap-2.5"
+          onClick={() => setMobileMenuOpen(false)}
+        >
           <Logo />
-          <span className="font-display text-lg font-extrabold tracking-tight">
+          <span className="hidden font-display text-lg font-extrabold tracking-tight min-[360px]:inline">
             RxLedger
           </span>
         </a>
         <nav className="hidden items-center gap-7 text-sm font-medium text-ink-soft md:flex">
-          <a href="#product" className="transition-colors hover:text-ink">
-            Product
-          </a>
-          <a href="#why" className="transition-colors hover:text-ink">
-            Why RxLedger
-          </a>
-          <a href="#pricing" className="transition-colors hover:text-ink">
-            Pricing
-          </a>
-          <a href="#faq" className="transition-colors hover:text-ink">
-            FAQ
-          </a>
+          {landingNavLinks.map((link) => (
+            <a
+              href={link.href}
+              className="transition-colors hover:text-ink"
+              key={link.href}
+            >
+              {link.label}
+            </a>
+          ))}
         </nav>
         <div className="flex items-center gap-2">
           <button
@@ -88,12 +114,56 @@ function Nav({ onCreateWorkspace, onSignIn }: LandingProps) {
             Sign in
           </button>
           <button
-            className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md bg-brand px-3.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:bg-brand/90"
+            className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md bg-brand px-3 text-xs font-semibold text-primary-foreground shadow-sm transition-all hover:bg-brand/90 min-[380px]:px-3.5 min-[380px]:text-sm"
             type="button"
-            onClick={onCreateWorkspace}
+            onClick={createWorkspace}
           >
-            <span className="hidden sm:inline">Create workspace</span>
+            <span>Create workspace</span>
             <ArrowRight className="size-3.5" />
+          </button>
+          <button
+            className="inline-flex size-9 items-center justify-center rounded-md border border-border bg-card text-ink shadow-sm transition-colors hover:bg-surface md:hidden"
+            type="button"
+            aria-label={
+              mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"
+            }
+            aria-expanded={mobileMenuOpen}
+            aria-controls="mobile-landing-menu"
+            onClick={() => setMobileMenuOpen((open) => !open)}
+          >
+            {mobileMenuOpen ? (
+              <X className="size-4" />
+            ) : (
+              <Menu className="size-4" />
+            )}
+          </button>
+        </div>
+      </div>
+      <div
+        className={`landing-mobile-menu md:hidden ${mobileMenuOpen ? "is-open" : ""}`}
+        id="mobile-landing-menu"
+        hidden={!mobileMenuOpen}
+      >
+        <div className="landing-container grid gap-2 pb-4 pt-1">
+          {landingNavLinks.map((link) => (
+            <a
+              className="rounded-lg border border-border bg-card px-4 py-3 text-sm font-semibold text-ink shadow-sm"
+              href={link.href}
+              key={link.href}
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              {link.label}
+            </a>
+          ))}
+          <button
+            className="rounded-lg border border-border bg-card px-4 py-3 text-left text-sm font-semibold text-ink shadow-sm"
+            type="button"
+            onClick={() => {
+              setMobileMenuOpen(false);
+              onSignIn();
+            }}
+          >
+            Sign in
           </button>
         </div>
       </div>
@@ -359,7 +429,7 @@ function Hero({ onCreateWorkspace }: { onCreateWorkspace: () => void }) {
         }}
       />
       <div className="landing-container grid min-w-0 items-center gap-14 pt-16 pb-20 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.08fr)] lg:gap-16 lg:pt-24 lg:pb-28 2xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.15fr)] 2xl:gap-24">
-        <div className="w-[calc(100vw-2rem)] min-w-0 justify-self-start text-left lg:w-auto lg:justify-self-auto">
+        <div className="w-full min-w-0 justify-self-start text-left lg:w-auto lg:justify-self-auto">
           <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1 text-xs font-medium text-ink-soft shadow-sm backdrop-blur">
             <Sparkles className="size-3.5 text-brand" />
             <span className="hidden sm:inline">
@@ -375,7 +445,7 @@ function Hero({ onCreateWorkspace }: { onCreateWorkspace: () => void }) {
             </span>
             <span className="block text-brand">audited by default.</span>
           </h1>
-          <p className="mt-5 max-w-[17rem] text-base leading-relaxed text-ink-soft min-[380px]:max-w-[18rem] sm:max-w-2xl sm:text-lg 2xl:text-xl">
+          <p className="mt-5 max-w-[calc(100vw-2rem)] text-base leading-relaxed text-ink-soft sm:max-w-2xl sm:text-lg 2xl:text-xl">
             RxLedger is the multi-tenant workspace for community pharmacies,
             hospital dispensaries, and multi-branch retailers - FEFO inventory,
             POS checkout, role-based access, and clean day-end reconciliation in
@@ -397,7 +467,7 @@ function Hero({ onCreateWorkspace }: { onCreateWorkspace: () => void }) {
               Book a 20-min demo
             </button>
           </div>
-          <ul className="mt-6 flex max-w-[17rem] flex-col items-start justify-start gap-x-5 gap-y-2 text-xs text-ink-soft min-[380px]:max-w-[18rem] sm:max-w-none sm:flex-row sm:flex-wrap">
+          <ul className="mt-6 flex max-w-[calc(100vw-2rem)] flex-col items-start justify-start gap-x-5 gap-y-2 text-xs text-ink-soft sm:max-w-none sm:flex-row sm:flex-wrap">
             <li className="inline-flex items-center gap-1.5">
               <CheckCircle2 className="size-3.5 text-brand" /> No card to start
             </li>
@@ -990,7 +1060,7 @@ function Hero({ onCreateWorkspace }: { onCreateWorkspace: () => void }) {
         }}
       />
       <div className="landing-container grid min-w-0 items-center gap-14 pt-16 pb-20 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.08fr)] lg:gap-16 lg:pt-24 lg:pb-28 2xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.15fr)] 2xl:gap-24">
-        <div className="w-[calc(100vw-2rem)] min-w-0 justify-self-start text-left lg:w-auto lg:justify-self-auto">
+        <div className="w-full min-w-0 justify-self-start text-left lg:w-auto lg:justify-self-auto">
           <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1 text-xs font-medium text-ink-soft shadow-sm backdrop-blur">
             <Sparkles className="size-3.5 text-brand" />
             <span className="hidden sm:inline">
@@ -1006,7 +1076,7 @@ function Hero({ onCreateWorkspace }: { onCreateWorkspace: () => void }) {
             </span>
             <span className="block text-brand">audited by default.</span>
           </h1>
-          <p className="mt-5 max-w-[17rem] text-base leading-relaxed text-ink-soft min-[380px]:max-w-[18rem] sm:max-w-2xl sm:text-lg 2xl:text-xl">
+          <p className="mt-5 max-w-[calc(100vw-2rem)] text-base leading-relaxed text-ink-soft sm:max-w-2xl sm:text-lg 2xl:text-xl">
             RxLedger is the multi-tenant workspace for community pharmacies,
             hospital dispensaries, and multi-branch retailers - FEFO inventory,
             POS checkout, role-based access, and clean day-end reconciliation in
@@ -1028,7 +1098,7 @@ function Hero({ onCreateWorkspace }: { onCreateWorkspace: () => void }) {
               Book a 20-min demo
             </button>
           </div>
-          <ul className="mt-6 flex max-w-[17rem] flex-col items-start justify-start gap-x-5 gap-y-2 text-xs text-ink-soft min-[380px]:max-w-[18rem] sm:max-w-none sm:flex-row sm:flex-wrap">
+          <ul className="mt-6 flex max-w-[calc(100vw-2rem)] flex-col items-start justify-start gap-x-5 gap-y-2 text-xs text-ink-soft sm:max-w-none sm:flex-row sm:flex-wrap">
             <li className="inline-flex items-center gap-1.5">
               <CheckCircle2 className="size-3.5 text-brand" /> No card to start
             </li>
@@ -1077,7 +1147,7 @@ function DashboardPreview() {
         </div>
 
         {/* KPI tiles */}
-        <div className="grid grid-cols-3 gap-3 p-4">
+        <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-3 sm:p-4">
           <KpiTile
             label="Today's sales"
             value="₦1,842,500"
@@ -1102,8 +1172,8 @@ function DashboardPreview() {
         </div>
 
         {/* Batch ledger table */}
-        <div className="px-4 pb-4">
-          <div className="rounded-lg border border-border bg-background">
+        <div className="px-3 pb-3 sm:px-4 sm:pb-4">
+          <div className="overflow-x-auto rounded-lg border border-border bg-background">
             <div className="flex items-center justify-between border-b border-border px-3 py-2">
               <span className="text-xs font-semibold text-ink">
                 FEFO queue · dispense next
@@ -1112,7 +1182,7 @@ function DashboardPreview() {
                 batch ledger
               </span>
             </div>
-            <table className="w-full text-left text-xs">
+            <table className="min-w-[34rem] text-left text-xs sm:w-full sm:min-w-0">
               <thead className="font-mono text-[10px] uppercase tracking-wider text-ink-soft">
                 <tr className="border-b border-border">
                   <th className="px-3 py-2 font-medium">Item · batch</th>
