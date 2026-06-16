@@ -2467,11 +2467,102 @@ type ExecuteAction = (
   successMessage?: string,
 ) => Promise<boolean>;
 
+type NoticeTone = "success" | "warning" | "danger" | "info";
+
+type NoticeState = {
+  id: number;
+  message: string;
+  tone: NoticeTone;
+};
+
+function inferNoticeTone(message: string): NoticeTone {
+  const value = message.toLowerCase();
+  if (
+    value.includes("blocked") ||
+    value.includes("cannot") ||
+    value.includes("unable") ||
+    value.includes("failed") ||
+    value.includes("error") ||
+    value.includes("invalid") ||
+    value.includes("required") ||
+    value.includes("not found") ||
+    value.includes("must") ||
+    value.includes("exceeds")
+  ) {
+    return "danger";
+  }
+  if (
+    value.includes("warning") ||
+    value.includes("out of stock") ||
+    value.includes("limit") ||
+    value.includes("expired")
+  ) {
+    return "warning";
+  }
+  if (
+    value.includes("copied") ||
+    value.includes("loaded") ||
+    value.includes("saved") ||
+    value.includes("created") ||
+    value.includes("updated") ||
+    value.includes("selected") ||
+    value.includes("cleared") ||
+    value.includes("received") ||
+    value.includes("marked") ||
+    value.includes("completed") ||
+    value.includes("added")
+  ) {
+    return "success";
+  }
+  return "info";
+}
+
+function NoticeOverlay({
+  notice,
+  onClose,
+}: {
+  notice: NoticeState;
+  onClose: () => void;
+}) {
+  const icon =
+    notice.tone === "success" ? (
+      <CheckCircle2 size={20} />
+    ) : notice.tone === "warning" ? (
+      <Bell size={20} />
+    ) : notice.tone === "danger" ? (
+      <AlertTriangle size={20} />
+    ) : (
+      <MessageSquare size={20} />
+    );
+  const label =
+    notice.tone === "success"
+      ? "Action completed"
+      : notice.tone === "warning"
+        ? "Attention"
+        : notice.tone === "danger"
+          ? "Action not completed"
+          : "Notice";
+  return (
+    <div className="notice-overlay" aria-live="polite" aria-atomic="true">
+      <section className={`notice-panel ${notice.tone}`} role="status">
+        <div className="notice-panel-icon">{icon}</div>
+        <div className="notice-panel-copy">
+          <strong>{label}</strong>
+          <p>{notice.message}</p>
+        </div>
+        <button type="button" onClick={onClose}>
+          Close
+        </button>
+      </section>
+    </div>
+  );
+}
+
 function App() {
   const [db, setDb] = useState<Database>(createEmptyDatabase);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<View>("dashboard");
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState<NoticeState | null>(null);
   const [loading, setLoading] = useState(true);
   const [signingIn, setSigningIn] = useState(false);
   const [connectionError, setConnectionError] = useState("");
@@ -2500,6 +2591,7 @@ function App() {
     startTop: drawerHandleTop,
   });
   const branchSwitchTimerRef = useRef<number | undefined>(undefined);
+  const noticeTimerRef = useRef<number | undefined>(undefined);
 
   const currentUser =
     db.users.find(
@@ -2675,9 +2767,27 @@ function App() {
     void load();
   }, []);
 
-  function flash(message: string) {
-    setNotice(message);
-    window.setTimeout(() => setNotice(""), 2800);
+  function closeNotice() {
+    if (noticeTimerRef.current) {
+      window.clearTimeout(noticeTimerRef.current);
+      noticeTimerRef.current = undefined;
+    }
+    setNotice(null);
+  }
+
+  function flash(message: string, tone?: NoticeTone) {
+    if (noticeTimerRef.current) {
+      window.clearTimeout(noticeTimerRef.current);
+    }
+    setNotice({
+      id: Date.now(),
+      message,
+      tone: tone ?? inferNoticeTone(message),
+    });
+    noticeTimerRef.current = window.setTimeout(() => {
+      setNotice(null);
+      noticeTimerRef.current = undefined;
+    }, 3200);
   }
 
   const forgetBrowserUser = useCallback(
@@ -2705,7 +2815,7 @@ function App() {
     setSidebarCollapsed(true);
     setBranchMenuOpen(false);
     setAuthIntent("signin");
-    setNotice("");
+    closeNotice();
     setConnectionError(message ?? "");
   }, []);
 
@@ -2733,7 +2843,7 @@ function App() {
       setDb(result.db);
       setSessionUserId(result.currentUser.id);
       setConnectionError("");
-      if (successMessage) flash(successMessage);
+      if (successMessage) flash(successMessage, "success");
       return true;
     } catch (error) {
       const message =
@@ -2742,7 +2852,7 @@ function App() {
         await forceSignOut("Session expired. Please sign in again.");
         return false;
       }
-      flash(message);
+      flash(message, inferNoticeTone(message));
       return false;
     }
   }
@@ -3237,7 +3347,6 @@ function App() {
             </div>
           </div>
           <div className="topbar-actions">
-            {notice && <span className="notice">{notice}</span>}
             {activeBranch && (
               <div className="branch-switcher">
                 <button
@@ -3481,6 +3590,7 @@ function App() {
           activeBranchId={activeBranch?.id}
           setActiveView={setActiveView}
         />
+        {notice && <NoticeOverlay notice={notice} onClose={closeNotice} />}
         {receivedStockNotification?.receivedStock && (
           <ReceivedStockModal
             notification={receivedStockNotification}

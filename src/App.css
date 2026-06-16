@@ -1135,17 +1135,107 @@ td span,
   text-transform: uppercase;
 }
 
-.notice {
-  background: linear-gradient(
-    90deg,
-    rgba(71, 191, 255, 0.11),
-    rgba(47, 163, 125, 0.12)
-  );
-  color: var(--rx-green-deep);
-  border: 1px solid #b7e2ce;
-  border-radius: 8px;
-  padding: 8px 10px;
+.notice-overlay {
+  align-items: center;
+  display: grid;
+  inset: 0;
+  justify-items: center;
+  padding: 24px;
+  pointer-events: none;
+  position: fixed;
+  z-index: 160;
+}
+
+.notice-panel {
+  align-items: center;
+  backdrop-filter: blur(16px);
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #d7e4e3;
+  border-radius: 18px;
+  box-shadow: 0 28px 70px rgba(18, 32, 37, 0.22);
+  display: grid;
+  gap: 14px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  max-width: min(620px, calc(100vw - 32px));
+  padding: 18px 20px;
+  pointer-events: auto;
+  justify-self: center;
+  width: 100%;
+}
+
+.notice-panel-icon {
+  align-items: center;
+  border-radius: 14px;
+  display: grid;
+  height: 46px;
+  justify-content: center;
+  width: 46px;
+}
+
+.notice-panel-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.notice-panel-copy strong {
+  color: #172024;
+  font-size: 15px;
+}
+
+.notice-panel-copy p {
+  color: #435056;
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.notice-panel button {
+  background: #ffffff;
+  border: 1px solid #d5e1e0;
+  border-radius: 999px;
+  color: #183238;
+  cursor: pointer;
+  font: inherit;
   font-size: 13px;
+  font-weight: 800;
+  min-height: 38px;
+  padding: 0 14px;
+}
+
+.notice-panel.success {
+  border-color: #b7e2ce;
+}
+
+.notice-panel.success .notice-panel-icon {
+  background: rgba(47, 163, 125, 0.12);
+  color: #0b7558;
+}
+
+.notice-panel.warning {
+  border-color: #f0d59a;
+}
+
+.notice-panel.warning .notice-panel-icon {
+  background: rgba(196, 138, 25, 0.14);
+  color: #9a6510;
+}
+
+.notice-panel.danger {
+  border-color: #e6b8b2;
+}
+
+.notice-panel.danger .notice-panel-icon {
+  background: rgba(173, 50, 43, 0.12);
+  color: #ad322b;
+}
+
+.notice-panel.info {
+  border-color: #bddceb;
+}
+
+.notice-panel.info .notice-panel-icon {
+  background: rgba(71, 191, 255, 0.13);
+  color: #0f6f8c;
 }
 
 .alert-title {
