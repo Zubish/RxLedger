@@ -212,8 +212,13 @@ assertPresent(
 );
 assertPresent(
   action,
-  /fulfillContinuityRequestsFromSale[\s\S]*Fulfilled continuity request from POS sale/s,
-  "RxLedger should close matching continuity requests only after POS sale stock deduction.",
+  /fulfillContinuityRequestsFromSale[\s\S]*request\.resolvedBy = actorId[\s\S]*Fulfilled continuity request from POS sale/s,
+  "RxLedger should close matching continuity requests only after POS sale stock deduction and record who sold it.",
+);
+assertPresent(
+  app,
+  /continuityGroups[\s\S]*continuity-patient-name[\s\S]*continuity-request-list/s,
+  "RxLedger Continuity Centre should group owed medicines by patient in a single-open style card.",
 );
 assertPresent(
   app,
@@ -239,6 +244,11 @@ assertPresent(
   app,
   /updatePatientProfile[\s\S]*Patient profile updated/,
   "RxLedger patient edit form should call the patient profile update action.",
+);
+assertPresent(
+  app,
+  /groupSalesByDate[\s\S]*patient-history-day[\s\S]*selectedFollowUpMessage/s,
+  "RxLedger patient history should group same-day visits and show only the selected sale follow-up message.",
 );
 assertPresent(
   blueprint,

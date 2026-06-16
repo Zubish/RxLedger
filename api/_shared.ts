@@ -367,6 +367,7 @@ type ContinuityRequest = {
   contactedAt?: string;
   fulfilledAt?: string;
   closedAt?: string;
+  resolvedBy?: string;
 };
 
 type MedicineLabelRule = {

@@ -3084,20 +3084,50 @@ td strong {
   opacity: 0.78;
 }
 
-.continuity-card-main {
-  display: grid;
-  gap: 12px;
-}
-
-.continuity-card header {
+.continuity-card-header {
   align-items: start;
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   justify-content: space-between;
 }
 
-.continuity-card h3 {
-  margin: 8px 0 4px;
+.continuity-patient-block {
+  display: grid;
+  flex: 1 1 420px;
+  gap: 5px;
+  min-width: 0;
+}
+
+.continuity-patient-name {
+  color: #101820;
+  font-size: 17px;
+  line-height: 1.2;
+}
+
+.continuity-patient-phone {
+  color: #52636c;
+  font-size: 13px;
+}
+
+.continuity-card-status {
+  align-items: flex-end;
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+}
+
+.continuity-owed-list {
+  display: grid;
+  gap: 5px;
+}
+
+.continuity-owed-list span {
+  color: #183238;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .continuity-card p,
@@ -3106,6 +3136,60 @@ td strong {
   font-size: 13px;
   line-height: 1.45;
   margin: 0;
+}
+
+.continuity-dropdown {
+  align-items: center;
+  background: #f7fbfa;
+  border: 1px solid #dce9e7;
+  border-radius: 999px;
+  color: #006b45;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  gap: 6px;
+  justify-self: start;
+  padding: 7px 11px;
+}
+
+.continuity-dropdown svg {
+  transition: transform 160ms ease;
+}
+
+.continuity-card.is-expanded .continuity-dropdown svg {
+  transform: rotate(90deg);
+}
+
+.continuity-request-list {
+  border-top: 1px solid #e3ecea;
+  display: grid;
+  gap: 10px;
+  padding-top: 10px;
+}
+
+.continuity-request-item {
+  background: #f8fbfb;
+  border: 1px solid #e3ecea;
+  border-radius: 10px;
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+}
+
+.continuity-request-heading {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.continuity-request-heading span {
+  color: #52636c;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .continuity-meta-grid {
@@ -3160,15 +3244,15 @@ td strong {
   text-decoration: none;
 }
 
-.continuity-card footer {
+.continuity-request-item footer {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.continuity-card footer button,
-.continuity-card footer a {
+.continuity-request-item footer button,
+.continuity-request-item footer a {
   align-items: center;
   background: #f8fbfb;
   border: 1px solid #d7e4e3;
@@ -3398,7 +3482,8 @@ td strong {
   scrollbar-gutter: stable;
 }
 
-.patient-timeline article,
+.patient-history-day,
+.patient-history-visit,
 .patient-message-list article,
 .patient-reminder-list article {
   background: #fbfdfd;
@@ -3407,12 +3492,45 @@ td strong {
   padding: 10px;
 }
 
-.patient-timeline article {
+.patient-history-day {
   display: grid;
   gap: 8px;
 }
 
-.patient-timeline ul {
+.patient-history-day h4 {
+  color: #172024;
+  font-size: 14px;
+  margin: 0;
+}
+
+.patient-history-visit {
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  gap: 8px;
+  text-align: left;
+  width: 100%;
+}
+
+.patient-history-visit:hover,
+.patient-history-visit.active {
+  background: #f0faf7;
+  border-color: #9ed9bd;
+}
+
+.patient-history-visit > span {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.patient-history-visit small {
+  color: #68777e;
+}
+
+.patient-timeline ul,
+.patient-history-visit ul {
   margin: 0;
   padding-left: 18px;
 }

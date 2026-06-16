@@ -370,6 +370,7 @@ export type ContinuityRequest = {
   contactedAt?: string;
   fulfilledAt?: string;
   closedAt?: string;
+  resolvedBy?: string;
 };
 
 export type MedicineLabelRule = {

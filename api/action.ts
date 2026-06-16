@@ -2218,6 +2218,7 @@ function fulfillContinuityRequestsFromSale(
     request.fulfilledAt = sale.soldAt;
     request.closedAt = sale.soldAt;
     request.updatedAt = sale.soldAt;
+    request.resolvedBy = actorId;
     fulfilled.push({ ...request });
     addAudit(
       db,

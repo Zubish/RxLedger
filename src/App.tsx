@@ -491,6 +491,7 @@ type ContinuityRequest = {
   contactedAt?: string;
   fulfilledAt?: string;
   closedAt?: string;
+  resolvedBy?: string;
 };
 
 type MedicineLabelRule = {
@@ -750,7 +751,7 @@ function getWorkspaceUrl(settings: AppSettings) {
 
 function medicineMeta(medicine: Medicine) {
   return (
-    [medicine.genericName, medicine.form, medicine.strength]
+    [medicine.genericName, medicine.strength, medicine.form]
       .filter(Boolean)
       .join(" / ") || "No generic, form, or strength recorded"
   );
@@ -1308,6 +1309,30 @@ function addDaysToDate(dateIso: string, days: number) {
 function formatDate(value?: string) {
   if (!value) return "Not set";
   return new Date(`${value.slice(0, 10)}T00:00:00`).toLocaleDateString();
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return "Not recorded";
+  return new Date(value).toLocaleString();
+}
+
+function groupSalesByDate(sales: Sale[]) {
+  const groups = new Map<string, { dateLabel: string; sales: Sale[] }>();
+  sales.forEach((sale) => {
+    const key = sale.soldAt.slice(0, 10);
+    const group =
+      groups.get(key) ??
+      {
+        dateLabel: new Date(`${key}T00:00:00`).toLocaleDateString(),
+        sales: [],
+      };
+    group.sales.push(sale);
+    groups.set(key, group);
+  });
+  return [...groups.values()].map((group) => ({
+    ...group,
+    sales: group.sales.sort((a, b) => b.soldAt.localeCompare(a.soldAt)),
+  }));
 }
 
 function patientDisplayName(sale: Sale) {
@@ -9623,6 +9648,9 @@ function ContinuityCentre({
   const [scopeFilter, setScopeFilter] = useState<"my-branch" | "workspace">(
     "my-branch",
   );
+  const [expandedContinuityKey, setExpandedContinuityKey] = useState<
+    string | null
+  >(null);
   const [form, setForm] = useState({
     patientName: "",
     patientPhone: "",
@@ -9670,6 +9698,39 @@ function ContinuityCentre({
   const selectedMedicine = db.medicines.find(
     (medicine) => medicine.id === form.medicineId,
   );
+  const continuityGroupMap = new Map<
+    string,
+    {
+      key: string;
+      patientName: string;
+      patientPhone: string;
+      requests: ContinuityRequest[];
+    }
+  >();
+  visibleRequests.forEach((request) => {
+    const normalized = normalizePhone(request.patientPhone);
+    const key =
+      normalized || `name:${request.patientName.trim().toLowerCase()}`;
+    const existing = continuityGroupMap.get(key);
+    if (existing) {
+      existing.requests.push(request);
+      return;
+    }
+    continuityGroupMap.set(key, {
+      key,
+      patientName: request.patientName || "Walk-in patient",
+      patientPhone: request.patientPhone,
+      requests: [request],
+    });
+  });
+  const continuityGroups = [...continuityGroupMap.values()].map((group) => ({
+    ...group,
+    requests: group.requests.sort(
+      (a, b) =>
+        b.updatedAt.localeCompare(a.updatedAt) ||
+        b.createdAt.localeCompare(a.createdAt),
+    ),
+  }));
 
   function updateRequest(requestId: string, status: ContinuityRequestStatus) {
     void executeAction(
@@ -9939,131 +10000,216 @@ function ContinuityCentre({
           ))}
         </div>
         <div className="continuity-list">
-          {visibleRequests.map((request) => {
-            const medicine = db.medicines.find(
-              (item) => item.id === request.medicineId,
+          {continuityGroups.map((group) => {
+            const expanded = expandedContinuityKey === group.key;
+            const visiblePreview = group.requests.slice(0, 2);
+            const mostUrgent = group.requests.reduce(
+              (current, request) => {
+                const rank = { urgent: 3, important: 2, routine: 1 };
+                return rank[request.urgency] > rank[current.urgency]
+                  ? request
+                  : current;
+              },
+              group.requests[0],
             );
-            const origin = db.branches.find(
-              (branch) => branch.id === request.originBranchId,
+            const hasMatched = group.requests.some(
+              (request) => request.status === "matched",
             );
-            const matched = db.branches.find(
-              (branch) => branch.id === request.matchedBranchId,
-            );
-            const availability = getMedicineBranchAvailability(
-              db,
-              stockRows,
-              request.medicineId,
-              activeBranch,
-            ).slice(0, 3);
-            const message = continuityMessage(db, request, matched);
-            const whatsapp = whatsappHref(request.patientPhone, message);
             return (
               <article
-                className={`continuity-card ${request.status}`}
-                key={request.id}
+                className={`continuity-card ${hasMatched ? "matched" : mostUrgent.status} ${
+                  expanded ? "is-expanded" : "is-collapsed"
+                }`}
+                key={group.key}
               >
-                <div className="continuity-card-main">
-                  <header>
-                    <div>
-                      <span
-                        className={`pill ${
-                          request.urgency === "urgent"
-                            ? "expired"
-                            : request.urgency === "important"
-                              ? "warning"
-                              : "active"
-                        }`}
-                      >
-                        {continuityUrgencyLabels[request.urgency]}
-                      </span>
-                      <h3>{request.patientName || "Walk-in patient"}</h3>
-                      <p>
-                        {request.patientPhone || "No phone recorded"} /{" "}
-                        {request.requestedMedicineName}
-                        {medicine ? ` / ${medicineMeta(medicine)}` : ""}
-                      </p>
-                    </div>
-                    <strong>{continuityStatusLabels[request.status]}</strong>
-                  </header>
-                  <div className="continuity-meta-grid">
-                    <span>Needed: {number.format(request.quantityRequested)}</span>
-                    <span>Recorded at {origin?.name ?? request.originBranchId}</span>
-                    <span>
-                      {matched
-                        ? `Available at ${matched.name}`
-                        : "Waiting for available stock"}
+                <header className="continuity-card-header">
+                  <div className="continuity-patient-block">
+                    <strong className="continuity-patient-name">
+                      {group.patientName}
+                    </strong>
+                    <span className="continuity-patient-phone">
+                      {group.patientPhone || "No phone recorded"} /{" "}
+                      {group.requests.length} owed medicine
+                      {group.requests.length === 1 ? "" : "s"}
                     </span>
-                    <span>
-                      Updated {new Date(request.updatedAt).toLocaleString()}
-                    </span>
-                  </div>
-                  {request.note && (
-                    <p className="continuity-note">{request.note}</p>
-                  )}
-                  <div className="branch-availability-list">
-                    {availability.map((entry) => (
-                      <div key={entry.branch.id}>
-                        <MapPin size={15} />
+                    <div className="continuity-owed-list compact">
+                      {visiblePreview.map((request) => {
+                        const medicine = db.medicines.find(
+                          (item) => item.id === request.medicineId,
+                        );
+                        return (
+                          <span key={request.id}>
+                            {request.requestedMedicineName}
+                            {medicine ? ` / ${medicineMeta(medicine)}` : ""} /{" "}
+                            {number.format(request.quantityRequested)} owed
+                          </span>
+                        );
+                      })}
+                      {group.requests.length > visiblePreview.length && (
                         <span>
-                          <strong>{entry.branch.name}</strong>
-                          {entry.branch.address || "No address recorded"} /{" "}
-                          {number.format(entry.quantity)} available
+                          +{group.requests.length - visiblePreview.length} more
                         </span>
-                        {entry.mapHref && (
-                          <a href={entry.mapHref} target="_blank" rel="noreferrer">
-                            Map
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                    {!availability.length && (
-                      <small>
-                        No non-expired stock is available in another branch yet.
-                      </small>
-                    )}
+                      )}
+                    </div>
                   </div>
-                </div>
-                <footer>
-                  <button
-                    type="button"
-                    onClick={() => void copyPatientMessage(request)}
-                  >
-                    <ClipboardList size={14} /> Copy
-                  </button>
-                  {whatsapp && (
-                    <a href={whatsapp} target="_blank" rel="noreferrer">
-                      <Smartphone size={14} /> WhatsApp
-                    </a>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => updateRequest(request.id, "contacted")}
-                  >
-                    Mark contacted
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => updateRequest(request.id, "transferred")}
-                  >
-                    Request transfer
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => processInPos(request)}
-                  >
-                    Process in POS
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => updateRequest(request.id, "cancelled")}
-                  >
-                    Cancel
-                  </button>
-                </footer>
+                  <div className="continuity-card-status">
+                    <span
+                      className={`pill ${
+                        mostUrgent.urgency === "urgent"
+                          ? "expired"
+                          : mostUrgent.urgency === "important"
+                            ? "warning"
+                            : "active"
+                      }`}
+                    >
+                      {continuityUrgencyLabels[mostUrgent.urgency]}
+                    </span>
+                    <strong>
+                      {hasMatched
+                        ? "Stock available"
+                        : continuityStatusLabels[mostUrgent.status]}
+                    </strong>
+                  </div>
+                </header>
+                <button
+                  className="continuity-dropdown"
+                  type="button"
+                  onClick={() =>
+                    setExpandedContinuityKey((current) =>
+                      current === group.key ? null : group.key,
+                    )
+                  }
+                  aria-expanded={expanded}
+                >
+                  <span>Details</span>
+                  <ChevronRight size={15} />
+                </button>
+                {expanded && (
+                  <div className="continuity-request-list">
+                    {group.requests.map((request) => {
+                      const medicine = db.medicines.find(
+                        (item) => item.id === request.medicineId,
+                      );
+                      const origin = db.branches.find(
+                        (branch) => branch.id === request.originBranchId,
+                      );
+                      const matched = db.branches.find(
+                        (branch) => branch.id === request.matchedBranchId,
+                      );
+                      const availability = getMedicineBranchAvailability(
+                        db,
+                        stockRows,
+                        request.medicineId,
+                        activeBranch,
+                      ).slice(0, 3);
+                      const message = continuityMessage(db, request, matched);
+                      const whatsapp = whatsappHref(request.patientPhone, message);
+                      return (
+                        <section className="continuity-request-item" key={request.id}>
+                          <div className="continuity-request-heading">
+                            <strong>
+                              {request.requestedMedicineName}
+                              {medicine ? ` / ${medicineMeta(medicine)}` : ""}
+                            </strong>
+                            <span>{continuityStatusLabels[request.status]}</span>
+                          </div>
+                          <div className="continuity-meta-grid">
+                            <span>
+                              Needed: {number.format(request.quantityRequested)}
+                            </span>
+                            <span>
+                              Recorded {formatDateTime(request.createdAt)} by{" "}
+                              {getUserName(db, request.createdBy)}
+                            </span>
+                            <span>
+                              {request.fulfilledAt
+                                ? `Sold ${formatDateTime(request.fulfilledAt)} by ${getUserName(db, request.resolvedBy)}`
+                                : `Recorded at ${origin?.name ?? request.originBranchId}`}
+                            </span>
+                            <span>
+                              {matched
+                                ? `Available at ${matched.name}`
+                                : "Waiting for available stock"}
+                            </span>
+                          </div>
+                          {request.note && (
+                            <p className="continuity-note">{request.note}</p>
+                          )}
+                          <div className="branch-availability-list">
+                            {availability.map((entry) => (
+                              <div key={entry.branch.id}>
+                                <MapPin size={15} />
+                                <span>
+                                  <strong>{entry.branch.name}</strong>
+                                  {entry.branch.address || "No address recorded"} /{" "}
+                                  {number.format(entry.quantity)} available
+                                </span>
+                                {entry.mapHref && (
+                                  <a
+                                    href={entry.mapHref}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  >
+                                    Map
+                                  </a>
+                                )}
+                              </div>
+                            ))}
+                            {!availability.length && (
+                              <small>
+                                No non-expired stock is available in another
+                                branch yet.
+                              </small>
+                            )}
+                          </div>
+                          <footer>
+                            <button
+                              type="button"
+                              onClick={() => void copyPatientMessage(request)}
+                            >
+                              <ClipboardList size={14} /> Copy
+                            </button>
+                            {whatsapp && (
+                              <a href={whatsapp} target="_blank" rel="noreferrer">
+                                <Smartphone size={14} /> WhatsApp
+                              </a>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => updateRequest(request.id, "contacted")}
+                            >
+                              Mark contacted
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateRequest(request.id, "transferred")
+                              }
+                            >
+                              Request transfer
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => processInPos(request)}
+                            >
+                              Process in POS
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateRequest(request.id, "cancelled")}
+                            >
+                              Cancel
+                            </button>
+                          </footer>
+                        </section>
+                      );
+                    })}
+                  </div>
+                )}
               </article>
             );
           })}
-          {!visibleRequests.length && (
+          {!continuityGroups.length && (
             <div className="empty-state">
               No continuity requests match this scope. When a patient is waiting
               for unavailable stock, add them here instead of relying on memory.
@@ -10088,6 +10234,7 @@ function PatientsView({
 }) {
   const [query, setQuery] = useState("");
   const [selectedKey, setSelectedKey] = useState("");
+  const [selectedSaleId, setSelectedSaleId] = useState("");
   const [editingPatient, setEditingPatient] = useState(false);
   const [patientEdit, setPatientEdit] = useState({ name: "", phone: "" });
   const profiles = useMemo(() => buildPatientProfiles(db), [db]);
@@ -10133,13 +10280,23 @@ function PatientsView({
   const selectedProfile =
     filteredProfiles.find((profile) => profile.key === selectedKey) ??
     filteredProfiles[0];
-  const selectedMessages =
-    selectedProfile?.sales
-      .map((sale) => ({
-        sale,
-        body: saleFollowUpBody(db, sale),
-      }))
-      .filter((message) => message.body) ?? [];
+  const selectedSale =
+    selectedProfile?.sales.find((sale) => sale.id === selectedSaleId) ??
+    selectedProfile?.sales[0];
+  const selectedFollowUpBody = selectedSale
+    ? saleFollowUpBody(db, selectedSale)
+    : "";
+  const selectedFollowUpMessage =
+    selectedProfile && selectedFollowUpBody
+      ? patientCareMessage(
+          db.settings.accountName,
+          selectedProfile.name,
+          selectedFollowUpBody,
+        )
+      : "";
+  const groupedSales = selectedProfile
+    ? groupSalesByDate(selectedProfile.sales)
+    : [];
   const selectedContinuityRequests =
     selectedProfile?.phone
       ? db.continuityRequests.filter(
@@ -10201,8 +10358,8 @@ function PatientsView({
         />
         <Metric
           icon={MessageSquare}
-          label="Follow-up notes"
-          value={compactNumber(selectedMessages.length)}
+          label="Selected follow-up"
+          value={selectedFollowUpMessage ? "1" : "0"}
         />
         <Metric
           icon={Phone}
@@ -10255,6 +10412,7 @@ function PatientsView({
                 type="button"
                 onClick={() => {
                   setSelectedKey(profile.key);
+                  setSelectedSaleId(profile.sales[0]?.id ?? "");
                   setEditingPatient(false);
                 }}
               >
@@ -10371,35 +10529,49 @@ function PatientsView({
                   <section>
                     <h3>Medication History</h3>
                     <div className="patient-timeline">
-                      {selectedProfile.sales.map((sale) => (
-                        <article key={sale.id}>
-                          <div>
-                            <strong>
-                              {new Date(sale.soldAt).toLocaleDateString()} /{" "}
-                              {sale.reference}
-                            </strong>
-                            <span>
-                              {getBranchName(db, sale.branchId)} /{" "}
-                              {sale.items.length} item
-                              {sale.items.length === 1 ? "" : "s"} /{" "}
-                              {money.format(sale.total ?? sale.subtotal)}
-                            </span>
-                          </div>
-                          <ul>
-                            {sale.items.map((item, index) => (
-                              <li key={`${sale.id}-${index}`}>
-                                {getSaleItemLabel(db, item)} / Qty{" "}
-                                {number.format(item.quantity)}
-                                {item.daysSupply
-                                  ? ` / ${item.daysSupply} therapy day${item.daysSupply === 1 ? "" : "s"}`
-                                  : ""}
-                                {item.refillDueAt
-                                  ? ` / refill ${formatDate(item.refillDueAt)}`
-                                  : ""}
-                              </li>
-                            ))}
-                          </ul>
-                        </article>
+                      {groupedSales.map((group) => (
+                        <section
+                          className="patient-history-day"
+                          key={group.dateLabel}
+                        >
+                          <h4>{group.dateLabel}</h4>
+                          {group.sales.map((sale) => (
+                            <button
+                              className={
+                                sale.id === selectedSale?.id
+                                  ? "patient-history-visit active"
+                                  : "patient-history-visit"
+                              }
+                              key={sale.id}
+                              type="button"
+                              onClick={() => setSelectedSaleId(sale.id)}
+                            >
+                              <span>
+                                <strong>{sale.reference}</strong>
+                                <small>
+                                  {getBranchName(db, sale.branchId)} /{" "}
+                                  {sale.items.length} item
+                                  {sale.items.length === 1 ? "" : "s"} /{" "}
+                                  {money.format(sale.total ?? sale.subtotal)}
+                                </small>
+                              </span>
+                              <ul>
+                                {sale.items.map((item, index) => (
+                                  <li key={`${sale.id}-${index}`}>
+                                    {getSaleItemLabel(db, item)} / Qty{" "}
+                                    {number.format(item.quantity)}
+                                    {item.daysSupply
+                                      ? ` / ${item.daysSupply} therapy day${item.daysSupply === 1 ? "" : "s"}`
+                                      : ""}
+                                    {item.refillDueAt
+                                      ? ` / refill ${formatDate(item.refillDueAt)}`
+                                      : ""}
+                                  </li>
+                                ))}
+                              </ul>
+                            </button>
+                          ))}
+                        </section>
                       ))}
                     </div>
                   </section>
@@ -10407,45 +10579,46 @@ function PatientsView({
                   <section>
                     <h3>Follow-up Messages</h3>
                     <div className="patient-message-list">
-                      {selectedMessages.map(({ sale, body }) => {
-                        const message = patientCareMessage(
-                          db.settings.accountName,
-                          selectedProfile.name,
-                          body,
-                        );
-                        const href = whatsappHref(
-                          selectedProfile.phone,
-                          message,
-                        );
-                        return (
-                          <article key={sale.id}>
+                      {selectedSale && selectedFollowUpMessage ? (
+                        <article key={selectedSale.id}>
                             <strong>
-                              {new Date(sale.soldAt).toLocaleDateString()} /{" "}
-                              {getBranchName(db, sale.branchId)} /{" "}
-                              {sale.reference}
+                              {new Date(
+                                selectedSale.soldAt,
+                              ).toLocaleDateString()}{" "}
+                              / {getBranchName(db, selectedSale.branchId)} /{" "}
+                              {selectedSale.reference}
                             </strong>
-                            <p>{message}</p>
+                            <p>{selectedFollowUpMessage}</p>
                             <footer>
                               <button
                                 type="button"
                                 onClick={() => {
-                                  void copyMessage(message);
+                                  void copyMessage(selectedFollowUpMessage);
                                 }}
                               >
                                 <ClipboardList size={14} /> Copy
                               </button>
-                              {href && (
-                                <a href={href} target="_blank" rel="noreferrer">
+                              {whatsappHref(
+                                selectedProfile.phone,
+                                selectedFollowUpMessage,
+                              ) && (
+                                <a
+                                  href={whatsappHref(
+                                    selectedProfile.phone,
+                                    selectedFollowUpMessage,
+                                  )}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
                                   <Smartphone size={14} /> WhatsApp
                                 </a>
                               )}
                             </footer>
                           </article>
-                        );
-                      })}
-                      {!selectedMessages.length && (
+                      ) : (
                         <div className="empty-state">
-                          No counseling messages captured for this patient yet.
+                          Select a medication history entry with a saved
+                          follow-up message to view it here.
                         </div>
                       )}
                     </div>
