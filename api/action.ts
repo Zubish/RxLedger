@@ -2022,8 +2022,14 @@ function canSellInBranch(db: Database, actor: User, branchId: string) {
   );
 }
 
-function canCompleteSaleInBranch(actor: User, branchId: string) {
-  return actor.role === "cashier" && hasActiveBranchAssignment(actor, branchId);
+function canCompleteSaleInBranch(db: Database, actor: User, branchId: string) {
+  const primaryAdminId = getPrimaryAdminId(db);
+  return (
+    canAdmin(actor, primaryAdminId) ||
+    canManageBranch(actor, branchId, primaryAdminId) ||
+    ((actor.role === "pharmacist" || actor.role === "cashier") &&
+      hasActiveBranchAssignment(actor, branchId))
+  );
 }
 
 function receiptReference() {
@@ -2175,6 +2181,67 @@ function clearPosDraft(
     );
 }
 
+function patientMatchesContinuityRequest(
+  request: Database["continuityRequests"][number],
+  sale: Sale,
+) {
+  const requestPhone = normalizePatientPhone(request.patientPhone);
+  const salePhone = normalizePatientPhone(sale.customerPhone);
+  if (requestPhone && salePhone) return requestPhone === salePhone;
+  return (
+    request.patientName.trim().toLowerCase() ===
+      sale.customerName.trim().toLowerCase() &&
+    request.patientName.trim().toLowerCase() !== "walk-in patient"
+  );
+}
+
+function fulfillContinuityRequestsFromSale(
+  db: Database,
+  actorId: string,
+  sale: Sale,
+) {
+  const soldMedicineIds = new Set(
+    sale.items
+      .filter((item) => item.itemType === "medicine" && item.quantity > 0)
+      .map((item) => item.medicineId)
+      .filter(Boolean),
+  );
+  if (!soldMedicineIds.size) return;
+  const fulfilled: Database["continuityRequests"] = [];
+  db.continuityRequests.forEach((request) => {
+    if (request.status === "fulfilled" || request.status === "cancelled")
+      return;
+    if (!soldMedicineIds.has(request.medicineId)) return;
+    if (!patientMatchesContinuityRequest(request, sale)) return;
+    const before = { ...request };
+    request.status = "fulfilled";
+    request.fulfilledAt = sale.soldAt;
+    request.closedAt = sale.soldAt;
+    request.updatedAt = sale.soldAt;
+    fulfilled.push({ ...request });
+    addAudit(
+      db,
+      actorId,
+      "Fulfilled continuity request from POS sale",
+      "continuity-request",
+      request.id,
+      before,
+      { ...request, saleId: sale.id, saleReference: sale.reference },
+    );
+  });
+  if (fulfilled.length) {
+    addAudit(
+      db,
+      actorId,
+      `Closed ${fulfilled.length} continuity request${fulfilled.length === 1 ? "" : "s"} after POS sale`,
+      "sale",
+      sale.id,
+      undefined,
+      fulfilled,
+    );
+  }
+}
+
 function recordSale(
   db: Database,
   actorId: string,
@@ -2191,8 +2258,8 @@ function recordSale(
     throw new Error("Active branch not found");
   if (!canSellInBranch(db, { ...actor, role: actorRole }, branchId))
     throw new Error("You do not have permission to sell in this branch");
-  if (!canCompleteSaleInBranch({ ...actor, role: actorRole }, branchId))
-    throw new Error("Only cashiers can complete POS sales");
+  if (!canCompleteSaleInBranch(db, { ...actor, role: actorRole }, branchId))
+    throw new Error("Only authorized branch staff can complete POS sales");
   const requestedDraftId = optionalString(payload?.draftId);
   const draft = requestedDraftId
     ? db.posDrafts.find(
@@ -2372,6 +2439,7 @@ function recordSale(
   };
   db.ledger.unshift(...ledgerEntries);
   db.sales.unshift(sale);
+  fulfillContinuityRequestsFromSale(db, actorId, sale);
   db.posDrafts = db.posDrafts.filter((item) => item.id !== draft?.id);
   addAudit(db, actorId, "Completed POS sale", "sale", sale.id, undefined, sale);
 }

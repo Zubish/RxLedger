@@ -56,13 +56,13 @@ assertPresent(
 
 assertPresent(
   app,
-  /const canCompleteSale = currentUser\.role === "cashier"/,
-  "RxLedger sale completion should remain cashier-controlled.",
+  /const canCompleteSale =[\s\S]*isSuperAdmin\(db, currentUser\)[\s\S]*currentUser\.role === "pharmacist"[\s\S]*currentUser\.role === "cashier"/,
+  "RxLedger sale completion should allow super admin, assigned pharmacists, and cashiers.",
 );
 assertPresent(
   action,
-  /Only cashiers can complete POS sales/,
-  "RxLedger backend should enforce cashier-only POS completion.",
+  /Only authorized branch staff can complete POS sales/,
+  "RxLedger backend should enforce authorized branch staff POS completion.",
 );
 assertPresent(
   action,
@@ -185,6 +185,16 @@ assertPresent(
   /ContinuityCentre[\s\S]*Patient-linked follow-up for unavailable medicines/,
   "RxLedger should keep Continuity Centre as the patient-linked action queue.",
 );
+assertPresent(
+  app,
+  /Process in POS/,
+  "RxLedger Continuity Centre should send available patient needs into POS instead of directly closing them.",
+);
+assertAbsent(
+  app,
+  /updateRequest\(request\.id, "fulfilled"\)/,
+  "RxLedger Continuity Centre should not mark requests fulfilled outside an actual POS sale.",
+);
 assertAbsent(
   app,
   /Action queue, not alert flood[\s\S]*Smarter alerts: grouped and actionable/,
@@ -199,6 +209,16 @@ assertPresent(
   action,
   /createContinuityRequest[\s\S]*updateContinuityRequest[\s\S]*Matched continuity request to available stock/s,
   "RxLedger should support auditable continuity creation, updates, and stock matching.",
+);
+assertPresent(
+  action,
+  /fulfillContinuityRequestsFromSale[\s\S]*Fulfilled continuity request from POS sale/s,
+  "RxLedger should close matching continuity requests only after POS sale stock deduction.",
+);
+assertPresent(
+  app,
+  /const canCompleteSale =[\s\S]*isSuperAdmin\(db, currentUser\)[\s\S]*currentUser\.role === "pharmacist"[\s\S]*currentUser\.role === "cashier"/,
+  "RxLedger POS completion should allow super admin, assigned pharmacists, and cashiers.",
 );
 assertPresent(
   app,

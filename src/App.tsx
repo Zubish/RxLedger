@@ -598,6 +598,14 @@ type ReceivedStockNotification = {
   }>;
 };
 
+type ContinuityProcessTarget = {
+  id: string;
+  patientName: string;
+  patientPhone: string;
+  medicineId: string;
+  quantity: number;
+};
+
 const views: Array<{
   id: View;
   label: string;
@@ -2591,6 +2599,8 @@ function App() {
   }, [dismissedNotificationIds, rawNotifications]);
   const [receivedStockNotification, setReceivedStockNotification] =
     useState<AppNotification | null>(null);
+  const [continuityProcessTarget, setContinuityProcessTarget] =
+    useState<ContinuityProcessTarget | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -2861,6 +2871,18 @@ function App() {
       dismissNotification(receivedStockNotification.id);
     }
     setReceivedStockNotification(null);
+  }
+
+  function processContinuityRequest(request: ContinuityRequest) {
+    setContinuityProcessTarget({
+      id: request.id,
+      patientName: request.patientName,
+      patientPhone: request.patientPhone,
+      medicineId: request.medicineId,
+      quantity: request.quantityRequested,
+    });
+    navigate("pos");
+    flash("Continuity request loaded into POS");
   }
 
   function switchActiveBranch(branchId: string) {
@@ -3336,6 +3358,8 @@ function App() {
               canSell={Boolean(canSell)}
               executeAction={executeAction}
               flash={flash}
+              continuityTarget={continuityProcessTarget}
+              onContinuityTargetConsumed={() => setContinuityProcessTarget(null)}
             />
           )}
           {activeView === "patients" && (
@@ -3354,6 +3378,7 @@ function App() {
               stockRows={stockRows}
               executeAction={executeAction}
               flash={flash}
+              processInPos={processContinuityRequest}
             />
           )}
           {activeView === "issue" && activeBranch && (
@@ -7849,6 +7874,8 @@ function POSView({
   canSell,
   executeAction,
   flash,
+  continuityTarget,
+  onContinuityTargetConsumed,
 }: {
   db: Database;
   currentUser: User;
@@ -7858,6 +7885,8 @@ function POSView({
   canSell: boolean;
   executeAction: ExecuteAction;
   flash: (message: string) => void;
+  continuityTarget: ContinuityProcessTarget | null;
+  onContinuityTargetConsumed: () => void;
 }) {
   type CartItem = {
     rowId: string;
@@ -7884,25 +7913,55 @@ function POSView({
       draft.branchId === activeBranch.id &&
       draft.expiresAt > new Date().toISOString(),
   );
-  const [query, setQuery] = useState("");
+  const continuityTargetMedicine = continuityTarget
+    ? db.medicines.find((item) => item.id === continuityTarget.medicineId)
+    : undefined;
+  const continuityTargetAvailable = continuityTarget
+    ? (aggregateMedicineStock(
+        stockRows.filter((row) => row.quantity > 0 && row.daysToExpiry >= 0),
+      ).get(continuityTarget.medicineId) ?? 0)
+    : 0;
+  const continuityTargetQuantity = continuityTarget
+    ? Math.max(
+        1,
+        Math.min(continuityTarget.quantity || 1, continuityTargetAvailable),
+      )
+    : 0;
+  const continuityTargetId = continuityTarget?.id;
+  const [query, setQuery] = useState(continuityTargetMedicine?.brandName ?? "");
   const [scan, setScan] = useState("");
   const [cart, setCart] = useState<CartItem[]>(
     () =>
-      currentDraft?.items.map((item) => ({
-        rowId: id("pos"),
-        itemType: item.itemType,
-        itemId: item.itemId,
-        quantity: item.quantity,
-        daysSupply: item.daysSupply,
-        counselingNote: item.counselingNote,
-        labelInstruction: item.labelInstruction,
-      })) ?? [],
+      continuityTarget && continuityTargetMedicine && continuityTargetQuantity > 0
+        ? [
+            {
+              rowId: id("pos"),
+              itemType: "medicine",
+              itemId: continuityTarget.medicineId,
+              quantity: continuityTargetQuantity,
+              daysSupply: 30,
+              labelInstruction: defaultLabelInstruction(
+                db,
+                "medicine",
+                continuityTarget.medicineId,
+              ),
+            },
+          ]
+        : currentDraft?.items.map((item) => ({
+            rowId: id("pos"),
+            itemType: item.itemType,
+            itemId: item.itemId,
+            quantity: item.quantity,
+            daysSupply: item.daysSupply,
+            counselingNote: item.counselingNote,
+            labelInstruction: item.labelInstruction,
+          })) ?? [],
   );
   const [customerName, setCustomerName] = useState(
-    currentDraft?.customerName ?? "",
+    continuityTarget?.patientName ?? currentDraft?.customerName ?? "",
   );
   const [customerPhone, setCustomerPhone] = useState(
-    currentDraft?.customerPhone ?? "",
+    continuityTarget?.patientPhone ?? currentDraft?.customerPhone ?? "",
   );
   const [paymentMethod, setPaymentMethod] = useState<Sale["paymentMethod"]>(
     currentDraft?.paymentMethod ?? "cash",
@@ -7917,7 +7976,7 @@ function POSView({
     currentDraft?.followUpMessage ?? "",
   );
   const [selectedDraftId, setSelectedDraftId] = useState(
-    currentDraft?.id ?? "",
+    continuityTarget ? "" : (currentDraft?.id ?? ""),
   );
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -8057,7 +8116,6 @@ function POSView({
           activeBranch,
         ).filter((entry) => entry.branch.id !== activeBranch.id),
       }))
-      .filter((entry) => entry.branches.length > 0)
       .slice(0, 4);
   }, [activeBranch, db, query, stockByMedicine, workspaceStockRows]);
   const cartRows = cart.map((item) => {
@@ -8122,7 +8180,11 @@ function POSView({
         draft.expiresAt > new Date().toISOString(),
     )
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  const canCompleteSale = currentUser.role === "cashier";
+  const canCompleteSale =
+    isSuperAdmin(db, currentUser) ||
+    canManageBranch(db, currentUser, activeBranch.id) ||
+    ((currentUser.role === "pharmacist" || currentUser.role === "cashier") &&
+      hasActiveBranchAssignment(currentUser, activeBranch.id));
   const patientProfiles = useMemo(() => buildPatientProfiles(db), [db]);
   const selectedPatient = useMemo(() => {
     const phone = normalizePhone(customerPhone);
@@ -8237,6 +8299,12 @@ function POSView({
     });
     flash(`${option.title} added to POS cart`);
   }
+
+  useEffect(() => {
+    if (!continuityTargetId) return;
+    const timer = window.setTimeout(onContinuityTargetConsumed, 0);
+    return () => window.clearTimeout(timer);
+  }, [continuityTargetId, onContinuityTargetConsumed]);
 
   function applyScan() {
     const needle = scan.trim().toLowerCase();
@@ -8769,7 +8837,8 @@ function POSView({
                     <strong>Not on this shelf</strong>
                     <span>
                       These medicines are unavailable in {activeBranch.name},
-                      but another branch has non-expired stock.
+                      so add a continuity follow-up. Nearby branches appear
+                      when they have non-expired stock.
                     </span>
                   </div>
                 </div>
@@ -8785,7 +8854,7 @@ function POSView({
                         onClick={() =>
                           createContinuityFromMedicine(
                             medicine,
-                            branches[0]?.branch.id,
+                            branches[0]?.branch.id ?? "",
                           )
                         }
                         disabled={!canSell}
@@ -8814,6 +8883,12 @@ function POSView({
                           )}
                         </div>
                       ))}
+                      {!branches.length && (
+                        <small>
+                          No branch currently has non-expired stock. Add a
+                          continuity follow-up so this patient is not lost.
+                        </small>
+                      )}
                     </div>
                   </article>
                 ))}
@@ -9256,7 +9331,7 @@ function POSView({
                 title={
                   canCompleteSale
                     ? "Complete sale"
-                    : "Only cashiers can complete sales"
+                    : "Only authorized branch staff can complete sales"
                 }
               >
                 <CheckCircle2 size={17} />
@@ -9266,8 +9341,8 @@ function POSView({
             </div>
             {canSell && !canCompleteSale && (
               <div className="pos-cashier-note">
-                Only cashiers can complete sales. Save the cart as a draft for
-                cashier checkout.
+                Only authorized branch staff can complete sales. Save the cart
+                as a draft for checkout.
               </div>
             )}
           </aside>
@@ -9532,6 +9607,7 @@ function ContinuityCentre({
   stockRows,
   executeAction,
   flash,
+  processInPos,
 }: {
   db: Database;
   currentUser: User;
@@ -9539,6 +9615,7 @@ function ContinuityCentre({
   stockRows: StockRow[];
   executeAction: ExecuteAction;
   flash: (message: string) => void;
+  processInPos: (request: ContinuityRequest) => void;
 }) {
   const [statusFilter, setStatusFilter] = useState<
     "active" | ContinuityRequestStatus | "all"
@@ -9972,9 +10049,9 @@ function ContinuityCentre({
                   </button>
                   <button
                     type="button"
-                    onClick={() => updateRequest(request.id, "fulfilled")}
+                    onClick={() => processInPos(request)}
                   >
-                    Fulfilled
+                    Process in POS
                   </button>
                   <button
                     type="button"
