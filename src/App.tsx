@@ -2519,10 +2519,8 @@ function inferNoticeTone(message: string): NoticeTone {
 
 function NoticeOverlay({
   notice,
-  onClose,
 }: {
   notice: NoticeState;
-  onClose: () => void;
 }) {
   const icon =
     notice.tone === "success" ? (
@@ -2550,9 +2548,6 @@ function NoticeOverlay({
           <strong>{label}</strong>
           <p>{notice.message}</p>
         </div>
-        <button type="button" onClick={onClose}>
-          Close
-        </button>
       </section>
     </div>
   );
@@ -2787,7 +2782,7 @@ function App() {
     noticeTimerRef.current = window.setTimeout(() => {
       setNotice(null);
       noticeTimerRef.current = undefined;
-    }, 3200);
+    }, 1900);
   }
 
   const forgetBrowserUser = useCallback(
@@ -3590,7 +3585,7 @@ function App() {
           activeBranchId={activeBranch?.id}
           setActiveView={setActiveView}
         />
-        {notice && <NoticeOverlay notice={notice} onClose={closeNotice} />}
+        {notice && <NoticeOverlay notice={notice} />}
         {receivedStockNotification?.receivedStock && (
           <ReceivedStockModal
             notification={receivedStockNotification}
@@ -5067,7 +5062,6 @@ function Medicines({
         },
       ];
     });
-    flash(`${requestMedicine.brandName} added to requisition cart`);
     closeRequestModal();
   }
 
@@ -6811,7 +6805,6 @@ function ReceiveStock({
         });
       }),
     );
-    flash(`${match.label} selected`);
   }
 
   function buildReviewLines() {
@@ -7506,7 +7499,6 @@ function IssueStock({
       return;
     }
     setForm((current) => ({ ...current, medicineId: medicine.id }));
-    flash(`${medicineOptionLabel(medicine)} selected`);
   }
 
   function submit(event: FormEvent) {
@@ -8432,7 +8424,6 @@ function POSView({
         },
       ];
     });
-    flash(`${option.title} added to POS cart`);
   }
 
   useEffect(() => {
