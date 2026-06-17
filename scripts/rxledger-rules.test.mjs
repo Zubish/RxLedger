@@ -6,6 +6,7 @@ const root = process.cwd();
 const read = (file) => readFileSync(join(root, file), "utf8");
 
 const app = read("src/App.tsx");
+const notificationsComponent = read("src/components/Notifications.tsx");
 const action = read("api/action.ts");
 const api = read("src/api.ts");
 const shared = read("api/_shared.ts");
@@ -226,7 +227,7 @@ assertPresent(
   "RxLedger POS completion should allow super admin, assigned pharmacists, and cashiers.",
 );
 assertPresent(
-  app,
+  `${app}\n${notificationsComponent}`,
   /receivedStock[\s\S]*ReceivedStockModal[\s\S]*Close notification/s,
   "RxLedger received-medication notifications should open a received-items modal before dismissal.",
 );
