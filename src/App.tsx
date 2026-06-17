@@ -89,6 +89,13 @@ import {
   NoticeOverlay,
   ReceivedStockModal,
 } from "./components/Notifications";
+import {
+  AuditTrail,
+  MedicineIdentity,
+  Metric,
+  ReportTable,
+  StockTable,
+} from "./components/ReadOnlyViews";
 import RxLedgerLanding from "./RxLedgerLanding";
 import {
   planById,
@@ -1037,15 +1044,6 @@ function toggleInstruction(current: string | undefined, instruction: string) {
       .replace(/\s{2,}/g, " ")
       .trim();
   return `${existing} ${clean}`.trim();
-}
-
-function MedicineIdentity({ medicine }: { medicine: Medicine }) {
-  return (
-    <span className="medicine-identity">
-      <strong>{medicine.brandName}</strong>
-      <span>{medicineMeta(medicine)}</span>
-    </span>
-  );
 }
 
 function createEmptyDatabase(): Database {
@@ -3493,7 +3491,9 @@ function App() {
               openNotification={openNotification}
             />
           )}
-          {activeView === "audit" && canAdmin && <Audit db={db} />}
+          {activeView === "audit" && canAdmin && (
+            <AuditTrail auditLogs={db.auditLogs} users={db.users} />
+          )}
           {activeView === "users" && (
             <UserManagement
               db={db}
@@ -3777,7 +3777,12 @@ function Dashboard({
             <AlertItem
               key={row.batch.id}
               tone="danger"
-              title={<MedicineIdentity medicine={row.medicine} />}
+              title={
+                <MedicineIdentity
+                  medicine={row.medicine}
+                  meta={medicineMeta(row.medicine)}
+                />
+              }
               detail={`Expired batch ${row.batch.batchNumber} has ${medicineStockLabel(row.medicine, row.quantity)} in ${row.batch.location}`}
             />
           ))}
@@ -3785,7 +3790,12 @@ function Dashboard({
             <AlertItem
               key={row.batch.id}
               tone="warning"
-              title={<MedicineIdentity medicine={row.medicine} />}
+              title={
+                <MedicineIdentity
+                  medicine={row.medicine}
+                  meta={medicineMeta(row.medicine)}
+                />
+              }
               detail={`Batch ${row.batch.batchNumber} expires in ${row.daysToExpiry} days. ${medicineStockLabel(row.medicine, row.quantity)} available`}
             />
           ))}
@@ -3793,7 +3803,12 @@ function Dashboard({
             <AlertItem
               key={medicine.id}
               tone="info"
-              title={<MedicineIdentity medicine={medicine} />}
+              title={
+                <MedicineIdentity
+                  medicine={medicine}
+                  meta={medicineMeta(medicine)}
+                />
+              }
               detail={`At or below reorder level. Available: ${medicineStockLabel(medicine, alertStockTotals.get(medicine.id) ?? 0)}. Reorder level: ${medicineStockLabel(medicine, medicine.reorderLevel)}`}
             />
           ))}
@@ -3818,29 +3833,13 @@ function Dashboard({
           </div>
         </div>
         <div className="dashboard-scroll-table">
-          <StockTable rows={stockRows.filter((row) => row.quantity > 0)} />
+          <StockTable
+            rows={stockRows.filter((row) => row.quantity > 0)}
+            getMedicineMeta={medicineMeta}
+            getMedicineSellableUnit={medicineSellableUnit}
+          />
         </div>
       </section>
-    </div>
-  );
-}
-
-function Metric({
-  icon: Icon,
-  label,
-  value,
-  tone = "neutral",
-}: {
-  icon: typeof Boxes;
-  label: string;
-  value: string | number;
-  tone?: "neutral" | "warning" | "danger" | "good";
-}) {
-  return (
-    <div className={`metric ${tone}`}>
-      <Icon size={21} />
-      <span>{label}</span>
-      <strong>{value}</strong>
     </div>
   );
 }
@@ -4560,7 +4559,10 @@ function Medicines({
                 visible.map((medicine) => (
                   <tr key={medicine.id}>
                     <td>
-                      <MedicineIdentity medicine={medicine} />
+                      <MedicineIdentity
+                        medicine={medicine}
+                        meta={medicineMeta(medicine)}
+                      />
                     </td>
                     <td>{medicine.category || "-"}</td>
                     <td>{medicine.sku}</td>
@@ -4970,7 +4972,10 @@ function Medicines({
             </div>
             <div className="stack">
               <div className="availability">
-                <MedicineIdentity medicine={requestMedicine} />
+                <MedicineIdentity
+                  medicine={requestMedicine}
+                  meta={medicineMeta(requestMedicine)}
+                />
                 <span>
                   {requestBatch.batch.batchNumber} / expires{" "}
                   {requestBatch.batch.expiryDate} /{" "}
@@ -5078,7 +5083,10 @@ function Medicines({
                   cartRows.map((item) => (
                     <article className="line-card" key={item.rowId}>
                       {item.medicine && (
-                        <MedicineIdentity medicine={item.medicine} />
+                        <MedicineIdentity
+                          medicine={item.medicine}
+                          meta={medicineMeta(item.medicine)}
+                        />
                       )}
                       <span>
                         {item.row?.batch.batchNumber ?? item.batchId} /{" "}
@@ -5415,7 +5423,12 @@ function Medicines({
                 return (
                   <article className="requisition-detail-item" key={item.id}>
                     <div>
-                      {medicine && <MedicineIdentity medicine={medicine} />}
+                      {medicine && (
+                        <MedicineIdentity
+                          medicine={medicine}
+                          meta={medicineMeta(medicine)}
+                        />
+                      )}
                       {!medicine && <strong>{item.medicineId}</strong>}
                       <span>
                         {batch?.batchNumber ?? item.batchId} / expires{" "}
@@ -6694,6 +6707,8 @@ function IssueStock({
             quantity: item.quantity,
           }))}
           compact
+          getMedicineMeta={medicineMeta}
+          getMedicineSellableUnit={medicineSellableUnit}
         />
       </section>
     </div>
@@ -9974,7 +9989,10 @@ function Adjustments({
         </label>
         {selected && (
           <div className="availability full">
-            <MedicineIdentity medicine={selected.medicine} />
+            <MedicineIdentity
+              medicine={selected.medicine}
+              meta={medicineMeta(selected.medicine)}
+            />
             <span>
               {selected.batch.batchNumber} / available{" "}
               {medicineStockLabel(selected.medicine, selected.quantity)} /
@@ -11096,44 +11114,6 @@ function ChatView({
           Send
         </button>
       </form>
-    </section>
-  );
-}
-
-function Audit({ db }: { db: Database }) {
-  return (
-    <section className="content-section">
-      <div className="section-heading">
-        <div>
-          <h2>Audit Trail</h2>
-          <p>
-            Critical actions are captured with actor, entity, timestamp, and
-            before/after payloads.
-          </p>
-        </div>
-      </div>
-      <div className="audit-list">
-        {db.auditLogs.length ? (
-          db.auditLogs.map((log) => {
-            const user = db.users.find((item) => item.id === log.userId);
-            return (
-              <article className="audit-item" key={log.id}>
-                <ShieldCheck size={18} />
-                <div>
-                  <strong>{log.action}</strong>
-                  <span>
-                    {user?.name ?? "System"} / {log.entity} /{" "}
-                    {new Date(log.createdAt).toLocaleString()}
-                  </span>
-                </div>
-                <code>{log.entityId}</code>
-              </article>
-            );
-          })
-        ) : (
-          <div className="empty-state">No audit entries yet.</div>
-        )}
-      </div>
     </section>
   );
 }
@@ -12335,93 +12315,6 @@ function SettingsView({
         </div>
       </form>
     </section>
-  );
-}
-
-function StockTable({
-  rows,
-  compact = false,
-}: {
-  rows: StockRow[];
-  compact?: boolean;
-}) {
-  return (
-    <div className="table-wrap">
-      <table className={compact ? "compact-table" : ""}>
-        <thead>
-          <tr>
-            <th>Medicine</th>
-            <th>Batch</th>
-            <th>Expiry</th>
-            <th>Unit</th>
-            <th>Qty</th>
-            {!compact && <th>Branch</th>}
-            <th>Location</th>
-            {!compact && <th>Status</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length ? (
-            rows.map((row) => (
-              <tr key={`${row.batch.id}-${row.quantity}`}>
-                <td>
-                  <MedicineIdentity medicine={row.medicine} />
-                </td>
-                <td>{row.batch.batchNumber}</td>
-                <td>{row.batch.expiryDate}</td>
-                <td>{medicineSellableUnit(row.medicine)}</td>
-                <td>{number.format(row.quantity)}</td>
-                {!compact && <td>{row.branch?.name ?? row.batch.branchId}</td>}
-                <td>{row.batch.location}</td>
-                {!compact && (
-                  <td>
-                    <span className={`pill ${row.status}`}>
-                      {row.status.replace("-", " ")}
-                    </span>
-                  </td>
-                )}
-              </tr>
-            ))
-          ) : (
-            <tr>
-              <td colSpan={compact ? 6 : 8}>No stock rows yet.</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function ReportTable({ rows }: { rows: ReportRow[] }) {
-  const headers = rows.length ? Object.keys(rows[0]) : [];
-  return (
-    <div className="table-wrap report-table">
-      <table>
-        <thead>
-          <tr>
-            {headers.map((header) => (
-              <th key={header}>{header}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length ? (
-            rows.map((row, index) => (
-              <tr key={index}>
-                {headers.map((header) => (
-                  <td key={header}>{row[header]}</td>
-                ))}
-              </tr>
-            ))
-          ) : (
-            <tr>
-              <td>No report rows available.</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
   );
 }
 
