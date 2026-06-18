@@ -87,6 +87,7 @@ import {
   NoticeOverlay,
   ReceivedStockModal,
 } from "./components/Notifications";
+import { PatientProfilePanel } from "./components/PatientProfilePanel";
 import {
   AuditTrail,
   MedicineIdentity,
@@ -9458,6 +9459,56 @@ function PatientsView({
             request.status !== "cancelled",
         )
       : [];
+  const patientProfileSummary = selectedProfile
+    ? {
+        name: selectedProfile.name,
+        phone: selectedProfile.phone,
+        visitCount: selectedProfile.sales.length,
+        totalSpent: selectedProfile.totalSpent,
+      }
+    : undefined;
+  const patientContinuityItems = selectedContinuityRequests.map((request) => ({
+    id: request.id,
+    label: request.requestedMedicineName,
+    detail: `${continuityStatusLabels[request.status]} / ${getBranchName(
+      db,
+      request.originBranchId,
+    )}`,
+  }));
+  const patientHistoryGroups = groupedSales.map((group) => ({
+    dateLabel: group.dateLabel,
+    visits: group.sales.map((sale) => ({
+      id: sale.id,
+      reference: sale.reference,
+      branchName: getBranchName(db, sale.branchId),
+      itemCount: sale.items.length,
+      total: sale.total ?? sale.subtotal,
+      lines: sale.items.map((item) => {
+        const details = [
+          getSaleItemLabel(db, item),
+          `Qty ${number.format(item.quantity)}`,
+          item.daysSupply
+            ? `${item.daysSupply} therapy day${item.daysSupply === 1 ? "" : "s"}`
+            : "",
+          item.refillDueAt ? `refill ${formatDate(item.refillDueAt)}` : "",
+        ].filter(Boolean);
+        return details.join(" / ");
+      }),
+    })),
+  }));
+  const selectedFollowUpCard =
+    selectedSale && selectedFollowUpMessage
+      ? {
+          dateLabel: new Date(selectedSale.soldAt).toLocaleDateString(),
+          branchName: getBranchName(db, selectedSale.branchId),
+          reference: selectedSale.reference,
+          message: selectedFollowUpMessage,
+          whatsappHref: whatsappHref(
+            selectedProfile?.phone ?? "",
+            selectedFollowUpMessage,
+          ),
+        }
+      : undefined;
 
   async function copyMessage(message: string) {
     try {
@@ -9591,197 +9642,30 @@ function PatientsView({
           </div>
 
           <div className="patient-profile-panel">
-            {selectedProfile ? (
-              <>
-                <header className="patient-profile-header">
-                  <div>
-                    <span className="eyebrow">Patient profile</span>
-                    <h2>{selectedProfile.name}</h2>
-                    <p>
-                      {selectedProfile.phone || "Phone number not recorded"} /{" "}
-                      {selectedProfile.sales.length} visit
-                      {selectedProfile.sales.length === 1 ? "" : "s"} across
-                      workspace branches
-                    </p>
-                  </div>
-                  <div className="patient-profile-actions">
-                    <strong>{money.format(selectedProfile.totalSpent)}</strong>
-                    <button type="button" onClick={startPatientEdit}>
-                      Edit profile
-                    </button>
-                  </div>
-                </header>
-
-                {editingPatient && (
-                  <form
-                    className="patient-profile-edit"
-                    onSubmit={(event) => {
-                      void savePatientEdit(event);
-                    }}
-                  >
-                    <label>
-                      Patient name
-                      <input
-                        value={patientEdit.name}
-                        onChange={(event) =>
-                          setPatientEdit((current) => ({
-                            ...current,
-                            name: event.target.value,
-                          }))
-                        }
-                        required
-                      />
-                    </label>
-                    <label>
-                      Phone number
-                      <input
-                        value={patientEdit.phone}
-                        onChange={(event) =>
-                          setPatientEdit((current) => ({
-                            ...current,
-                            phone: event.target.value,
-                          }))
-                        }
-                        required
-                      />
-                    </label>
-                    <div>
-                      <button type="submit">Save profile</button>
-                      <button
-                        type="button"
-                        onClick={() => setEditingPatient(false)}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </form>
-                )}
-
-                {selectedContinuityRequests.length > 0 && (
-                  <section className="patient-continuity-strip">
-                    <strong>
-                      {selectedContinuityRequests.length} active continuity
-                      request
-                      {selectedContinuityRequests.length === 1 ? "" : "s"}
-                    </strong>
-                    <div>
-                      {selectedContinuityRequests.map((request) => (
-                        <span key={request.id}>
-                          {request.requestedMedicineName} /{" "}
-                          {continuityStatusLabels[request.status]} /{" "}
-                          {getBranchName(db, request.originBranchId)}
-                        </span>
-                      ))}
-                    </div>
-                  </section>
-                )}
-
-                <div className="patient-profile-grid">
-                  <section>
-                    <h3>Medication History</h3>
-                    <div className="patient-timeline">
-                      {groupedSales.map((group) => (
-                        <section
-                          className="patient-history-day"
-                          key={group.dateLabel}
-                        >
-                          <h4>{group.dateLabel}</h4>
-                          {group.sales.map((sale) => (
-                            <button
-                              className={
-                                sale.id === selectedSale?.id
-                                  ? "patient-history-visit active"
-                                  : "patient-history-visit"
-                              }
-                              key={sale.id}
-                              type="button"
-                              onClick={() => setSelectedSaleId(sale.id)}
-                            >
-                              <span>
-                                <strong>{sale.reference}</strong>
-                                <small>
-                                  {getBranchName(db, sale.branchId)} /{" "}
-                                  {sale.items.length} item
-                                  {sale.items.length === 1 ? "" : "s"} /{" "}
-                                  {money.format(sale.total ?? sale.subtotal)}
-                                </small>
-                              </span>
-                              <ul>
-                                {sale.items.map((item, index) => (
-                                  <li key={`${sale.id}-${index}`}>
-                                    {getSaleItemLabel(db, item)} / Qty{" "}
-                                    {number.format(item.quantity)}
-                                    {item.daysSupply
-                                      ? ` / ${item.daysSupply} therapy day${item.daysSupply === 1 ? "" : "s"}`
-                                      : ""}
-                                    {item.refillDueAt
-                                      ? ` / refill ${formatDate(item.refillDueAt)}`
-                                      : ""}
-                                  </li>
-                                ))}
-                              </ul>
-                            </button>
-                          ))}
-                        </section>
-                      ))}
-                    </div>
-                  </section>
-
-                  <section>
-                    <h3>Follow-up Messages</h3>
-                    <div className="patient-message-list">
-                      {selectedSale && selectedFollowUpMessage ? (
-                        <article key={selectedSale.id}>
-                            <strong>
-                              {new Date(
-                                selectedSale.soldAt,
-                              ).toLocaleDateString()}{" "}
-                              / {getBranchName(db, selectedSale.branchId)} /{" "}
-                              {selectedSale.reference}
-                            </strong>
-                            <p>{selectedFollowUpMessage}</p>
-                            <footer>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  void copyMessage(selectedFollowUpMessage);
-                                }}
-                              >
-                                <ClipboardList size={14} /> Copy
-                              </button>
-                              {whatsappHref(
-                                selectedProfile.phone,
-                                selectedFollowUpMessage,
-                              ) && (
-                                <a
-                                  href={whatsappHref(
-                                    selectedProfile.phone,
-                                    selectedFollowUpMessage,
-                                  )}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                >
-                                  <Smartphone size={14} /> WhatsApp
-                                </a>
-                              )}
-                            </footer>
-                          </article>
-                      ) : (
-                        <div className="empty-state">
-                          Select a medication history entry with a saved
-                          follow-up message to view it here.
-                        </div>
-                      )}
-                    </div>
-                  </section>
-                </div>
-              </>
-            ) : (
-              <div className="empty-state">
-                Select a patient to see their medication history and follow-up
-                messages.
-              </div>
-            )}
+            <PatientProfilePanel
+              profile={patientProfileSummary}
+              workspaceLabel="workspace branches"
+              emptyMessage="Select a patient to see their medication history and follow-up messages."
+              editingPatient={editingPatient}
+              patientEdit={patientEdit}
+              setPatientEdit={setPatientEdit}
+              onStartEdit={startPatientEdit}
+              onCancelEdit={() => setEditingPatient(false)}
+              onSaveEdit={(event) => {
+                void savePatientEdit(event);
+              }}
+              continuityItems={patientContinuityItems}
+              continuityTitle={`${selectedContinuityRequests.length} active continuity request${
+                selectedContinuityRequests.length === 1 ? "" : "s"
+              }`}
+              historyGroups={patientHistoryGroups}
+              selectedSaleId={selectedSale?.id}
+              onSelectSale={setSelectedSaleId}
+              followUpCard={selectedFollowUpCard}
+              onCopyFollowUp={(message) => {
+                void copyMessage(message);
+              }}
+            />
           </div>
         </div>
       </section>

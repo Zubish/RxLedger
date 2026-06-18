@@ -7,6 +7,7 @@ const read = (file) => readFileSync(join(root, file), "utf8");
 
 const app = read("src/App.tsx");
 const notificationsComponent = read("src/components/Notifications.tsx");
+const patientProfilePanel = read("src/components/PatientProfilePanel.tsx");
 const action = read("api/action.ts");
 const api = read("src/api.ts");
 const shared = read("api/_shared.ts");
@@ -237,7 +238,7 @@ assertPresent(
   "RxLedger should support audited patient profile corrections.",
 );
 assertPresent(
-  app,
+  `${app}\n${patientProfilePanel}`,
   /Edit profile/,
   "RxLedger patient profiles should be editable from the Patients page.",
 );
@@ -247,8 +248,8 @@ assertPresent(
   "RxLedger patient edit form should call the patient profile update action.",
 );
 assertPresent(
-  app,
-  /groupSalesByDate[\s\S]*patient-history-day[\s\S]*selectedFollowUpMessage/s,
+  `${app}\n${patientProfilePanel}`,
+  /groupSalesByDate[\s\S]*selectedFollowUpMessage[\s\S]*patient-history-day[\s\S]*followUpCard/s,
   "RxLedger patient history should group same-day visits and show only the selected sale follow-up message.",
 );
 assertPresent(
