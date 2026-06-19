@@ -7,6 +7,7 @@ const read = (file) => readFileSync(join(root, file), "utf8");
 
 const app = read("src/App.tsx");
 const notificationsComponent = read("src/components/Notifications.tsx");
+const continuityQueue = read("src/components/ContinuityQueue.tsx");
 const patientProfilePanel = read("src/components/PatientProfilePanel.tsx");
 const action = read("api/action.ts");
 const raiSnapshot = read("api/rai/analytics-snapshot.ts");
@@ -170,7 +171,7 @@ assertAbsent(
   "RxLedger should not expose the removed controlled-medicine safety-review prompt in POS.",
 );
 assertPresent(
-  app,
+  `${app}\n${continuityQueue}`,
   /transferred: "Transfer requested"[\s\S]*Request transfer/,
   "RxLedger Continuity Centre should support transfer-request status without marking stock fulfilled.",
 );
@@ -184,12 +185,12 @@ for (const source of [app, action, shared, types]) {
 }
 
 assertPresent(
-  app,
+  `${app}\n${continuityQueue}`,
   /ContinuityCentre[\s\S]*Patient-linked follow-up for unavailable medicines/,
   "RxLedger should keep Continuity Centre as the patient-linked action queue.",
 );
 assertPresent(
-  app,
+  `${app}\n${continuityQueue}`,
   /Process in POS/,
   "RxLedger Continuity Centre should send available patient needs into POS instead of directly closing them.",
 );
@@ -234,7 +235,7 @@ assertPresent(
   "RxLedger Rai analytics snapshot should expose stable hashed patient IDs instead of names or phone numbers.",
 );
 assertPresent(
-  app,
+  `${app}\n${continuityQueue}`,
   /continuityGroups[\s\S]*continuity-patient-name[\s\S]*continuity-request-list/s,
   "RxLedger Continuity Centre should group owed medicines by patient in a single-open style card.",
 );
