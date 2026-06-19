@@ -9,6 +9,7 @@ const app = read("src/App.tsx");
 const notificationsComponent = read("src/components/Notifications.tsx");
 const patientProfilePanel = read("src/components/PatientProfilePanel.tsx");
 const action = read("api/action.ts");
+const raiSnapshot = read("api/rai/analytics-snapshot.ts");
 const api = read("src/api.ts");
 const shared = read("api/_shared.ts");
 const reset = read("api/auth/request-password-reset.ts");
@@ -216,6 +217,21 @@ assertPresent(
   action,
   /fulfillContinuityRequestsFromSale[\s\S]*request\.resolvedBy = actorId[\s\S]*Fulfilled continuity request from POS sale/s,
   "RxLedger should close matching continuity requests only after POS sale stock deduction and record who sold it.",
+);
+assertPresent(
+  raiSnapshot,
+  /requireMethod\(req, res, \["POST"\]\)[\s\S]*getBearerToken\(req\)[\s\S]*timingSafeEqual/,
+  "RxLedger Rai analytics snapshot endpoint should be POST-only and protected with constant-time bearer-token validation.",
+);
+assertPresent(
+  raiSnapshot,
+  /tenant_id[\s\S]*resolveTenant[\s\S]*totalenergies-pharmacy/s,
+  "RxLedger Rai analytics snapshot should resolve the TotalEnergies workspace alias.",
+);
+assertPresent(
+  raiSnapshot,
+  /stablePatientId[\s\S]*createHash\("sha256"\)/s,
+  "RxLedger Rai analytics snapshot should expose stable hashed patient IDs instead of names or phone numbers.",
 );
 assertPresent(
   app,
