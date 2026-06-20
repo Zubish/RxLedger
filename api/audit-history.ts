@@ -1,4 +1,5 @@
 import {
+  canAdmin,
   fail,
   getAuthenticatedUser,
   getCompanySlugFromRequest,
@@ -6,7 +7,6 @@ import {
   loadTenantDatabase,
   logApiPerformance,
   requireMethod,
-  sanitizeDatabase,
   setServerTiming,
 } from "./_shared.js";
 import type { HandlerRequest, HandlerResponse } from "./_shared.js";
@@ -17,56 +17,45 @@ export default async function handler(
 ) {
   if (!requireMethod(req, res, ["GET"])) return;
   const startedAt = Date.now();
-  let loadMs = 0;
-  let authMs = 0;
   try {
     const companySlug = getCompanySlugFromRequest(req);
     if (!companySlug) {
-      fail(res, 400, "Choose a company portal before loading state");
+      fail(res, 400, "Choose a company portal before loading audit history");
       return;
     }
-    const loadStartedAt = Date.now();
     const db = await loadTenantDatabase(companySlug);
-    loadMs = Date.now() - loadStartedAt;
     if (!db) {
       fail(res, 404, "Company portal not found");
       return;
     }
-    const authStartedAt = Date.now();
     const user = await getAuthenticatedUser(req, db);
-    authMs = Date.now() - authStartedAt;
     if (!user) {
       fail(res, 401, "Authentication required");
       return;
     }
-    const clean = sanitizeDatabase(db);
-    clean.auditLogs = [];
-    const response = {
-      db: clean,
-      currentUser: clean.users.find((item) => item.id === user.id),
-    };
+    if (!canAdmin(user, db.settings.primaryAdminId)) {
+      fail(res, 403, "Only the global admin can view the audit trail");
+      return;
+    }
+
+    const response = { auditLogs: db.auditLogs };
     const totalMs = Date.now() - startedAt;
-    const responseBytes = jsonByteLength(response);
-    setServerTiming(res, { load: loadMs, auth: authMs, total: totalMs });
-    logApiPerformance(req, "/api/state", {
+    setServerTiming(res, { total: totalMs });
+    logApiPerformance(req, "/api/audit-history", {
       ok: true,
-      loadMs,
-      authMs,
       totalMs,
-      responseBytes,
+      responseBytes: jsonByteLength(response),
     });
     res.status(200).json(response);
-  } catch (error) {
-    logApiPerformance(req, "/api/state", {
+  } catch {
+    logApiPerformance(req, "/api/audit-history", {
       ok: false,
-      loadMs,
-      authMs,
       totalMs: Date.now() - startedAt,
     });
     fail(
       res,
       500,
-      error instanceof Error ? error.message : "Unable to load state",
+      "Unable to load audit history",
     );
   }
 }

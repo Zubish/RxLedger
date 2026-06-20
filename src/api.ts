@@ -1,4 +1,5 @@
 import type { Database, RegisterInput, SetupInput, User } from "./types";
+import type { DatabasePatch } from "./databasePatch";
 
 const SESSION_HINT_KEY = "rxledger-session-active";
 const COMPANY_KEY = "rxledger-company-slug";
@@ -70,6 +71,10 @@ export async function bootstrap() {
 
 export async function loadState() {
   return request<{ db: Database; currentUser: User }>("/api/state");
+}
+
+export async function loadAuditHistory() {
+  return request<{ auditLogs: Database["auditLogs"] }>("/api/audit-history");
 }
 
 export async function setupWorkspace(input: SetupInput) {
@@ -157,7 +162,11 @@ export async function runAction(
   action: string,
   payload: Record<string, unknown>,
 ) {
-  return request<{ db: Database; currentUser: User }>("/api/action", {
+  return request<{
+    db: Database;
+    databasePatch: DatabasePatch;
+    currentUser: User;
+  }>("/api/action", {
     method: "POST",
     body: JSON.stringify({ action, payload }),
   });

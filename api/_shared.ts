@@ -718,7 +718,19 @@ export function getSql() {
   return neon(getConnectionString());
 }
 
-export async function ensureSchema() {
+let schemaReady: Promise<void> | null = null;
+
+export function ensureSchema() {
+  if (!schemaReady) {
+    schemaReady = ensureSchemaInternal().catch((error) => {
+      schemaReady = null;
+      throw error;
+    });
+  }
+  return schemaReady;
+}
+
+async function ensureSchemaInternal() {
   const sql = getSql();
   await sql`
     CREATE TABLE IF NOT EXISTS app_state (
@@ -741,6 +753,45 @@ export async function ensureSchema() {
     INSERT INTO app_state (id, data)
     VALUES (1, ${JSON.stringify(createEmptyDatabase())}::jsonb)
     ON CONFLICT (id) DO NOTHING
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS tenant_state (
+      slug TEXT PRIMARY KEY,
+      data JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      key TEXT PRIMARY KEY,
+      applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`
+    WITH migration AS (
+      INSERT INTO schema_migrations (key)
+      VALUES ('tenant-state-v1')
+      ON CONFLICT (key) DO NOTHING
+      RETURNING key
+    )
+    INSERT INTO tenant_state (slug, data)
+    SELECT
+      lower(tenant.value->>'slug'),
+      tenant.value->'workspace'
+    FROM app_state state
+    CROSS JOIN LATERAL jsonb_array_elements(
+      CASE
+        WHEN jsonb_typeof(state.data->'tenants') = 'array'
+          THEN state.data->'tenants'
+        ELSE '[]'::jsonb
+      END
+    ) AS tenant(value)
+    WHERE state.id = 1
+      AND EXISTS (SELECT 1 FROM migration)
+      AND tenant.value ? 'slug'
+      AND tenant.value ? 'workspace'
+    ON CONFLICT (slug) DO NOTHING
   `;
 }
 
@@ -790,42 +841,144 @@ export async function saveRootState(root: RootState) {
 }
 
 export async function loadTenantDatabase(slug: string) {
-  const root = await loadRootState();
   const normalizedSlug = normalizeCompanySlug(slug);
+  if (!normalizedSlug) return null;
+  await ensureSchema();
+  const sql = getSql();
+  const rows = await sql`
+    SELECT data
+    FROM tenant_state
+    WHERE slug = ${normalizedSlug}
+    LIMIT 1
+  `;
+  if (rows[0]?.data) {
+    return normalizeDatabase(rows[0].data as Partial<Database>);
+  }
+
+  // Compatibility fallback for databases created before tenant_state existed.
+  const root = await loadRootState();
   const tenant = root.tenants.find((item) => item.slug === normalizedSlug);
-  return tenant ? normalizeDatabase(tenant.workspace) : null;
+  if (!tenant) return null;
+  const db = normalizeDatabase(tenant.workspace);
+  await saveTenantDatabase(normalizedSlug, db);
+  return db;
+}
+
+export async function loadTenantBootstrap(slug: string) {
+  const normalizedSlug = normalizeCompanySlug(slug);
+  if (!normalizedSlug) return null;
+  await ensureSchema();
+  const sql = getSql();
+  const rows = await sql`
+    SELECT
+      data->'settings' AS settings,
+      jsonb_array_length(
+        CASE
+          WHEN jsonb_typeof(data->'users') = 'array' THEN data->'users'
+          ELSE '[]'::jsonb
+        END
+      ) AS user_count
+    FROM tenant_state
+    WHERE slug = ${normalizedSlug}
+    LIMIT 1
+  `;
+  if (!rows[0]) return null;
+  const settings = normalizeDatabase({
+    settings: rows[0].settings || {},
+  } as Partial<Database>).settings;
+  return {
+    settings,
+    hasUsers: Number(rows[0].user_count || 0) > 0,
+  };
 }
 
 export async function saveTenantDatabase(slug: string, db: Database) {
-  const root = await loadRootState();
   const normalizedSlug = normalizeCompanySlug(slug);
-  const tenant = root.tenants.find((item) => item.slug === normalizedSlug);
-  if (!tenant) throw new Error("Company portal not found");
+  if (!normalizedSlug) throw new Error("Company portal not found");
   const clean = normalizeDatabase({
     ...db,
     settings: {
       ...db.settings,
       companySlug: normalizedSlug,
-      companyCode: db.settings.companyCode || tenant.code,
-      businessLicense: db.settings.businessLicense || tenant.businessLicense,
-      mainBranchAddress:
-        db.settings.mainBranchAddress || tenant.mainBranchAddress,
     },
   });
-  tenant.name = clean.settings.accountName;
-  tenant.businessLicense = clean.settings.businessLicense;
-  tenant.mainBranchAddress = clean.settings.mainBranchAddress;
-  tenant.superAdminName =
-    clean.users.find((user) => user.id === clean.settings.primaryAdminId)
-      ?.name || tenant.superAdminName;
-  tenant.superAdminEmail =
-    clean.users.find((user) => user.id === clean.settings.primaryAdminId)
-      ?.email || tenant.superAdminEmail;
-  tenant.superAdminPhone =
-    clean.users.find((user) => user.id === clean.settings.primaryAdminId)
-      ?.phone || tenant.superAdminPhone;
-  tenant.workspace = clean;
-  await saveRootState(root);
+  await ensureSchema();
+  const sql = getSql();
+  await sql`
+    INSERT INTO tenant_state (slug, data, updated_at)
+    VALUES (${normalizedSlug}, ${JSON.stringify(clean)}::jsonb, now())
+    ON CONFLICT (slug)
+    DO UPDATE SET data = EXCLUDED.data, updated_at = now()
+  `;
+}
+
+export async function tenantWorkspaceExists(slug: string) {
+  const normalizedSlug = normalizeCompanySlug(slug);
+  if (!normalizedSlug) return false;
+  await ensureSchema();
+  const sql = getSql();
+  const rows = await sql`
+    SELECT EXISTS(
+      SELECT 1 FROM tenant_state WHERE slug = ${normalizedSlug}
+    ) AS exists
+  `;
+  return Boolean(rows[0]?.exists);
+}
+
+export async function getDefaultTenantSlug() {
+  await ensureSchema();
+  const sql = getSql();
+  const rows = await sql`
+    SELECT COALESCE(
+      (
+        SELECT state.data->>'defaultSlug'
+        FROM app_state state
+        JOIN tenant_state tenant
+          ON tenant.slug = state.data->>'defaultSlug'
+        WHERE state.id = 1
+        LIMIT 1
+      ),
+      (
+        SELECT slug
+        FROM tenant_state
+        ORDER BY created_at ASC
+        LIMIT 1
+      )
+    ) AS slug
+  `;
+  return String(rows[0]?.slug || "");
+}
+
+export async function resolveTenantSlug(value: string) {
+  const lookup = value.trim().toLowerCase();
+  const slug = normalizeCompanySlug(value);
+  if (!lookup && !slug) return null;
+  await ensureSchema();
+  const sql = getSql();
+  const rows = await sql`
+    SELECT slug
+    FROM tenant_state
+    WHERE slug = ${slug}
+       OR lower(data #>> '{settings,companyCode}') = ${lookup}
+       OR lower(data #>> '{settings,accountName}') = ${lookup}
+       OR (
+         ${lookup} IN ('totalenergies', 'totalenergies-pharmacy', 'tep-ng')
+         AND slug = 'totalenergies-pharmacy'
+       )
+    LIMIT 1
+  `;
+  return rows[0]?.slug ? String(rows[0].slug) : null;
+}
+
+export async function resolveTenantWorkspace(value: string) {
+  const slug = await resolveTenantSlug(value);
+  if (!slug) return null;
+  const db = await loadTenantDatabase(slug);
+  if (!db) return null;
+  return {
+    slug,
+    db,
+  };
 }
 
 export function normalizeRootState(
@@ -1547,6 +1700,40 @@ export function canWriteBranch(
     canAdmin(user, primaryAdminId) ||
     (canWrite(user) && hasActiveBranchAssignment(user, branchId))
   );
+}
+
+export function jsonByteLength(value: unknown) {
+  return Buffer.byteLength(JSON.stringify(value), "utf8");
+}
+
+export function logApiPerformance(
+  req: HandlerRequest,
+  route: string,
+  metrics: Record<string, string | number | boolean>,
+) {
+  const rawRequestId = req.headers["x-vercel-id"];
+  const requestId = Array.isArray(rawRequestId)
+    ? rawRequestId[0] || "local"
+    : rawRequestId || "local";
+  console.log(
+    JSON.stringify({
+      level: "info",
+      message: "api-performance",
+      route,
+      requestId,
+      ...metrics,
+    }),
+  );
+}
+
+export function setServerTiming(
+  res: HandlerResponse,
+  metrics: Record<string, number>,
+) {
+  const value = Object.entries(metrics)
+    .map(([name, duration]) => `${name};dur=${Math.max(0, Math.round(duration))}`)
+    .join(", ");
+  if (value) res.setHeader("Server-Timing", value);
 }
 
 export function fail(res: HandlerResponse, status: number, message: string) {

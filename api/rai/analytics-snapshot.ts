@@ -3,9 +3,9 @@ import {
   daysUntil,
   fail,
   getBearerToken,
-  loadRootState,
   normalizeCompanySlug,
   requireMethod,
+  resolveTenantWorkspace,
 } from "../_shared.js";
 import type {
   Database,
@@ -14,7 +14,6 @@ import type {
   Medicine,
   Product,
   Sale,
-  TenantRecord,
 } from "../_shared.js";
 
 type SnapshotBody = {
@@ -77,14 +76,13 @@ export default async function handler(
       return;
     }
 
-    const root = await loadRootState();
-    const tenant = resolveTenant(root.tenants, tenantLookup);
+    const tenant = await resolveTenantWorkspace(tenantLookup);
     if (!tenant) {
       fail(res, 404, "Tenant not found");
       return;
     }
 
-    const db = tenant.workspace;
+    const db = tenant.db;
     const branchScope = resolveBranchScope(db, body.branch_ids);
     const medications = buildMedications(db, branchScope.branchIds, startDate, endDate);
     const dispenseRecords = buildDispenseRecords(db, branchScope.branchIds, startDate, endDate);
@@ -146,31 +144,6 @@ function parseBody(body: unknown): SnapshotBody {
     return JSON.parse(body) as SnapshotBody;
   }
   return {};
-}
-
-function resolveTenant(tenants: TenantRecord[], lookup: string) {
-  const normalized = normalizeCompanySlug(lookup);
-  const aliases = new Set([normalized]);
-  if (normalized === "totalenergies") {
-    aliases.add("totalenergies-pharmacy");
-  }
-
-  return tenants.find((tenant) => {
-    const values = [
-      tenant.id,
-      tenant.slug,
-      tenant.code,
-      tenant.name,
-      tenant.workspace.settings.accountName,
-      tenant.workspace.settings.companySlug,
-      tenant.workspace.settings.companyCode,
-    ].map((value) => normalizeCompanySlug(value || ""));
-
-    return (
-      values.some((value) => aliases.has(value)) ||
-      (normalized === "totalenergies" && values.some((value) => value.includes("totalenergies")))
-    );
-  });
 }
 
 function resolveBranchScope(db: Database, value: unknown): { branchIds: string[]; warnings: string[] } {

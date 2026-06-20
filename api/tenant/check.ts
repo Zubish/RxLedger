@@ -1,6 +1,6 @@
 import {
   fail,
-  loadRootState,
+  loadTenantBootstrap,
   normalizeCompanySlug,
   requireMethod,
 } from "../_shared.js";
@@ -18,12 +18,11 @@ export default async function handler(
     const slug = normalizeCompanySlug(
       Array.isArray(raw) ? raw[0] || "" : raw || "",
     );
-    const root = await loadRootState();
-    const owner = root.tenants.find((tenant) => tenant.slug === slug);
+    const owner = await loadTenantBootstrap(slug);
     res.status(200).json({
       slug,
       available: Boolean(slug) && !owner,
-      claimedBy: owner ? owner.name : "",
+      claimedBy: owner ? owner.settings.accountName : "",
     });
   } catch (error) {
     fail(

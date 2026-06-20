@@ -1,11 +1,9 @@
 import {
   fail,
+  getDefaultTenantSlug,
   getCompanySlugFromRequest,
-  loadRootState,
-  loadTenantDatabase,
+  loadTenantBootstrap,
   requireMethod,
-  sanitizeDatabase,
-  saveRootState,
 } from "./_shared.js";
 import type { HandlerRequest, HandlerResponse } from "./_shared.js";
 
@@ -15,20 +13,15 @@ export default async function handler(
 ) {
   if (!requireMethod(req, res, ["GET"])) return;
   try {
-    const root = await loadRootState();
-    await saveRootState(root);
     const requestedSlug = getCompanySlugFromRequest(req);
-    const tenant = requestedSlug
-      ? root.tenants.find((item) => item.slug === requestedSlug)
-      : root.tenants.find((item) => item.slug === root.defaultSlug) ||
-        root.tenants[0];
-    const db = tenant ? await loadTenantDatabase(tenant.slug) : null;
+    const tenantSlug = requestedSlug || (await getDefaultTenantSlug());
+    const tenant = tenantSlug ? await loadTenantBootstrap(tenantSlug) : null;
     res.status(200).json({
-      hasUsers: Boolean(db && db.users.length > 0),
+      hasUsers: Boolean(tenant?.hasUsers),
       tenantExists: Boolean(tenant),
       requestedSlug,
-      settings: db
-        ? sanitizeDatabase(db).settings
+      settings: tenant
+        ? tenant.settings
         : {
             softwareName: "RxLedger",
             accountName: "Pharmacy Account",

@@ -10,8 +10,12 @@ const notificationsComponent = read("src/components/Notifications.tsx");
 const continuityQueue = read("src/components/ContinuityQueue.tsx");
 const patientProfilePanel = read("src/components/PatientProfilePanel.tsx");
 const action = read("api/action.ts");
+const state = read("api/state.ts");
+const auditHistory = read("api/audit-history.ts");
+const bootstrap = read("api/bootstrap.ts");
 const raiSnapshot = read("api/rai/analytics-snapshot.ts");
 const api = read("src/api.ts");
+const databasePatch = read("src/databasePatch.ts");
 const shared = read("api/_shared.ts");
 const reset = read("api/auth/request-password-reset.ts");
 const types = read("src/types.ts");
@@ -226,7 +230,7 @@ assertPresent(
 );
 assertPresent(
   raiSnapshot,
-  /tenant_id[\s\S]*resolveTenant[\s\S]*totalenergies-pharmacy/s,
+  /tenant_id[\s\S]*resolveTenantWorkspace/s,
   "RxLedger Rai analytics snapshot should resolve the TotalEnergies workspace alias.",
 );
 assertPresent(
@@ -273,6 +277,67 @@ assertPresent(
   blueprint,
   /Saved patient profiles can be corrected[\s\S]*sales[\s\S]*continuity requests/,
   "RxLedger blueprint should document editable patient profile corrections.",
+);
+
+assertPresent(
+  shared,
+  /CREATE TABLE IF NOT EXISTS tenant_state[\s\S]*slug TEXT PRIMARY KEY[\s\S]*data JSONB NOT NULL/,
+  "RxLedger should persist each workspace in a tenant-scoped row instead of keeping hot-path state in one all-tenant document.",
+);
+assertPresent(
+  shared,
+  /INSERT INTO tenant_state[\s\S]*jsonb_array_elements[\s\S]*ON CONFLICT \(slug\) DO NOTHING/,
+  "RxLedger should migrate existing root workspaces into tenant-scoped storage without overwriting newer tenant data.",
+);
+assertPresent(
+  shared,
+  /loadTenantDatabase[\s\S]*SELECT data[\s\S]*FROM tenant_state[\s\S]*WHERE slug =/,
+  "Tenant state loads should query only the requested workspace.",
+);
+assertPresent(
+  shared,
+  /saveTenantDatabase[\s\S]*INSERT INTO tenant_state[\s\S]*ON CONFLICT \(slug\)[\s\S]*DO UPDATE SET data/,
+  "Tenant state saves should update only the requested workspace row.",
+);
+assertAbsent(
+  bootstrap,
+  /saveRootState\(root\)/,
+  "Bootstrap must not rewrite the complete workspace root during a read-only page load.",
+);
+assertPresent(
+  `${bootstrap}\n${shared}`,
+  /loadTenantBootstrap[\s\S]*data->'settings'[\s\S]*jsonb_array_length/,
+  "Bootstrap should query only workspace settings and user count, not deserialize operational history.",
+);
+for (const [source, route] of [
+  [state, "/api/state"],
+  [action, "/api/action"],
+]) {
+  assertPresent(
+    source,
+    new RegExp(`logApiPerformance[\\s\\S]*${route.replace("/", "\\/")}`),
+    `${route} should emit structured timing and response-size telemetry.`,
+  );
+}
+assertPresent(
+  action,
+  /snapshotHeavyCollections[\s\S]*buildDatabasePatch[\s\S]*stripHeavyCollections/,
+  "Actions should return deltas for large historical collections instead of resending complete history.",
+);
+assertPresent(
+  `${api}\n${app}\n${databasePatch}`,
+  /databasePatch[\s\S]*applyDatabasePatch/,
+  "The client should merge action deltas into its existing workspace state.",
+);
+assertPresent(
+  state,
+  /clean\.auditLogs = \[\]/,
+  "Initial state should defer the global-admin audit archive.",
+);
+assertPresent(
+  `${api}\n${app}\n${auditHistory}`,
+  /loadAuditHistory[\s\S]*auditHistoryLoaded[\s\S]*canAdmin/,
+  "Historical audit records should load only when the global admin opens Audit.",
 );
 
 console.log("RxLedger rule regression tests passed.");

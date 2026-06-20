@@ -63,6 +63,7 @@ import {
   clearStoredToken,
   getStoredToken,
   getStoredCompanySlug,
+  loadAuditHistory,
   loadState,
   login as apiLogin,
   logout as apiLogout,
@@ -74,6 +75,7 @@ import {
   setupWorkspace,
   storeCompanySlug,
 } from "./api";
+import { applyDatabasePatch } from "./databasePatch";
 import { slugifyCompany } from "./company";
 import { AuthScreen } from "./components/AuthViews";
 import {
@@ -2496,6 +2498,8 @@ function App() {
   const [activeView, setActiveView] = useState<View>("dashboard");
   const [notice, setNotice] = useState<NoticeState | null>(null);
   const [loading, setLoading] = useState(true);
+  const [auditHistoryLoaded, setAuditHistoryLoaded] = useState(false);
+  const [auditHistoryLoading, setAuditHistoryLoading] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
   const [connectionError, setConnectionError] = useState("");
   const [hasUsers, setHasUsers] = useState(false);
@@ -2524,6 +2528,7 @@ function App() {
   });
   const branchSwitchTimerRef = useRef<number | undefined>(undefined);
   const noticeTimerRef = useRef<number | undefined>(undefined);
+  const noticeIdRef = useRef(0);
 
   const currentUser =
     db.users.find(
@@ -2584,6 +2589,27 @@ function App() {
     ? currentUser.role === "admin" || currentUser.role === "pharmacist"
     : false;
   const canAdmin = isSuperAdmin(db, currentUser);
+  async function hydrateAuditHistory() {
+    if (!canAdmin || !sessionUserId || auditHistoryLoaded || auditHistoryLoading)
+      return;
+    setAuditHistoryLoading(true);
+    try {
+      const result = await loadAuditHistory();
+      setDb((previous) => ({
+        ...previous,
+        auditLogs: result.auditLogs,
+      }));
+      setAuditHistoryLoaded(true);
+    } catch (error) {
+      setAuditHistoryLoaded(true);
+      flash(
+        error instanceof Error ? error.message : "Unable to load audit history",
+        "danger",
+      );
+    } finally {
+      setAuditHistoryLoading(false);
+    }
+  }
   const dashboardStockRows = useMemo(
     () => (canAdmin ? stockRows : activeBranchStockRows),
     [activeBranchStockRows, canAdmin, stockRows],
@@ -2712,7 +2738,7 @@ function App() {
       window.clearTimeout(noticeTimerRef.current);
     }
     setNotice({
-      id: Date.now(),
+      id: ++noticeIdRef.current,
       message,
       tone: tone ?? inferNoticeTone(message),
     });
@@ -2742,6 +2768,8 @@ function App() {
 
   const returnToSignIn = useCallback((message?: string) => {
     setSessionUserId(null);
+    setAuditHistoryLoaded(false);
+    setAuditHistoryLoading(false);
     setActiveView("dashboard");
     setSidebarOpen(false);
     setSidebarCollapsed(true);
@@ -2772,7 +2800,9 @@ function App() {
   ) {
     try {
       const result = await runAction(action, payload);
-      setDb(result.db);
+      setDb((previous) =>
+        applyDatabasePatch(previous, result.db, result.databasePatch),
+      );
       setSessionUserId(result.currentUser.id);
       setConnectionError("");
       if (successMessage) flash(successMessage, "success");
@@ -2863,6 +2893,7 @@ function App() {
     setSigningIn(true);
     try {
       const result = await apiLogin(email, password);
+      setAuditHistoryLoaded(false);
       setDb(result.db);
       setSessionUserId(result.currentUser.id);
       setConnectionError("");
@@ -2907,6 +2938,9 @@ function App() {
         ? "dashboard"
         : view;
     setActiveView(nextView);
+    if (nextView === "audit" && canAdmin) {
+      void hydrateAuditHistory();
+    }
     if (shouldAutoCollapseSidebar()) {
       setSidebarOpen(false);
       setSidebarCollapsed(true);
@@ -3488,7 +3522,11 @@ function App() {
             />
           )}
           {activeView === "audit" && canAdmin && (
-            <AuditTrail auditLogs={db.auditLogs} users={db.users} />
+            auditHistoryLoading ? (
+              <section className="panel empty-state">Loading audit trail...</section>
+            ) : (
+              <AuditTrail auditLogs={db.auditLogs} users={db.users} />
+            )
           )}
           {activeView === "users" && (
             <UserManagement

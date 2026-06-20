@@ -1,8 +1,8 @@
 import {
   fail,
-  loadRootState,
   normalizeCompanySlug,
   requireMethod,
+  resolveTenantSlug,
 } from "../_shared.js";
 import type { HandlerRequest, HandlerResponse } from "../_shared.js";
 
@@ -37,20 +37,15 @@ export default async function handler(
     const normalized = value.toLowerCase();
     const normalizedLookup = lookupValue.toLowerCase();
     const slug = normalizeCompanySlug(lookupValue);
-    const root = await loadRootState();
-    const tenant = root.tenants.find(
-      (item) =>
-        item.code.toLowerCase() === normalized ||
-        item.code.toLowerCase() === normalizedLookup ||
-        item.name.toLowerCase() === normalized ||
-        item.name.toLowerCase() === normalizedLookup ||
-        item.slug === slug,
-    );
+    const tenant =
+      (await resolveTenantSlug(normalized)) ||
+      (await resolveTenantSlug(normalizedLookup)) ||
+      (await resolveTenantSlug(slug));
     if (!tenant) {
       res.status(404).json({ error: "Company not found" });
       return;
     }
-    res.status(200).json({ slug: tenant.slug });
+    res.status(200).json({ slug: tenant });
   } catch (error) {
     fail(
       res,

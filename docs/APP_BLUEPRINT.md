@@ -49,8 +49,25 @@ Core, Patient Continuity, and Continuity Centre can keep improving inside the ap
 - Main authenticated shell: `src/App.tsx`.
 - Main CSS system: `src/App.css`; landing-specific Tailwind-like classes live mostly in `src/RxLedgerLanding.tsx`.
 - API routes: `api/`, using Vercel serverless handlers.
-- Persistence: Neon Postgres stores root tenant state, workspace JSON, and sessions.
+- Persistence: Neon Postgres stores each workspace in a tenant-scoped `tenant_state` row and stores sessions separately. The legacy root remains a migration/rollback source, not an authenticated hot path.
 - Deployment: GitHub push to `master` triggers Vercel production.
+
+## Performance Architecture
+
+- Bootstrap reads only workspace settings and user count. It must not load or rewrite operational history.
+- Authenticated state excludes the historical global-admin audit archive; Audit loads that archive on demand.
+- Mutating actions keep the existing single pharmacy transaction boundary, then return ID-based deltas for sales, ledger entries, and audit logs instead of resending complete history.
+- API performance logs record route, action name, load/auth/save durations, total duration, and response bytes. They must not record patient, medicine, prescription, or payment content.
+- `Server-Timing` headers expose backend phases for browser and Vercel diagnosis.
+- Existing root workspaces migrate to `tenant_state` with `ON CONFLICT DO NOTHING` so deployment cannot replace newer tenant data.
+
+Current populated-workspace baseline (June 20, 2026):
+
+- Full TEP-NG JSON: approximately 13.77 MB.
+- Initial state after deferred audit history: approximately 7.93 MB.
+- Normal action response core after heavy-collection deltas: approximately 428 KB, plus changed records.
+
+The next performance phase is page-specific pagination/server aggregation for sales and ledger history. It must preserve workspace-wide patient history, branch-aware reporting, auditability, and the existing sale/dispensing save boundary.
 
 ## Authenticated Shell
 
@@ -192,3 +209,5 @@ For deployment changes:
 - Push `master`.
 - Confirm Vercel deployment is `READY`.
 - Confirm production returns the new bundle.
+- Check `/api/bootstrap`, `/api/state`, and `/api/action` timing and response bytes in Vercel runtime logs.
+- Confirm Speed Insights trends by route after enough real-user samples have accumulated.

@@ -15,12 +15,15 @@ import {
   getRequestUserAgent,
   hasActiveBranchAssignment,
   id,
+  jsonByteLength,
   loadTenantDatabase,
+  logApiPerformance,
   nowIso,
   requireMethod,
   sanitizeDatabase,
   saveTenantDatabase,
   sendSecurityEmail,
+  setServerTiming,
   today,
 } from "./_shared.js";
 import type {
@@ -36,6 +39,11 @@ import type {
   Supplier,
   User,
 } from "./_shared.js";
+import {
+  buildDatabasePatch,
+  snapshotHeavyCollections,
+  stripHeavyCollections,
+} from "../src/databasePatch.js";
 import type { Branch } from "./_shared.js";
 
 type ActionBody = {
@@ -56,23 +64,34 @@ export default async function handler(
   res: HandlerResponse,
 ) {
   if (!requireMethod(req, res, ["POST"])) return;
+  const startedAt = Date.now();
+  let actionName = "unknown";
+  let loadMs = 0;
+  let authMs = 0;
+  let saveMs = 0;
   try {
     const body = req.body as ActionBody;
+    actionName = body.action || "unknown";
     const companySlug = getCompanySlugFromRequest(req);
     if (!companySlug) {
       fail(res, 400, "Choose a company portal before making changes");
       return;
     }
+    const loadStartedAt = Date.now();
     const db = await loadTenantDatabase(companySlug);
+    loadMs = Date.now() - loadStartedAt;
     if (!db) {
       fail(res, 404, "Company portal not found");
       return;
     }
+    const authStartedAt = Date.now();
     const actor = await getAuthenticatedUser(req, db);
+    authMs = Date.now() - authStartedAt;
     if (!actor) {
       fail(res, 401, "Authentication required");
       return;
     }
+    const heavySnapshot = snapshotHeavyCollections(db);
 
     switch (body.action) {
       case "updateUser":
@@ -158,13 +177,43 @@ export default async function handler(
         return;
     }
 
+    const saveStartedAt = Date.now();
     await saveTenantDatabase(companySlug, db);
+    saveMs = Date.now() - saveStartedAt;
     const clean = sanitizeDatabase(db);
-    res.status(200).json({
-      db: clean,
+    const databasePatch = buildDatabasePatch(heavySnapshot, clean);
+    const response = {
+      db: stripHeavyCollections(clean),
+      databasePatch,
       currentUser: clean.users.find((user) => user.id === actor.id),
+    };
+    const totalMs = Date.now() - startedAt;
+    const responseBytes = jsonByteLength(response);
+    setServerTiming(res, {
+      load: loadMs,
+      auth: authMs,
+      save: saveMs,
+      total: totalMs,
     });
+    logApiPerformance(req, "/api/action", {
+      ok: true,
+      action: actionName,
+      loadMs,
+      authMs,
+      saveMs,
+      totalMs,
+      responseBytes,
+    });
+    res.status(200).json(response);
   } catch (error) {
+    logApiPerformance(req, "/api/action", {
+      ok: false,
+      action: actionName,
+      loadMs,
+      authMs,
+      saveMs,
+      totalMs: Date.now() - startedAt,
+    });
     fail(
       res,
       400,

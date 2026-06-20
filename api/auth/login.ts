@@ -102,6 +102,7 @@ export default async function handler(
     const session = await createSession(user.id);
     setSessionCookie(res, session);
     const clean = sanitizeDatabase(db);
+    clean.auditLogs = [];
     res.status(200).json({
       expiresAt: session.expiresAt,
       db: clean,

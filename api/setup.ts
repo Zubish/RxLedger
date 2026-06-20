@@ -11,6 +11,7 @@ import {
   normalizeCompanySlug,
   requireMethod,
   sanitizeDatabase,
+  saveTenantDatabase,
   saveRootState,
   setSessionCookie,
 } from "./_shared.js";
@@ -177,6 +178,7 @@ export default async function handler(
     root.tenants.unshift(tenant);
     root.defaultSlug = tenant.slug;
     await saveRootState(root);
+    await saveTenantDatabase(companySlug, db);
     const session = await createSession(adminId);
     setSessionCookie(res, session);
     res.status(200).json({
