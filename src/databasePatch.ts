@@ -21,7 +21,9 @@ export function snapshotHeavyCollections(db: Database): HeavySnapshot {
     heavyCollectionKeys.map((key) => [
       key,
       new Map(
-        db[key].map((item) => [itemId(item), JSON.stringify(item)]),
+        db[key].map(
+          (item) => [itemId(item), JSON.stringify(item)] as const,
+        ),
       ),
     ]),
   ) as HeavySnapshot;
