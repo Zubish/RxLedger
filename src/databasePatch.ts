@@ -1,4 +1,4 @@
-import type { Database } from "./types";
+import type { Database } from "./types.js";
 
 export const heavyCollectionKeys = ["sales", "ledger", "auditLogs"] as const;
 
