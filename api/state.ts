@@ -1,4 +1,5 @@
 import {
+  canAdmin,
   fail,
   getAuthenticatedUser,
   getCompanySlugFromRequest,
@@ -12,7 +13,9 @@ import {
 import type { HandlerRequest, HandlerResponse } from "./_shared.js";
 
 export default async function handler(
-  req: HandlerRequest,
+  req: HandlerRequest & {
+    query?: Record<string, string | string[] | undefined>;
+  },
   res: HandlerResponse,
 ) {
   if (!requireMethod(req, res, ["GET"])) return;
@@ -39,6 +42,28 @@ export default async function handler(
       fail(res, 401, "Authentication required");
       return;
     }
+    const rawScope = req.query?.scope;
+    const scope = String(Array.isArray(rawScope) ? rawScope[0] || "" : rawScope || "");
+    if (scope === "audit") {
+      if (!canAdmin(user, db.settings.primaryAdminId)) {
+        fail(res, 403, "Only the global admin can view the audit trail");
+        return;
+      }
+      const response = { auditLogs: db.auditLogs };
+      const totalMs = Date.now() - startedAt;
+      const responseBytes = jsonByteLength(response);
+      setServerTiming(res, { load: loadMs, auth: authMs, total: totalMs });
+      logApiPerformance(req, "/api/state", {
+        ok: true,
+        scope,
+        loadMs,
+        authMs,
+        totalMs,
+        responseBytes,
+      });
+      res.status(200).json(response);
+      return;
+    }
     const clean = sanitizeDatabase(db);
     clean.auditLogs = [];
     const response = {
@@ -50,6 +75,7 @@ export default async function handler(
     setServerTiming(res, { load: loadMs, auth: authMs, total: totalMs });
     logApiPerformance(req, "/api/state", {
       ok: true,
+      scope: "workspace",
       loadMs,
       authMs,
       totalMs,
@@ -59,6 +85,7 @@ export default async function handler(
   } catch (error) {
     logApiPerformance(req, "/api/state", {
       ok: false,
+      scope: "workspace",
       loadMs,
       authMs,
       totalMs: Date.now() - startedAt,

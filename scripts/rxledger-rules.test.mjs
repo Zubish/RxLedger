@@ -11,7 +11,6 @@ const continuityQueue = read("src/components/ContinuityQueue.tsx");
 const patientProfilePanel = read("src/components/PatientProfilePanel.tsx");
 const action = read("api/action.ts");
 const state = read("api/state.ts");
-const auditHistory = read("api/audit-history.ts");
 const bootstrap = read("api/bootstrap.ts");
 const raiSnapshot = read("api/rai/analytics-snapshot.ts");
 const api = read("src/api.ts");
@@ -335,7 +334,7 @@ assertPresent(
   "Initial state should defer the global-admin audit archive.",
 );
 assertPresent(
-  `${api}\n${app}\n${auditHistory}`,
+  `${api}\n${app}\n${state}`,
   /loadAuditHistory[\s\S]*auditHistoryLoaded[\s\S]*canAdmin/,
   "Historical audit records should load only when the global admin opens Audit.",
 );

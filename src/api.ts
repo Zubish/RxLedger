@@ -74,7 +74,7 @@ export async function loadState() {
 }
 
 export async function loadAuditHistory() {
-  return request<{ auditLogs: Database["auditLogs"] }>("/api/audit-history");
+  return request<{ auditLogs: Database["auditLogs"] }>("/api/state?scope=audit");
 }
 
 export async function setupWorkspace(input: SetupInput) {
