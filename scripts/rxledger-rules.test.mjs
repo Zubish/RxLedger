@@ -364,5 +364,40 @@ assertPresent(
   /loadTenantSalesPage[\s\S]*data->'sales'[\s\S]*LIMIT \$\{queryLimit\}[\s\S]*nextCursor/s,
   "Tenant sales history should be read from the sales JSONB slice with a bounded page size.",
 );
+assertPresent(
+  types,
+  /stockSnapshot: StockSnapshotEntry\[\][\s\S]*ledgerSummary: LedgerSummary/,
+  "RxLedger state should include compact stock and ledger read models for fast initial paint.",
+);
+assertPresent(
+  shared,
+  /withReadModels[\s\S]*buildStockSnapshot[\s\S]*buildLedgerSummary/s,
+  "Server responses should refresh derived stock and ledger summaries from the authoritative ledger.",
+);
+assertPresent(
+  state,
+  /scope === "ledger"[\s\S]*loadTenantLedgerPage[\s\S]*res\.status\(200\)\.json\(page\)/,
+  "Movement ledger history should load through a paginated state scope.",
+);
+assertPresent(
+  `${state}\n${login}`,
+  /clean\.ledger = \[\]/,
+  "Initial authenticated state and login should defer historical ledger entries.",
+);
+assertPresent(
+  `${api}\n${app}`,
+  /loadLedgerHistory[\s\S]*ledgerHistoryLoaded[\s\S]*hydrateLedgerHistory/s,
+  "The client should hydrate ledger history only when movement/report views need it.",
+);
+assertPresent(
+  app,
+  /getStockRows[\s\S]*db\.stockSnapshot[\s\S]*snapshotQuantities/,
+  "Client stock rows should prefer the compact stock snapshot before full ledger history.",
+);
+assertPresent(
+  app,
+  /todayMovements[\s\S]*db\.ledgerSummary\.todayMovementCountsByBatchId/,
+  "Dashboard movement count should prefer the compact ledger summary before full ledger history.",
+);
 
 console.log("RxLedger rule regression tests passed.");

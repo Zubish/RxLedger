@@ -156,6 +156,18 @@ type LedgerEntry = {
   toBranchId?: string;
 };
 
+type StockSnapshotEntry = {
+  batchId: string;
+  quantity: number;
+};
+
+type LedgerSummary = {
+  today: string;
+  todayMovementCountsByBatchId: Record<string, number>;
+  todayMovementCountsByBranchId: Record<string, number>;
+  updatedAt: string;
+};
+
 type ChatMessage = {
   id: string;
   userId: string;
@@ -387,6 +399,8 @@ type Database = {
   branches: Branch[];
   batches: Batch[];
   ledger: LedgerEntry[];
+  stockSnapshot: StockSnapshotEntry[];
+  ledgerSummary: LedgerSummary;
   receipts: Array<{
     id: string;
     supplierId: string;
@@ -558,6 +572,13 @@ export function createEmptyDatabase(): Database {
     ],
     batches: [],
     ledger: [],
+    stockSnapshot: [],
+    ledgerSummary: {
+      today: today(),
+      todayMovementCountsByBatchId: {},
+      todayMovementCountsByBranchId: {},
+      updatedAt: nowIso(),
+    },
     receipts: [],
     sales: [],
     posDrafts: [],
@@ -614,6 +635,7 @@ export type {
   Database,
   HandlerRequest,
   HandlerResponse,
+  LedgerSummary,
   LedgerType,
   Medicine,
   MedicineLabelRule,
@@ -626,6 +648,7 @@ export type {
   Sale,
   SecurityEvent,
   SecurityEventType,
+  StockSnapshotEntry,
   Supplier,
   TenantRecord,
   User,
@@ -927,6 +950,15 @@ function makeSalesCursor(sale: Sale) {
   return `${sale.soldAt}|${sale.id}`;
 }
 
+function parseLedgerCursor(cursor = "") {
+  const [createdAt = "", id = ""] = cursor.split("|");
+  return { createdAt, id };
+}
+
+function makeLedgerCursor(entry: LedgerEntry) {
+  return `${entry.createdAt}|${entry.id}`;
+}
+
 export async function loadTenantSalesPage(
   slug: string,
   options: { cursor?: string; limit?: number } = {},
@@ -973,6 +1005,57 @@ export async function loadTenantSalesPage(
   return {
     sales: page,
     nextCursor: sales.length > safeLimit ? makeSalesCursor(page[page.length - 1]) : "",
+  };
+}
+
+export async function loadTenantLedgerPage(
+  slug: string,
+  options: { cursor?: string; limit?: number } = {},
+) {
+  const normalizedSlug = normalizeCompanySlug(slug);
+  if (!normalizedSlug) return null;
+  await ensureSchema();
+  const sql = getSql();
+  const safeLimit = clampHistoryLimit(options.limit);
+  const queryLimit = safeLimit + 1;
+  const cursor = parseLedgerCursor(options.cursor);
+  const rows = await sql`
+    WITH ledger AS (
+      SELECT value AS entry
+      FROM tenant_state,
+        jsonb_array_elements(
+          CASE
+            WHEN jsonb_typeof(data->'ledger') = 'array' THEN data->'ledger'
+            ELSE '[]'::jsonb
+          END
+        ) AS value
+      WHERE slug = ${normalizedSlug}
+    ),
+    filtered AS (
+      SELECT entry
+      FROM ledger
+      WHERE ${cursor.createdAt} = ''
+         OR (entry->>'createdAt', entry->>'id') < (${cursor.createdAt}, ${cursor.id})
+      ORDER BY entry->>'createdAt' DESC, entry->>'id' DESC
+      LIMIT ${queryLimit}
+    )
+    SELECT COALESCE(
+      jsonb_agg(entry ORDER BY entry->>'createdAt' DESC, entry->>'id' DESC),
+      '[]'::jsonb
+    ) AS ledger
+    FROM filtered
+  `;
+  const ledger = normalizeDatabase({
+    ledger: rows[0]?.ledger || [],
+  } as Partial<Database>).ledger.sort(
+    (a, b) =>
+      b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id),
+  );
+  const page = ledger.slice(0, safeLimit);
+  return {
+    ledger: page,
+    nextCursor:
+      ledger.length > safeLimit ? makeLedgerCursor(page[page.length - 1]) : "",
   };
 }
 
@@ -1346,7 +1429,7 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
       })),
     };
   });
-  return {
+  const normalized: Database = {
     ...empty,
     ...raw,
     users,
@@ -1506,6 +1589,65 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
         rawSettings.trialStartedAt || empty.settings.trialStartedAt,
       trialEndsAt: rawSettings.trialEndsAt || empty.settings.trialEndsAt,
     },
+  };
+  return withReadModels(normalized);
+}
+
+function buildStockSnapshot(db: Database): StockSnapshotEntry[] {
+  const quantities = new Map<string, number>();
+  db.ledger.forEach((entry) => {
+    if (entry.itemType === "product" || !entry.batchId) return;
+    quantities.set(
+      entry.batchId,
+      (quantities.get(entry.batchId) ?? 0) + entry.quantity,
+    );
+  });
+  return db.batches.map((batch) => ({
+    batchId: batch.id,
+    quantity: quantities.get(batch.id) ?? 0,
+  }));
+}
+
+function buildLedgerSummary(db: Database): LedgerSummary {
+  const todayLabel = today();
+  const todayMovementCountsByBatchId: Record<string, number> = {};
+  const todayMovementCountsByBranchId: Record<string, number> = {};
+  const branchByBatchId = new Map(
+    db.batches.map((batch) => [batch.id, batch.branchId] as const),
+  );
+  db.ledger.forEach((entry) => {
+    if (entry.createdAt.slice(0, 10) !== todayLabel) return;
+    if (entry.itemType === "product") {
+      const branchId = entry.toBranchId || entry.fromBranchId || "";
+      if (branchId) {
+        todayMovementCountsByBranchId[branchId] =
+          (todayMovementCountsByBranchId[branchId] ?? 0) + 1;
+      }
+      return;
+    }
+    if (entry.batchId) {
+      todayMovementCountsByBatchId[entry.batchId] =
+        (todayMovementCountsByBatchId[entry.batchId] ?? 0) + 1;
+      const branchId = branchByBatchId.get(entry.batchId);
+      if (branchId) {
+        todayMovementCountsByBranchId[branchId] =
+          (todayMovementCountsByBranchId[branchId] ?? 0) + 1;
+      }
+    }
+  });
+  return {
+    today: todayLabel,
+    todayMovementCountsByBatchId,
+    todayMovementCountsByBranchId,
+    updatedAt: nowIso(),
+  };
+}
+
+export function withReadModels(db: Database): Database {
+  return {
+    ...db,
+    stockSnapshot: buildStockSnapshot(db),
+    ledgerSummary: buildLedgerSummary(db),
   };
 }
 

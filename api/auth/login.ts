@@ -14,6 +14,7 @@ import {
   sendSecurityEmail,
   setSessionCookie,
   verifyPassword,
+  withReadModels,
 } from "../_shared.js";
 import type { HandlerRequest, HandlerResponse } from "../_shared.js";
 
@@ -98,12 +99,14 @@ export default async function handler(
         });
       }
     }
-    await saveTenantDatabase(companySlug, db);
+    const dbWithReadModels = withReadModels(db);
+    await saveTenantDatabase(companySlug, dbWithReadModels);
     const session = await createSession(user.id);
     setSessionCookie(res, session);
-    const clean = sanitizeDatabase(db);
+    const clean = sanitizeDatabase(dbWithReadModels);
     clean.auditLogs = [];
     clean.sales = [];
+    clean.ledger = [];
     res.status(200).json({
       expiresAt: session.expiresAt,
       db: clean,

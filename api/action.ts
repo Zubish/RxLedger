@@ -25,6 +25,7 @@ import {
   sendSecurityEmail,
   setServerTiming,
   today,
+  withReadModels,
 } from "./_shared.js";
 import type {
   Database,
@@ -178,9 +179,10 @@ export default async function handler(
     }
 
     const saveStartedAt = Date.now();
-    await saveTenantDatabase(companySlug, db);
+    const dbWithReadModels = withReadModels(db);
+    await saveTenantDatabase(companySlug, dbWithReadModels);
     saveMs = Date.now() - saveStartedAt;
-    const clean = sanitizeDatabase(db);
+    const clean = sanitizeDatabase(dbWithReadModels);
     const databasePatch = buildDatabasePatch(heavySnapshot, clean);
     const response = {
       db: stripHeavyCollections(clean),

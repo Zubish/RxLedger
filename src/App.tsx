@@ -64,6 +64,7 @@ import {
   getStoredToken,
   getStoredCompanySlug,
   loadAuditHistory,
+  loadLedgerHistory,
   loadSalesHistory,
   loadState,
   login as apiLogin,
@@ -561,6 +562,16 @@ type Database = {
   branches: Branch[];
   batches: Batch[];
   ledger: LedgerEntry[];
+  stockSnapshot: Array<{
+    batchId: string;
+    quantity: number;
+  }>;
+  ledgerSummary: {
+    today: string;
+    todayMovementCountsByBatchId: Record<string, number>;
+    todayMovementCountsByBranchId: Record<string, number>;
+    updatedAt: string;
+  };
   receipts: Receipt[];
   sales: Sale[];
   posDrafts: PosDraft[];
@@ -1071,6 +1082,13 @@ function createEmptyDatabase(): Database {
     ],
     batches: [],
     ledger: [],
+    stockSnapshot: [],
+    ledgerSummary: {
+      today: today(),
+      todayMovementCountsByBatchId: {},
+      todayMovementCountsByBranchId: {},
+      updatedAt: new Date().toISOString(),
+    },
     receipts: [],
     sales: [],
     posDrafts: [],
@@ -1117,15 +1135,21 @@ function createEmptyDatabase(): Database {
 }
 
 function getStockRows(db: Database): StockRow[] {
+  const snapshotQuantities = new Map(
+    db.stockSnapshot.map((entry) => [entry.batchId, entry.quantity] as const),
+  );
+  const useStockSnapshot = db.stockSnapshot.length > 0 || db.ledger.length === 0;
   return db.batches
     .map((batch) => {
       const medicine = db.medicines.find(
         (item) => item.id === batch.medicineId,
       );
       if (!medicine) return null;
-      const quantity = db.ledger
-        .filter((entry) => entry.batchId === batch.id)
-        .reduce((sum, entry) => sum + entry.quantity, 0);
+      const quantity = useStockSnapshot
+        ? (snapshotQuantities.get(batch.id) ?? 0)
+        : db.ledger
+            .filter((entry) => entry.batchId === batch.id)
+            .reduce((sum, entry) => sum + entry.quantity, 0);
       const days = daysUntil(batch.expiryDate);
       return {
         batch,
@@ -1642,6 +1666,17 @@ function mergeSalesHistory(existing: Sale[], loaded: Sale[]) {
   });
   return [...byId.values()].sort(
     (a, b) => b.soldAt.localeCompare(a.soldAt) || b.id.localeCompare(a.id),
+  );
+}
+
+function mergeLedgerHistory(existing: LedgerEntry[], loaded: LedgerEntry[]) {
+  const byId = new Map<string, LedgerEntry>();
+  [...loaded, ...existing].forEach((entry) => {
+    byId.set(entry.id, entry);
+  });
+  return [...byId.values()].sort(
+    (a, b) =>
+      b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id),
   );
 }
 
@@ -2513,6 +2548,8 @@ function App() {
   const [auditHistoryLoading, setAuditHistoryLoading] = useState(false);
   const [salesHistoryLoaded, setSalesHistoryLoaded] = useState(false);
   const [salesHistoryLoading, setSalesHistoryLoading] = useState(false);
+  const [ledgerHistoryLoaded, setLedgerHistoryLoaded] = useState(false);
+  const [ledgerHistoryLoading, setLedgerHistoryLoading] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
   const [connectionError, setConnectionError] = useState("");
   const [hasUsers, setHasUsers] = useState(false);
@@ -2647,6 +2684,32 @@ function App() {
       );
     } finally {
       setSalesHistoryLoading(false);
+    }
+  }
+  async function hydrateLedgerHistory() {
+    if (!sessionUserId || ledgerHistoryLoaded || ledgerHistoryLoading) return;
+    setLedgerHistoryLoading(true);
+    try {
+      const loadedLedger: LedgerEntry[] = [];
+      let cursor = "";
+      for (let page = 0; page < 60; page += 1) {
+        const result = await loadLedgerHistory({ cursor, limit: 500 });
+        loadedLedger.push(...result.ledger);
+        if (!result.nextCursor) break;
+        cursor = result.nextCursor;
+      }
+      setDb((previous) => ({
+        ...previous,
+        ledger: mergeLedgerHistory(previous.ledger, loadedLedger),
+      }));
+      setLedgerHistoryLoaded(true);
+    } catch (error) {
+      flash(
+        error instanceof Error ? error.message : "Unable to load movement ledger",
+        "danger",
+      );
+    } finally {
+      setLedgerHistoryLoading(false);
     }
   }
   const dashboardStockRows = useMemo(
@@ -2811,6 +2874,8 @@ function App() {
     setAuditHistoryLoading(false);
     setSalesHistoryLoaded(false);
     setSalesHistoryLoading(false);
+    setLedgerHistoryLoaded(false);
+    setLedgerHistoryLoading(false);
     setActiveView("dashboard");
     setSidebarOpen(false);
     setSidebarCollapsed(true);
@@ -2866,6 +2931,7 @@ function App() {
       const result = await setupWorkspace(input);
       setAuditHistoryLoaded(false);
       setSalesHistoryLoaded(true);
+      setLedgerHistoryLoaded(true);
       setDb(result.db);
       setSessionUserId(result.currentUser.id);
       setHasUsers(true);
@@ -2938,6 +3004,7 @@ function App() {
       const result = await apiLogin(email, password);
       setAuditHistoryLoaded(false);
       setSalesHistoryLoaded(false);
+      setLedgerHistoryLoaded(false);
       setDb(result.db);
       setSessionUserId(result.currentUser.id);
       setConnectionError("");
@@ -2987,6 +3054,9 @@ function App() {
     }
     if (nextView === "pos" || nextView === "patients" || nextView === "reports") {
       void hydrateSalesHistory();
+    }
+    if (nextView === "reports") {
+      void hydrateLedgerHistory();
     }
     if (shouldAutoCollapseSidebar()) {
       setSidebarOpen(false);
@@ -3700,11 +3770,19 @@ function Dashboard({
     ? db.medicines.filter((medicine) => medicine.active).length
     : scopedMedicineIds.size;
   const permittedBatchIds = new Set(alertStockRows.map((row) => row.batch.id));
-  const todayMovements = db.ledger.filter(
-    (entry) =>
-      entry.createdAt.slice(0, 10) === today() &&
-      permittedBatchIds.has(entry.batchId),
-  ).length;
+  const summaryDate = today();
+  const todayMovements =
+    db.ledgerSummary.today === summaryDate
+      ? [...permittedBatchIds].reduce(
+          (sum, batchId) =>
+            sum + (db.ledgerSummary.todayMovementCountsByBatchId[batchId] ?? 0),
+          0,
+        )
+      : db.ledger.filter(
+          (entry) =>
+            entry.createdAt.slice(0, 10) === summaryDate &&
+            permittedBatchIds.has(entry.batchId),
+        ).length;
   const pendingUsers = canAdmin
     ? db.users.filter((user) => user.status === "pending").length
     : 0;

@@ -99,6 +99,13 @@ export default async function handler(
       branches: [],
       batches: [],
       ledger: [],
+      stockSnapshot: [],
+      ledgerSummary: {
+        today: createdAt.slice(0, 10),
+        todayMovementCountsByBatchId: {},
+        todayMovementCountsByBranchId: {},
+        updatedAt: createdAt,
+      },
       receipts: [],
       sales: [],
       posDrafts: [],

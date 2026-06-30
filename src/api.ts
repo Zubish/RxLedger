@@ -90,6 +90,19 @@ export async function loadSalesHistory(input: {
   }>(`/api/state?${params.toString()}`);
 }
 
+export async function loadLedgerHistory(input: {
+  cursor?: string;
+  limit?: number;
+} = {}) {
+  const params = new URLSearchParams({ scope: "ledger" });
+  if (input.cursor) params.set("cursor", input.cursor);
+  if (input.limit) params.set("limit", String(input.limit));
+  return request<{
+    ledger: Database["ledger"];
+    nextCursor: string;
+  }>(`/api/state?${params.toString()}`);
+}
+
 export async function setupWorkspace(input: SetupInput) {
   const result = await request<{
     db: Database;

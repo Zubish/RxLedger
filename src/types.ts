@@ -147,6 +147,18 @@ export type LedgerEntry = {
   toBranchId?: string;
 };
 
+export type StockSnapshotEntry = {
+  batchId: string;
+  quantity: number;
+};
+
+export type LedgerSummary = {
+  today: string;
+  todayMovementCountsByBatchId: Record<string, number>;
+  todayMovementCountsByBranchId: Record<string, number>;
+  updatedAt: string;
+};
+
 export type Receipt = {
   id: string;
   supplierId: string;
@@ -421,6 +433,8 @@ export type Database = {
   branches: Branch[];
   batches: Batch[];
   ledger: LedgerEntry[];
+  stockSnapshot: StockSnapshotEntry[];
+  ledgerSummary: LedgerSummary;
   receipts: Receipt[];
   sales: Sale[];
   posDrafts: PosDraft[];
