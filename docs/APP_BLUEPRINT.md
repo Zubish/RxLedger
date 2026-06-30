@@ -69,6 +69,7 @@ Current populated-workspace baseline (June 20, 2026):
 - Initial state after deferred audit history: approximately 7.93 MB.
 - Phase 2 sales-history deferral removes historical sales from login/initial state; sales hydrate on demand in pages of up to 500 records.
 - Phase 2 ledger deferral removes historical ledger entries from login/initial state while preserving current stock through read models; movement history hydrates on demand in pages of up to 500 records.
+- Stock rows and high-volume report rows use per-render ID lookup maps for medicines, products, batches, suppliers, branches, users, and sale references. Do not reintroduce repeated `.find()` scans inside ledger/report row loops.
 - Normal action response core after heavy-collection deltas: approximately 428 KB, plus changed records.
 
 The next performance phase is server-side dashboard/report aggregation beyond stock and movement hydration, followed by relational history tables/indexes when the JSONB read-model boundary is no longer enough. It must preserve workspace-wide patient history, branch-aware reporting, auditability, and the existing sale/dispensing save boundary.

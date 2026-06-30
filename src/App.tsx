@@ -1138,12 +1138,19 @@ function getStockRows(db: Database): StockRow[] {
   const snapshotQuantities = new Map(
     db.stockSnapshot.map((entry) => [entry.batchId, entry.quantity] as const),
   );
+  const medicinesById = new Map(
+    db.medicines.map((medicine) => [medicine.id, medicine] as const),
+  );
+  const suppliersById = new Map(
+    db.suppliers.map((supplier) => [supplier.id, supplier] as const),
+  );
+  const branchesById = new Map(
+    db.branches.map((branch) => [branch.id, branch] as const),
+  );
   const useStockSnapshot = db.stockSnapshot.length > 0 || db.ledger.length === 0;
   return db.batches
     .map((batch) => {
-      const medicine = db.medicines.find(
-        (item) => item.id === batch.medicineId,
-      );
+      const medicine = medicinesById.get(batch.medicineId);
       if (!medicine) return null;
       const quantity = useStockSnapshot
         ? (snapshotQuantities.get(batch.id) ?? 0)
@@ -1154,10 +1161,8 @@ function getStockRows(db: Database): StockRow[] {
       return {
         batch,
         medicine,
-        supplier: db.suppliers.find(
-          (supplier) => supplier.id === batch.supplierId,
-        ),
-        branch: db.branches.find((branch) => branch.id === batch.branchId),
+        supplier: suppliersById.get(batch.supplierId),
+        branch: branchesById.get(batch.branchId),
         quantity,
         costValue: quantity * batch.unitCost,
         daysToExpiry: days,
@@ -9888,6 +9893,29 @@ function Reports({
             .filter((branch) => branch.active)
             .map((branch) => branch.id),
     );
+    const medicinesById = new Map(
+      db.medicines.map((medicine) => [medicine.id, medicine] as const),
+    );
+    const productsById = new Map(
+      db.products.map((product) => [product.id, product] as const),
+    );
+    const batchesById = new Map(
+      db.batches.map((batch) => [batch.id, batch] as const),
+    );
+    const usersById = new Map(
+      db.users.map((user) => [user.id, user] as const),
+    );
+    const suppliersById = new Map(
+      db.suppliers.map((supplier) => [supplier.id, supplier] as const),
+    );
+    const branchesById = new Map(
+      db.branches.map((branch) => [branch.id, branch] as const),
+    );
+    const salesByReference = new Map(
+      db.sales.map((sale) => [sale.reference, sale] as const),
+    );
+    const branchNameById = (branchId: string) =>
+      branchesById.get(branchId)?.name ?? branchId;
     if (report === "movement") {
       return db.ledger
         .filter((entry) =>
@@ -9904,10 +9932,10 @@ function Reports({
           const medicine =
             entry.itemType === "product"
               ? undefined
-              : db.medicines.find((item) => item.id === entry.medicineId);
+              : medicinesById.get(entry.medicineId);
           const product =
             entry.itemType === "product"
-              ? db.products.find((item) => item.id === entry.productId)
+              ? productsById.get(entry.productId ?? "")
               : undefined;
           const itemName = medicine?.brandName ?? product?.name ?? "";
           const genericName = medicine?.genericName ?? "";
@@ -9935,33 +9963,32 @@ function Reports({
         .map((entry) => {
           const product =
             entry.itemType === "product"
-              ? db.products.find((item) => item.id === entry.productId)
+              ? productsById.get(entry.productId ?? "")
               : undefined;
           const medicine =
             entry.itemType === "product"
               ? undefined
-              : db.medicines.find((item) => item.id === entry.medicineId);
+              : medicinesById.get(entry.medicineId);
           const batch =
             entry.itemType === "product"
               ? undefined
-              : db.batches.find((item) => item.id === entry.batchId);
-          const user = db.users.find((item) => item.id === entry.userId);
+              : batchesById.get(entry.batchId);
+          const user = usersById.get(entry.userId);
           const supplier = batch
-            ? db.suppliers.find((item) => item.id === batch.supplierId)
+            ? suppliersById.get(batch.supplierId)
             : undefined;
-          const branchName = getBranchName(
-            db,
+          const branchName = branchNameById(
             batch?.branchId ?? entry.toBranchId ?? entry.fromBranchId ?? "main",
           );
           const from = entry.fromBranchId
-            ? getBranchName(db, entry.fromBranchId)
+            ? branchNameById(entry.fromBranchId)
             : entry.type === "stock-in"
               ? (supplier?.name ?? "Supplier")
               : entry.type === "customer-return"
                 ? "Customer"
                 : branchName;
           const to = entry.toBranchId
-            ? getBranchName(db, entry.toBranchId)
+            ? branchNameById(entry.toBranchId)
             : entry.type === "supplier-return"
               ? (supplier?.name ?? "Supplier")
               : entry.type === "stock-out"
@@ -9971,7 +9998,7 @@ function Reports({
                   : branchName;
           const sale =
             entry.reason === "POS sale"
-              ? db.sales.find((item) => item.reference === entry.reference)
+              ? salesByReference.get(entry.reference)
               : undefined;
           const saleItem = sale?.items.find((item) =>
             entry.itemType === "product"
@@ -10022,9 +10049,8 @@ function Reports({
         .filter(
           (receipt) =>
             (!supplierFilter ||
-              db.suppliers.find(
-                (supplier) => supplier.id === receipt.supplierId,
-              )?.name === supplierFilter) &&
+              suppliersById.get(receipt.supplierId)?.name ===
+                supplierFilter) &&
             (!supplierDate || receipt.receivedAt.slice(0, 10) === supplierDate),
         )
         .flatMap((receipt) =>
@@ -10032,18 +10058,16 @@ function Reports({
             const batch =
               item.itemType === "product"
                 ? undefined
-                : db.batches.find((entry) => entry.id === item.batchId);
+                : batchesById.get(item.batchId);
             const medicine =
               item.itemType === "product"
                 ? undefined
-                : db.medicines.find((entry) => entry.id === item.medicineId);
+                : medicinesById.get(item.medicineId);
             const product =
               item.itemType === "product"
-                ? db.products.find((entry) => entry.id === item.productId)
+                ? productsById.get(item.productId ?? "")
                 : undefined;
-            const supplier = db.suppliers.find(
-              (entry) => entry.id === receipt.supplierId,
-            );
+            const supplier = suppliersById.get(receipt.supplierId);
             return {
               Date: new Date(receipt.receivedAt).toLocaleString(),
               Supplier: supplier?.name ?? receipt.supplierId,
@@ -10065,8 +10089,7 @@ function Reports({
                 : (product?.unit ?? "-"),
               Quantity: item.quantity,
               "Cost / Least Unit": item.unitCost,
-              Branch: getBranchName(
-                db,
+              Branch: branchNameById(
                 batch?.branchId ?? item.branchId ?? "main",
               ),
             };
@@ -10127,9 +10150,7 @@ function Reports({
             (!categoryFilter || product.category === categoryFilter),
         )
         .map((product) => {
-          const supplier = db.suppliers.find(
-            (item) => item.id === product.supplierId,
-          );
+          const supplier = suppliersById.get(product.supplierId);
           return {
             SKU: product.sku,
             Product: product.name,

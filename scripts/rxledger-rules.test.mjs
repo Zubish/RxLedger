@@ -396,8 +396,18 @@ assertPresent(
 );
 assertPresent(
   app,
+  /getStockRows[\s\S]*medicinesById[\s\S]*suppliersById[\s\S]*branchesById/s,
+  "Client stock rows should use cached ID maps instead of repeated catalog lookups.",
+);
+assertPresent(
+  app,
   /todayMovements[\s\S]*db\.ledgerSummary\.todayMovementCountsByBatchId/,
   "Dashboard movement count should prefer the compact ledger summary before full ledger history.",
+);
+assertPresent(
+  app,
+  /function Reports[\s\S]*salesByReference[\s\S]*branchNameById[\s\S]*suppliersById/s,
+  "Reports should use cached lookup maps for high-volume movement and receiving history.",
 );
 
 console.log("RxLedger rule regression tests passed.");
