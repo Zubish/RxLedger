@@ -103,6 +103,7 @@ export default async function handler(
     setSessionCookie(res, session);
     const clean = sanitizeDatabase(db);
     clean.auditLogs = [];
+    clean.sales = [];
     res.status(200).json({
       expiresAt: session.expiresAt,
       db: clean,

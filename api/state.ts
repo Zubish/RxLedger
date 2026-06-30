@@ -4,7 +4,9 @@ import {
   getAuthenticatedUser,
   getCompanySlugFromRequest,
   jsonByteLength,
+  loadTenantAuthDatabase,
   loadTenantDatabase,
+  loadTenantSalesPage,
   logApiPerformance,
   requireMethod,
   sanitizeDatabase,
@@ -28,6 +30,50 @@ export default async function handler(
       fail(res, 400, "Choose a company portal before loading state");
       return;
     }
+    const rawScope = req.query?.scope;
+    const scope = String(Array.isArray(rawScope) ? rawScope[0] || "" : rawScope || "");
+    if (scope === "sales") {
+      const authLoadStartedAt = Date.now();
+      const authDb = await loadTenantAuthDatabase(companySlug);
+      loadMs = Date.now() - authLoadStartedAt;
+      if (!authDb) {
+        fail(res, 404, "Company portal not found");
+        return;
+      }
+      const authStartedAt = Date.now();
+      const user = await getAuthenticatedUser(req, authDb);
+      authMs = Date.now() - authStartedAt;
+      if (!user) {
+        fail(res, 401, "Authentication required");
+        return;
+      }
+      const rawLimit = req.query?.limit;
+      const rawCursor = req.query?.cursor;
+      const limit = Number(Array.isArray(rawLimit) ? rawLimit[0] : rawLimit);
+      const cursor = String(
+        Array.isArray(rawCursor) ? rawCursor[0] || "" : rawCursor || "",
+      );
+      const salesLoadStartedAt = Date.now();
+      const page = await loadTenantSalesPage(companySlug, { cursor, limit });
+      loadMs += Date.now() - salesLoadStartedAt;
+      if (!page) {
+        fail(res, 404, "Company portal not found");
+        return;
+      }
+      const totalMs = Date.now() - startedAt;
+      const responseBytes = jsonByteLength(page);
+      setServerTiming(res, { load: loadMs, auth: authMs, total: totalMs });
+      logApiPerformance(req, "/api/state", {
+        ok: true,
+        scope,
+        loadMs,
+        authMs,
+        totalMs,
+        responseBytes,
+      });
+      res.status(200).json(page);
+      return;
+    }
     const loadStartedAt = Date.now();
     const db = await loadTenantDatabase(companySlug);
     loadMs = Date.now() - loadStartedAt;
@@ -42,8 +88,6 @@ export default async function handler(
       fail(res, 401, "Authentication required");
       return;
     }
-    const rawScope = req.query?.scope;
-    const scope = String(Array.isArray(rawScope) ? rawScope[0] || "" : rawScope || "");
     if (scope === "audit") {
       if (!canAdmin(user, db.settings.primaryAdminId)) {
         fail(res, 403, "Only the global admin can view the audit trail");
@@ -66,6 +110,7 @@ export default async function handler(
     }
     const clean = sanitizeDatabase(db);
     clean.auditLogs = [];
+    clean.sales = [];
     const response = {
       db: clean,
       currentUser: clean.users.find((item) => item.id === user.id),

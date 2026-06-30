@@ -64,6 +64,7 @@ import {
   getStoredToken,
   getStoredCompanySlug,
   loadAuditHistory,
+  loadSalesHistory,
   loadState,
   login as apiLogin,
   logout as apiLogout,
@@ -1634,6 +1635,16 @@ function buildPatientProfiles(db: Database) {
     .sort((a, b) => b.lastVisit.localeCompare(a.lastVisit));
 }
 
+function mergeSalesHistory(existing: Sale[], loaded: Sale[]) {
+  const byId = new Map<string, Sale>();
+  [...loaded, ...existing].forEach((sale) => {
+    byId.set(sale.id, sale);
+  });
+  return [...byId.values()].sort(
+    (a, b) => b.soldAt.localeCompare(a.soldAt) || b.id.localeCompare(a.id),
+  );
+}
+
 function buildRefillRows(db: Database) {
   const latestByPatientMedicine = new Map<
     string,
@@ -2500,6 +2511,8 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [auditHistoryLoaded, setAuditHistoryLoaded] = useState(false);
   const [auditHistoryLoading, setAuditHistoryLoading] = useState(false);
+  const [salesHistoryLoaded, setSalesHistoryLoaded] = useState(false);
+  const [salesHistoryLoading, setSalesHistoryLoading] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
   const [connectionError, setConnectionError] = useState("");
   const [hasUsers, setHasUsers] = useState(false);
@@ -2608,6 +2621,32 @@ function App() {
       );
     } finally {
       setAuditHistoryLoading(false);
+    }
+  }
+  async function hydrateSalesHistory() {
+    if (!sessionUserId || salesHistoryLoaded || salesHistoryLoading) return;
+    setSalesHistoryLoading(true);
+    try {
+      const loadedSales: Sale[] = [];
+      let cursor = "";
+      for (let page = 0; page < 60; page += 1) {
+        const result = await loadSalesHistory({ cursor, limit: 500 });
+        loadedSales.push(...result.sales);
+        if (!result.nextCursor) break;
+        cursor = result.nextCursor;
+      }
+      setDb((previous) => ({
+        ...previous,
+        sales: mergeSalesHistory(previous.sales, loadedSales),
+      }));
+      setSalesHistoryLoaded(true);
+    } catch (error) {
+      flash(
+        error instanceof Error ? error.message : "Unable to load sales history",
+        "danger",
+      );
+    } finally {
+      setSalesHistoryLoading(false);
     }
   }
   const dashboardStockRows = useMemo(
@@ -2770,6 +2809,8 @@ function App() {
     setSessionUserId(null);
     setAuditHistoryLoaded(false);
     setAuditHistoryLoading(false);
+    setSalesHistoryLoaded(false);
+    setSalesHistoryLoading(false);
     setActiveView("dashboard");
     setSidebarOpen(false);
     setSidebarCollapsed(true);
@@ -2823,6 +2864,8 @@ function App() {
     setSigningIn(true);
     try {
       const result = await setupWorkspace(input);
+      setAuditHistoryLoaded(false);
+      setSalesHistoryLoaded(true);
       setDb(result.db);
       setSessionUserId(result.currentUser.id);
       setHasUsers(true);
@@ -2894,6 +2937,7 @@ function App() {
     try {
       const result = await apiLogin(email, password);
       setAuditHistoryLoaded(false);
+      setSalesHistoryLoaded(false);
       setDb(result.db);
       setSessionUserId(result.currentUser.id);
       setConnectionError("");
@@ -2940,6 +2984,9 @@ function App() {
     setActiveView(nextView);
     if (nextView === "audit" && canAdmin) {
       void hydrateAuditHistory();
+    }
+    if (nextView === "pos" || nextView === "patients" || nextView === "reports") {
+      void hydrateSalesHistory();
     }
     if (shouldAutoCollapseSidebar()) {
       setSidebarOpen(false);

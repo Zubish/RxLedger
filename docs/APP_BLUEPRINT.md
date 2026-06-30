@@ -56,6 +56,7 @@ Core, Patient Continuity, and Continuity Centre can keep improving inside the ap
 
 - Bootstrap reads only workspace settings and user count. It must not load or rewrite operational history.
 - Authenticated state excludes the historical global-admin audit archive; Audit loads that archive on demand.
+- Authenticated state and login exclude historical sales. POS, Patients, and Reports hydrate sales through `/api/state?scope=sales` in bounded pages when those views are opened.
 - Mutating actions keep the existing single pharmacy transaction boundary, then return ID-based deltas for sales, ledger entries, and audit logs instead of resending complete history.
 - API performance logs record route, action name, load/auth/save durations, total duration, and response bytes. They must not record patient, medicine, prescription, or payment content.
 - `Server-Timing` headers expose backend phases for browser and Vercel diagnosis.
@@ -65,9 +66,10 @@ Current populated-workspace baseline (June 20, 2026):
 
 - Full TEP-NG JSON: approximately 13.77 MB.
 - Initial state after deferred audit history: approximately 7.93 MB.
+- Phase 2 sales-history deferral removes historical sales from login/initial state; sales hydrate on demand in pages of up to 500 records.
 - Normal action response core after heavy-collection deltas: approximately 428 KB, plus changed records.
 
-The next performance phase is page-specific pagination/server aggregation for sales and ledger history. It must preserve workspace-wide patient history, branch-aware reporting, auditability, and the existing sale/dispensing save boundary.
+The next performance phase is server-side dashboard/report aggregation and a derived stock summary that allows ledger history to hydrate only on movement-ledger/report screens. It must preserve workspace-wide patient history, branch-aware reporting, auditability, and the existing sale/dispensing save boundary.
 
 ## Authenticated Shell
 

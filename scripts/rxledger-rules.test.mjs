@@ -12,6 +12,7 @@ const patientProfilePanel = read("src/components/PatientProfilePanel.tsx");
 const action = read("api/action.ts");
 const state = read("api/state.ts");
 const bootstrap = read("api/bootstrap.ts");
+const login = read("api/auth/login.ts");
 const raiSnapshot = read("api/rai/analytics-snapshot.ts");
 const api = read("src/api.ts");
 const databasePatch = read("src/databasePatch.ts");
@@ -337,6 +338,31 @@ assertPresent(
   `${api}\n${app}\n${state}`,
   /loadAuditHistory[\s\S]*auditHistoryLoaded[\s\S]*canAdmin/,
   "Historical audit records should load only when the global admin opens Audit.",
+);
+assertPresent(
+  state,
+  /scope === "sales"[\s\S]*loadTenantSalesPage[\s\S]*res\.status\(200\)\.json\(page\)/,
+  "Sales history should load through a paginated state scope instead of the initial workspace payload.",
+);
+assertPresent(
+  state,
+  /clean\.sales = \[\]/,
+  "Initial authenticated state should defer historical sales so large workspaces paint faster.",
+);
+assertPresent(
+  login,
+  /clean\.sales = \[\]/,
+  "Login responses should also defer historical sales for large workspaces.",
+);
+assertPresent(
+  `${api}\n${app}`,
+  /loadSalesHistory[\s\S]*salesHistoryLoaded[\s\S]*hydrateSalesHistory/s,
+  "The client should hydrate sales history only when a history-aware view needs it.",
+);
+assertPresent(
+  shared,
+  /loadTenantSalesPage[\s\S]*data->'sales'[\s\S]*LIMIT \$\{queryLimit\}[\s\S]*nextCursor/s,
+  "Tenant sales history should be read from the sales JSONB slice with a bounded page size.",
 );
 
 console.log("RxLedger rule regression tests passed.");

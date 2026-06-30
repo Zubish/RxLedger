@@ -892,6 +892,90 @@ export async function loadTenantBootstrap(slug: string) {
   };
 }
 
+export async function loadTenantAuthDatabase(slug: string) {
+  const normalizedSlug = normalizeCompanySlug(slug);
+  if (!normalizedSlug) return null;
+  await ensureSchema();
+  const sql = getSql();
+  const rows = await sql`
+    SELECT
+      data->'settings' AS settings,
+      data->'users' AS users
+    FROM tenant_state
+    WHERE slug = ${normalizedSlug}
+    LIMIT 1
+  `;
+  if (!rows[0]) return null;
+  return normalizeDatabase({
+    settings: rows[0].settings || {},
+    users: rows[0].users || [],
+  } as Partial<Database>);
+}
+
+function clampHistoryLimit(value: unknown) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 250;
+  return Math.max(25, Math.min(500, Math.floor(numeric)));
+}
+
+function parseSalesCursor(cursor = "") {
+  const [soldAt = "", id = ""] = cursor.split("|");
+  return { soldAt, id };
+}
+
+function makeSalesCursor(sale: Sale) {
+  return `${sale.soldAt}|${sale.id}`;
+}
+
+export async function loadTenantSalesPage(
+  slug: string,
+  options: { cursor?: string; limit?: number } = {},
+) {
+  const normalizedSlug = normalizeCompanySlug(slug);
+  if (!normalizedSlug) return null;
+  await ensureSchema();
+  const sql = getSql();
+  const safeLimit = clampHistoryLimit(options.limit);
+  const queryLimit = safeLimit + 1;
+  const cursor = parseSalesCursor(options.cursor);
+  const rows = await sql`
+    WITH sales AS (
+      SELECT value AS sale
+      FROM tenant_state,
+        jsonb_array_elements(
+          CASE
+            WHEN jsonb_typeof(data->'sales') = 'array' THEN data->'sales'
+            ELSE '[]'::jsonb
+          END
+        ) AS value
+      WHERE slug = ${normalizedSlug}
+    ),
+    filtered AS (
+      SELECT sale
+      FROM sales
+      WHERE ${cursor.soldAt} = ''
+         OR (sale->>'soldAt', sale->>'id') < (${cursor.soldAt}, ${cursor.id})
+      ORDER BY sale->>'soldAt' DESC, sale->>'id' DESC
+      LIMIT ${queryLimit}
+    )
+    SELECT COALESCE(
+      jsonb_agg(sale ORDER BY sale->>'soldAt' DESC, sale->>'id' DESC),
+      '[]'::jsonb
+    ) AS sales
+    FROM filtered
+  `;
+  const sales = normalizeDatabase({
+    sales: rows[0]?.sales || [],
+  } as Partial<Database>).sales.sort((a, b) =>
+    b.soldAt.localeCompare(a.soldAt) || b.id.localeCompare(a.id),
+  );
+  const page = sales.slice(0, safeLimit);
+  return {
+    sales: page,
+    nextCursor: sales.length > safeLimit ? makeSalesCursor(page[page.length - 1]) : "",
+  };
+}
+
 export async function saveTenantDatabase(slug: string, db: Database) {
   const normalizedSlug = normalizeCompanySlug(slug);
   if (!normalizedSlug) throw new Error("Company portal not found");

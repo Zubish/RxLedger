@@ -77,6 +77,19 @@ export async function loadAuditHistory() {
   return request<{ auditLogs: Database["auditLogs"] }>("/api/state?scope=audit");
 }
 
+export async function loadSalesHistory(input: {
+  cursor?: string;
+  limit?: number;
+} = {}) {
+  const params = new URLSearchParams({ scope: "sales" });
+  if (input.cursor) params.set("cursor", input.cursor);
+  if (input.limit) params.set("limit", String(input.limit));
+  return request<{
+    sales: Database["sales"];
+    nextCursor: string;
+  }>(`/api/state?${params.toString()}`);
+}
+
 export async function setupWorkspace(input: SetupInput) {
   const result = await request<{
     db: Database;
