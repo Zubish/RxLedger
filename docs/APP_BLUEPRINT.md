@@ -69,6 +69,7 @@ Current populated-workspace baseline (June 20, 2026):
 - Initial state after deferred audit history: approximately 7.93 MB.
 - Phase 2 sales-history deferral removes historical sales from login/initial state; sales hydrate on demand in pages of up to 500 records.
 - Phase 2 ledger deferral removes historical ledger entries from login/initial state while preserving current stock through read models; movement history hydrates on demand in pages of up to 500 records.
+- Progressive history loading means the browser loads the first recent page only. Patients and Reports expose explicit load-more controls for older visits and ledger rows instead of looping through every page at once.
 - Stock rows and high-volume report rows use per-render ID lookup maps for medicines, products, batches, suppliers, branches, users, and sale references. Do not reintroduce repeated `.find()` scans inside ledger/report row loops.
 - Normal action response core after heavy-collection deltas: approximately 428 KB, plus changed records.
 

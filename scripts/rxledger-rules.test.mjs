@@ -360,6 +360,16 @@ assertPresent(
   "The client should hydrate sales history only when a history-aware view needs it.",
 );
 assertPresent(
+  app,
+  /salesHistoryCursor[\s\S]*loadMoreSalesHistory[\s\S]*loadSalesHistoryPage\(salesHistoryCursor\)/s,
+  "Sales history should retain a cursor so older patient/POS history loads progressively.",
+);
+assertAbsent(
+  app,
+  /for \(let page = 0; page < 60; page \+= 1\)/,
+  "History hydration should not load every available page in one browser action.",
+);
+assertPresent(
   shared,
   /loadTenantSalesPage[\s\S]*data->'sales'[\s\S]*LIMIT \$\{queryLimit\}[\s\S]*nextCursor/s,
   "Tenant sales history should be read from the sales JSONB slice with a bounded page size.",
@@ -388,6 +398,16 @@ assertPresent(
   `${api}\n${app}`,
   /loadLedgerHistory[\s\S]*ledgerHistoryLoaded[\s\S]*hydrateLedgerHistory/s,
   "The client should hydrate ledger history only when movement/report views need it.",
+);
+assertPresent(
+  app,
+  /ledgerHistoryCursor[\s\S]*loadMoreLedgerHistory[\s\S]*loadLedgerHistoryPage\(ledgerHistoryCursor\)/s,
+  "Movement ledger history should retain a cursor so older report rows load progressively.",
+);
+assertPresent(
+  app,
+  /historyStatusLabel[\s\S]*Load older visits[\s\S]*Load older movements/s,
+  "Patients and Reports should expose clear load-more controls for older history.",
 );
 assertPresent(
   app,

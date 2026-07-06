@@ -3612,6 +3612,20 @@ td strong {
   padding-left: 18px;
 }
 
+.history-paging {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+
+.history-paging span {
+  color: #68777e;
+  font-size: 12px;
+}
+
 .patient-message-list article,
 .patient-reminder-list article {
   display: grid;

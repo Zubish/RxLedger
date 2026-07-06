@@ -62,6 +62,11 @@ export function PatientProfilePanel({
   historyGroups,
   selectedSaleId,
   onSelectSale,
+  historyStatusLabel,
+  canLoadMoreHistory,
+  historyLoading,
+  historyLoadMoreLabel = "Load older visits",
+  onLoadMoreHistory,
   followUpCard,
   onCopyFollowUp,
 }: {
@@ -80,6 +85,11 @@ export function PatientProfilePanel({
   historyGroups: PatientHistoryGroup[];
   selectedSaleId?: string;
   onSelectSale: (saleId: string) => void;
+  historyStatusLabel?: string;
+  canLoadMoreHistory?: boolean;
+  historyLoading?: boolean;
+  historyLoadMoreLabel?: string;
+  onLoadMoreHistory?: () => void;
   followUpCard?: PatientFollowUpCard;
   onCopyFollowUp: (message: string) => void;
 }) {
@@ -213,6 +223,21 @@ export function PatientProfilePanel({
               </section>
             ))}
           </div>
+          {(historyStatusLabel || canLoadMoreHistory) && (
+            <div className="history-paging">
+              {historyStatusLabel && <span>{historyStatusLabel}</span>}
+              {canLoadMoreHistory && onLoadMoreHistory && (
+                <button
+                  className="ghost-button"
+                  type="button"
+                  onClick={onLoadMoreHistory}
+                  disabled={historyLoading}
+                >
+                  {historyLoading ? "Loading..." : historyLoadMoreLabel}
+                </button>
+              )}
+            </div>
+          )}
         </section>
 
         <section>

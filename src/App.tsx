@@ -2553,8 +2553,10 @@ function App() {
   const [auditHistoryLoading, setAuditHistoryLoading] = useState(false);
   const [salesHistoryLoaded, setSalesHistoryLoaded] = useState(false);
   const [salesHistoryLoading, setSalesHistoryLoading] = useState(false);
+  const [salesHistoryCursor, setSalesHistoryCursor] = useState("");
   const [ledgerHistoryLoaded, setLedgerHistoryLoaded] = useState(false);
   const [ledgerHistoryLoading, setLedgerHistoryLoading] = useState(false);
+  const [ledgerHistoryCursor, setLedgerHistoryCursor] = useState("");
   const [signingIn, setSigningIn] = useState(false);
   const [connectionError, setConnectionError] = useState("");
   const [hasUsers, setHasUsers] = useState(false);
@@ -2667,20 +2669,21 @@ function App() {
   }
   async function hydrateSalesHistory() {
     if (!sessionUserId || salesHistoryLoaded || salesHistoryLoading) return;
+    await loadSalesHistoryPage("");
+  }
+  async function loadMoreSalesHistory() {
+    if (!sessionUserId || !salesHistoryCursor || salesHistoryLoading) return;
+    await loadSalesHistoryPage(salesHistoryCursor);
+  }
+  async function loadSalesHistoryPage(cursor: string) {
     setSalesHistoryLoading(true);
     try {
-      const loadedSales: Sale[] = [];
-      let cursor = "";
-      for (let page = 0; page < 60; page += 1) {
-        const result = await loadSalesHistory({ cursor, limit: 500 });
-        loadedSales.push(...result.sales);
-        if (!result.nextCursor) break;
-        cursor = result.nextCursor;
-      }
+      const result = await loadSalesHistory({ cursor, limit: 500 });
       setDb((previous) => ({
         ...previous,
-        sales: mergeSalesHistory(previous.sales, loadedSales),
+        sales: mergeSalesHistory(previous.sales, result.sales),
       }));
+      setSalesHistoryCursor(result.nextCursor);
       setSalesHistoryLoaded(true);
     } catch (error) {
       flash(
@@ -2693,20 +2696,21 @@ function App() {
   }
   async function hydrateLedgerHistory() {
     if (!sessionUserId || ledgerHistoryLoaded || ledgerHistoryLoading) return;
+    await loadLedgerHistoryPage("");
+  }
+  async function loadMoreLedgerHistory() {
+    if (!sessionUserId || !ledgerHistoryCursor || ledgerHistoryLoading) return;
+    await loadLedgerHistoryPage(ledgerHistoryCursor);
+  }
+  async function loadLedgerHistoryPage(cursor: string) {
     setLedgerHistoryLoading(true);
     try {
-      const loadedLedger: LedgerEntry[] = [];
-      let cursor = "";
-      for (let page = 0; page < 60; page += 1) {
-        const result = await loadLedgerHistory({ cursor, limit: 500 });
-        loadedLedger.push(...result.ledger);
-        if (!result.nextCursor) break;
-        cursor = result.nextCursor;
-      }
+      const result = await loadLedgerHistory({ cursor, limit: 500 });
       setDb((previous) => ({
         ...previous,
-        ledger: mergeLedgerHistory(previous.ledger, loadedLedger),
+        ledger: mergeLedgerHistory(previous.ledger, result.ledger),
       }));
+      setLedgerHistoryCursor(result.nextCursor);
       setLedgerHistoryLoaded(true);
     } catch (error) {
       flash(
@@ -2879,8 +2883,10 @@ function App() {
     setAuditHistoryLoading(false);
     setSalesHistoryLoaded(false);
     setSalesHistoryLoading(false);
+    setSalesHistoryCursor("");
     setLedgerHistoryLoaded(false);
     setLedgerHistoryLoading(false);
+    setLedgerHistoryCursor("");
     setActiveView("dashboard");
     setSidebarOpen(false);
     setSidebarCollapsed(true);
@@ -2936,7 +2942,9 @@ function App() {
       const result = await setupWorkspace(input);
       setAuditHistoryLoaded(false);
       setSalesHistoryLoaded(true);
+      setSalesHistoryCursor("");
       setLedgerHistoryLoaded(true);
+      setLedgerHistoryCursor("");
       setDb(result.db);
       setSessionUserId(result.currentUser.id);
       setHasUsers(true);
@@ -3009,7 +3017,9 @@ function App() {
       const result = await apiLogin(email, password);
       setAuditHistoryLoaded(false);
       setSalesHistoryLoaded(false);
+      setSalesHistoryCursor("");
       setLedgerHistoryLoaded(false);
+      setLedgerHistoryCursor("");
       setDb(result.db);
       setSessionUserId(result.currentUser.id);
       setConnectionError("");
@@ -3588,6 +3598,10 @@ function App() {
             <PatientsView
               db={db}
               activeBranch={activeBranch}
+              salesHistoryLoaded={salesHistoryLoaded}
+              salesHistoryLoading={salesHistoryLoading}
+              canLoadMoreSalesHistory={Boolean(salesHistoryCursor)}
+              onLoadMoreSalesHistory={loadMoreSalesHistory}
               executeAction={executeAction}
               flash={flash}
             />
@@ -3628,6 +3642,10 @@ function App() {
               stockRows={dashboardStockRows}
               stockTotals={dashboardStockTotals}
               activeBranch={canAdmin ? undefined : activeBranch}
+              ledgerHistoryLoaded={ledgerHistoryLoaded}
+              ledgerHistoryLoading={ledgerHistoryLoading}
+              canLoadMoreLedgerHistory={Boolean(ledgerHistoryCursor)}
+              onLoadMoreLedgerHistory={loadMoreLedgerHistory}
             />
           )}
           {activeView === "chat" && (
@@ -9308,11 +9326,19 @@ function ContinuityCentre({
 function PatientsView({
   db,
   activeBranch,
+  salesHistoryLoaded,
+  salesHistoryLoading,
+  canLoadMoreSalesHistory,
+  onLoadMoreSalesHistory,
   executeAction,
   flash,
 }: {
   db: Database;
   activeBranch?: Branch;
+  salesHistoryLoaded: boolean;
+  salesHistoryLoading: boolean;
+  canLoadMoreSalesHistory: boolean;
+  onLoadMoreSalesHistory: () => void;
   executeAction: ExecuteAction;
   flash: (message: string) => void;
 }) {
@@ -9441,6 +9467,13 @@ function PatientsView({
           ),
         }
       : undefined;
+  const historyStatusLabel = salesHistoryLoading
+    ? "Loading recent visit history..."
+    : salesHistoryLoaded
+      ? canLoadMoreSalesHistory
+        ? "Showing recent visits first. Older sales history is available on demand."
+        : "All loaded visit history is visible."
+      : "Open Patients to load recent visit history.";
 
   async function copyMessage(message: string) {
     try {
@@ -9593,6 +9626,11 @@ function PatientsView({
               historyGroups={patientHistoryGroups}
               selectedSaleId={selectedSale?.id}
               onSelectSale={setSelectedSaleId}
+              historyStatusLabel={historyStatusLabel}
+              canLoadMoreHistory={canLoadMoreSalesHistory}
+              historyLoading={salesHistoryLoading}
+              historyLoadMoreLabel="Load older visits"
+              onLoadMoreHistory={onLoadMoreSalesHistory}
               followUpCard={selectedFollowUpCard}
               onCopyFollowUp={(message) => {
                 void copyMessage(message);
@@ -9842,11 +9880,19 @@ function Reports({
   stockRows,
   stockTotals,
   activeBranch,
+  ledgerHistoryLoaded,
+  ledgerHistoryLoading,
+  canLoadMoreLedgerHistory,
+  onLoadMoreLedgerHistory,
 }: {
   db: Database;
   stockRows: StockRow[];
   stockTotals: Map<string, number>;
   activeBranch?: Branch;
+  ledgerHistoryLoaded: boolean;
+  ledgerHistoryLoading: boolean;
+  canLoadMoreLedgerHistory: boolean;
+  onLoadMoreLedgerHistory: () => void;
 }) {
   const [report, setReport] = useState<
     "stock" | "movement" | "supplier" | "expiry" | "reorder"
@@ -10236,6 +10282,23 @@ function Reports({
     report === "stock"
       ? rows.reduce((sum, row) => sum + Number(row["Cost Value"] ?? 0), 0)
       : 0;
+  const historyStatusLabel =
+    report === "movement"
+      ? ledgerHistoryLoading
+        ? "Loading recent movement ledger..."
+        : ledgerHistoryLoaded
+          ? canLoadMoreLedgerHistory
+            ? "Showing recent movements first. Load older ledger rows when needed."
+            : "All loaded movement history is visible."
+          : "Open Reports to load recent movement history."
+      : "";
+  const canLoadMoreHistory =
+    report === "movement" ? canLoadMoreLedgerHistory : false;
+  const historyLoading =
+    report === "movement" ? ledgerHistoryLoading : false;
+  const loadMoreHistory =
+    report === "movement" ? onLoadMoreLedgerHistory : undefined;
+  const historyLoadMoreLabel = "Load older movements";
 
   return (
     <ReportsPanel
@@ -10270,6 +10333,11 @@ function Reports({
       movementSalesTotal={movementSalesTotal}
       stockQuantityTotal={stockQuantityTotal}
       stockCostTotal={stockCostTotal}
+      historyStatusLabel={historyStatusLabel}
+      canLoadMoreHistory={canLoadMoreHistory}
+      historyLoading={historyLoading}
+      historyLoadMoreLabel={historyLoadMoreLabel}
+      onLoadMoreHistory={loadMoreHistory}
       onExportCsv={exportCsv}
       onPrint={() => window.print()}
     />

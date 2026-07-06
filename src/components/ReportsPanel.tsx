@@ -50,6 +50,11 @@ export function ReportsPanel({
   movementSalesTotal,
   stockQuantityTotal,
   stockCostTotal,
+  historyStatusLabel,
+  canLoadMoreHistory,
+  historyLoading,
+  historyLoadMoreLabel = "Load older history",
+  onLoadMoreHistory,
   onExportCsv,
   onPrint,
 }: {
@@ -84,6 +89,11 @@ export function ReportsPanel({
   movementSalesTotal: number;
   stockQuantityTotal: number;
   stockCostTotal: number;
+  historyStatusLabel?: string;
+  canLoadMoreHistory?: boolean;
+  historyLoading?: boolean;
+  historyLoadMoreLabel?: string;
+  onLoadMoreHistory?: () => void;
   onExportCsv: (fileName: string, rows: ReportRow[]) => void;
   onPrint: () => void;
 }) {
@@ -363,6 +373,21 @@ export function ReportsPanel({
         </div>
       )}
       <ReportTable rows={rows} />
+      {(historyStatusLabel || canLoadMoreHistory) && (
+        <div className="history-paging">
+          {historyStatusLabel && <span>{historyStatusLabel}</span>}
+          {canLoadMoreHistory && onLoadMoreHistory && (
+            <button
+              className="ghost-button"
+              type="button"
+              onClick={onLoadMoreHistory}
+              disabled={historyLoading}
+            >
+              {historyLoading ? "Loading..." : historyLoadMoreLabel}
+            </button>
+          )}
+        </div>
+      )}
     </section>
   );
 }
