@@ -3,11 +3,12 @@ import {
   daysUntil,
   fail,
   getBearerToken,
-  getAuthenticatedUser,
   requireMethod,
   resolveTenantWorkspace,
 } from "../_shared.js";
 import { resolveRaiAccessScope, type RaiCapability } from "./access-policy.js";
+import { getDelegationService } from "./connection.js";
+import { assertGrantScope } from "./delegation.js";
 import type {
   Database,
   HandlerRequest,
@@ -70,9 +71,9 @@ export default async function handler(
       fail(res, 401, "Unauthorized");
       return;
     }
-    const userSession = req.headers["x-rai-user-session"];
-    if (typeof userSession !== "string" || !userSession) {
-      fail(res, 401, "A verified RxLedger user session is required");
+    const delegatedToken = req.headers["x-rai-delegated-token"];
+    if (typeof delegatedToken !== "string" || !delegatedToken) {
+      fail(res, 401, "A delegated Rai grant is required");
       return;
     }
 
@@ -95,13 +96,15 @@ export default async function handler(
     }
 
     const db = tenant.db;
-    const actor = await getAuthenticatedUser({ headers: { authorization: `Bearer ${userSession}` } }, db);
+    const grant = await getDelegationService().inspect(delegatedToken);
+    const actor = db.users.find(user => user.id === grant.userId);
     if (!actor || actor.id !== actorId) {
       fail(res, 403, "Rai access is not available for this user");
       return;
     }
     const branchScope = resolveBranchScope(db, body.branch_ids);
     const capabilities = parseCapabilities(body.capabilities);
+    assertGrantScope(grant, { tenantId: tenant.slug, userId: actorId, branchIds: branchScope.branchIds, capabilities });
     const access = resolveRaiAccessScope({ db, user: actor, requestedBranchIds: branchScope.branchIds, requiredCapabilities: capabilities });
     if (!access.ok) {
       fail(res, 403, access.reason);
@@ -138,7 +141,7 @@ export default async function handler(
   } catch (error) {
     fail(
       res,
-      error instanceof TypeError ? 400 : 500,
+      error instanceof TypeError ? 400 : Number((error as { status?: number }).status) || 500,
       error instanceof TypeError ? error.message : "Unable to create Rai analytics snapshot",
     );
   }
