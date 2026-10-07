@@ -3723,13 +3723,7 @@ function App() {
 
 type SetupInput = {
   pharmacyName: string;
-  companySlug: string;
-  businessLicense: string;
-  mainBranchAddress: string;
-  branchName: string;
-  name: string;
   email: string;
-  phone: string;
   password: string;
 };
 

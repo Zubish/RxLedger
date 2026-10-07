@@ -18,7 +18,9 @@ const api = read("src/api.ts");
 const databasePatch = read("src/databasePatch.ts");
 const shared = read("api/_shared.ts");
 const reset = read("api/auth/request-password-reset.ts");
+const setup = read("api/setup.ts");
 const types = read("src/types.ts");
+const authViews = read("src/components/AuthViews.tsx");
 const readme = read("README.md");
 const blueprint = read("docs/APP_BLUEPRINT.md");
 const modules = read("docs/RXLEDGER_ECOSYSTEM_MODULES.md");
@@ -30,6 +32,26 @@ function assertAbsent(source, pattern, message) {
 function assertPresent(source, pattern, message) {
   assert.equal(pattern.test(source), true, message);
 }
+
+const setupForm = authViews.match(
+  /function SetupForm[\s\S]*?(?=function LoginForm)/,
+)?.[0] ?? "";
+
+assertPresent(
+  types,
+  /export type SetupInput = {\s*pharmacyName: string;\s*email: string;\s*password: string;\s*};/,
+  "Workspace signup should accept only pharmacy name, email, and password.",
+);
+assertAbsent(
+  setupForm,
+  /businessLicense|mainBranchAddress|branchName|confirmPassword|Permanent admin|Phone/,
+  "Workspace signup should not ask for licence, branch, admin, phone, or password-confirmation details.",
+);
+assertPresent(
+  setup,
+  /const branchName = "Main Branch";[\s\S]*businessLicense: ""[\s\S]*mainBranchAddress: ""/,
+  "Workspace setup should derive safe defaults for details no longer collected during signup.",
+);
 
 assertPresent(
   types,

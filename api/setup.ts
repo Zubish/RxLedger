@@ -30,33 +30,33 @@ export default async function handler(
   try {
     const body = req.body as Partial<{
       pharmacyName: string;
-      companySlug: string;
-      businessLicense: string;
-      mainBranchAddress: string;
-      branchName: string;
-      name: string;
       email: string;
-      phone: string;
       password: string;
     }>;
-    const root = await loadRootState();
-    const companySlug = normalizeCompanySlug(
-      body.companySlug || body.pharmacyName || "",
-    );
-    if (
-      !body.pharmacyName ||
-      !companySlug ||
-      !body.businessLicense ||
-      !body.mainBranchAddress ||
-      !body.branchName ||
-      !body.name ||
-      !body.email ||
-      !body.phone ||
-      !body.password
-    ) {
-      fail(res, 400, "All setup fields are required");
+    const pharmacyName =
+      typeof body.pharmacyName === "string" ? body.pharmacyName.trim() : "";
+    const email =
+      typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    const password = typeof body.password === "string" ? body.password : "";
+    const branchName = "Main Branch";
+    const companySlug = normalizeCompanySlug(pharmacyName);
+    if (!pharmacyName || !companySlug || !email || !password) {
+      fail(res, 400, "Pharmacy name, email, and password are required");
       return;
     }
+    if (pharmacyName.length > 120) {
+      fail(res, 400, "Pharmacy name must be 120 characters or fewer");
+      return;
+    }
+    if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      fail(res, 400, "Enter a valid email address");
+      return;
+    }
+    if (password.length < 8) {
+      fail(res, 400, "Password must be at least 8 characters");
+      return;
+    }
+    const root = await loadRootState();
     if (root.tenants.some((tenant) => tenant.slug === companySlug)) {
       fail(
         res,
@@ -65,22 +65,18 @@ export default async function handler(
       );
       return;
     }
-    if (body.password.length < 8) {
-      fail(res, 400, "Password must be at least 8 characters");
-      return;
-    }
-    const { salt, hash } = hashPassword(body.password);
+    const { salt, hash } = hashPassword(password);
     const adminId = id("usr");
     const createdAt = nowIso();
     const trialEndsAt = new Date(
       Date.now() + 30 * 24 * 60 * 60 * 1000,
     ).toISOString();
-    const companyCode = generateCompanyCode(body.pharmacyName);
+    const companyCode = generateCompanyCode(pharmacyName);
     const admin: User = {
       id: adminId,
-      name: body.name.trim(),
-      email: body.email.trim().toLowerCase(),
-      phone: body.phone.trim(),
+      name: pharmacyName,
+      email,
+      phone: "",
       role: "admin",
       status: "active",
       branchIds: [],
@@ -118,13 +114,13 @@ export default async function handler(
       continuityRequests: [],
       settings: {
         softwareName: "RxLedger",
-        accountName: body.pharmacyName.trim(),
-        pharmacyName: body.pharmacyName.trim(),
-        branchName: body.branchName.trim(),
+        accountName: pharmacyName,
+        pharmacyName,
+        branchName,
         companySlug,
         companyCode,
-        businessLicense: body.businessLicense.trim(),
-        mainBranchAddress: body.mainBranchAddress.trim(),
+        businessLicense: "",
+        mainBranchAddress: "",
         logoDataUrl: "",
         primaryAdminId: adminId,
         nearExpiryDays: 90,
@@ -152,18 +148,17 @@ export default async function handler(
     db.branches = [
       {
         id: "main",
-        name: body.branchName.trim(),
+        name: branchName,
         code:
-          body.branchName
-            .trim()
+          branchName
             .toUpperCase()
             .replace(/[^A-Z0-9]+/g, "-")
             .replace(/^-|-$/g, "")
             .slice(0, 12) || "MAIN",
-        address: body.mainBranchAddress.trim(),
+        address: "",
         managerName: "",
         managerUserId: "",
-        phone: body.phone.trim(),
+        phone: "",
         active: true,
         createdAt,
       },
@@ -177,8 +172,8 @@ export default async function handler(
     );
     const tenant = createTenantRecord(db, companySlug);
     tenant.code = companyCode;
-    tenant.businessLicense = body.businessLicense.trim();
-    tenant.mainBranchAddress = body.mainBranchAddress.trim();
+    tenant.businessLicense = "";
+    tenant.mainBranchAddress = "";
     tenant.superAdminName = admin.name;
     tenant.superAdminEmail = admin.email;
     tenant.superAdminPhone = admin.phone;

@@ -127,7 +127,7 @@ export function AuthScreen({
             : "Sign in to RxLedger";
   const authCopy =
     activeMode === "setup"
-      ? "Create the company workspace, first branch, and permanent administrator."
+      ? "Start your pharmacy workspace with just your email and password."
       : activeMode === "register"
         ? workspaceSelected
           ? "Submit your staff details for admin review."
@@ -210,7 +210,6 @@ export function AuthScreen({
           <SetupForm
             createFirstAdmin={createFirstAdmin}
             setError={setError}
-            initialSlug={companySlug}
           />
         )}
         {activeMode !== "setup" && (
@@ -342,24 +341,15 @@ function WorkspaceFinder({
 function SetupForm({
   createFirstAdmin,
   setError,
-  initialSlug,
 }: {
   createFirstAdmin: (input: SetupInput) => Promise<void>;
   setError: (message: string) => void;
-  initialSlug: string;
 }) {
   const [form, setForm] = useState<SetupInput>({
     pharmacyName: "",
-    companySlug: initialSlug,
-    businessLicense: "",
-    mainBranchAddress: "",
-    branchName: "Main Branch",
-    name: "",
     email: "",
-    phone: "",
     password: "",
   });
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [slugStatus, setSlugStatus] = useState<{
     state: "idle" | "checking" | "available" | "taken";
@@ -367,7 +357,7 @@ function SetupForm({
   }>({ state: "idle", message: "" });
 
   useEffect(() => {
-    const slug = slugifyCompany(form.companySlug || form.pharmacyName);
+    const slug = slugifyCompany(form.pharmacyName);
     const timeoutId = window.setTimeout(() => {
       if (!slug) {
         setSlugStatus({ state: "idle", message: "" });
@@ -402,7 +392,7 @@ function SetupForm({
         );
     }, 350);
     return () => window.clearTimeout(timeoutId);
-  }, [form.companySlug, form.pharmacyName]);
+  }, [form.pharmacyName]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -411,11 +401,7 @@ function SetupForm({
       setError("Password must be at least 8 characters.");
       return;
     }
-    if (form.password !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
-    const companySlug = slugifyCompany(form.companySlug || form.pharmacyName);
+    const companySlug = slugifyCompany(form.pharmacyName);
     if (!companySlug) {
       setError("Enter a pharmacy/company name.");
       return;
@@ -424,25 +410,21 @@ function SetupForm({
       setError(slugStatus.message);
       return;
     }
-    await createFirstAdmin({ ...form, companySlug });
+    await createFirstAdmin(form);
   }
 
   return (
-    <form className="form-grid" onSubmit={submit} autoComplete="off">
+    <form className="form-grid" onSubmit={submit}>
       <label className="full">
-        Pharmacy/company name
+        Pharmacy name
         <input
           required
           value={form.pharmacyName}
           onChange={(event) =>
-            setForm({
-              ...form,
-              pharmacyName: event.target.value,
-              companySlug:
-                form.companySlug || slugifyCompany(event.target.value),
-            })
+            setForm({ ...form, pharmacyName: event.target.value })
           }
-          placeholder="Enter your company name"
+          placeholder="Enter your pharmacy name"
+          autoComplete="organization"
           autoFocus
         />
       </label>
@@ -452,68 +434,18 @@ function SetupForm({
         </div>
       )}
       <label className="full">
-        Business registration/licence details
-        <input
-          required
-          value={form.businessLicense}
-          onChange={(event) =>
-            setForm({ ...form, businessLicense: event.target.value })
-          }
-          placeholder="Enter licence or registration reference"
-        />
-      </label>
-      <label className="full">
-        Main branch address
-        <input
-          required
-          value={form.mainBranchAddress}
-          onChange={(event) =>
-            setForm({ ...form, mainBranchAddress: event.target.value })
-          }
-          placeholder="Enter main branch address"
-        />
-      </label>
-      <label className="full">
-        First branch/site
-        <input
-          required
-          value={form.branchName}
-          onChange={(event) =>
-            setForm({ ...form, branchName: event.target.value })
-          }
-          placeholder="Enter first branch or site name"
-        />
-      </label>
-      <label className="full">
-        Permanent admin full name
-        <input
-          required
-          value={form.name}
-          onChange={(event) => setForm({ ...form, name: event.target.value })}
-          placeholder="Enter admin full name"
-        />
-      </label>
-      <label>
         Email
         <input
           required
           type="email"
           value={form.email}
           onChange={(event) => setForm({ ...form, email: event.target.value })}
-          placeholder="Enter admin email address"
-        />
-      </label>
-      <label>
-        Phone
-        <input
-          required
-          value={form.phone}
-          onChange={(event) => setForm({ ...form, phone: event.target.value })}
-          placeholder="Enter admin phone number"
+          placeholder="Enter your email address"
+          autoComplete="email"
         />
       </label>
       <PasswordInput
-        label="New password"
+        label="Password"
         value={form.password}
         onChange={(password) => setForm({ ...form, password })}
         visible={showPassword}
@@ -521,16 +453,6 @@ function SetupForm({
         autoComplete="new-password"
         minLength={8}
         full
-      />
-      <PasswordInput
-        label="Confirm password"
-        value={confirmPassword}
-        onChange={setConfirmPassword}
-        visible={showPassword}
-        autoComplete="new-password"
-        minLength={8}
-        full
-        showToggle={false}
       />
       <div className="form-actions full">
         <button className="primary-button" type="submit">
