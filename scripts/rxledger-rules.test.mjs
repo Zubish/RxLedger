@@ -14,6 +14,7 @@ const state = read("api/state.ts");
 const bootstrap = read("api/bootstrap.ts");
 const login = read("api/auth/login.ts");
 const raiSnapshot = read("api/rai/analytics-snapshot.ts");
+const raiAccessPolicy = read("api/rai/access-policy.ts");
 const api = read("src/api.ts");
 const databasePatch = read("src/databasePatch.ts");
 const shared = read("api/_shared.ts");
@@ -249,6 +250,16 @@ assertPresent(
   raiSnapshot,
   /requireMethod\(req, res, \["POST"\]\)[\s\S]*getBearerToken\(req\)[\s\S]*timingSafeEqual/,
   "RxLedger Rai analytics snapshot endpoint should be POST-only and protected with constant-time bearer-token validation.",
+);
+assertPresent(
+  `${raiSnapshot}\n${raiAccessPolicy}`,
+  /actor_id[\s\S]*resolveRaiAccessScope[\s\S]*hasActiveBranchAssignment/s,
+  "Rai analytics must enforce active-user role and branch scope, not only a service API key.",
+);
+assertPresent(
+  `${raiSnapshot}\n${raiAccessPolicy}`,
+  /financial_analytics[\s\S]*redactMedication[\s\S]*capabilities.includes\("financial_analytics"\)/s,
+  "Rai analytics should redact financial fields for roles without financial access.",
 );
 assertPresent(
   raiSnapshot,

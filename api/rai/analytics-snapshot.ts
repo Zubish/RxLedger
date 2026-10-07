@@ -3,10 +3,11 @@ import {
   daysUntil,
   fail,
   getBearerToken,
-  normalizeCompanySlug,
+  getAuthenticatedUser,
   requireMethod,
   resolveTenantWorkspace,
 } from "../_shared.js";
+import { resolveRaiAccessScope, type RaiCapability } from "./access-policy.js";
 import type {
   Database,
   HandlerRequest,
@@ -18,7 +19,9 @@ import type {
 
 type SnapshotBody = {
   tenant_id?: unknown;
+  actor_id?: unknown;
   branch_ids?: unknown;
+  capabilities?: unknown;
   start_date?: unknown;
   end_date?: unknown;
   timezone?: unknown;
@@ -60,22 +63,31 @@ export default async function handler(
   res: HandlerResponse,
 ) {
   if (!requireMethod(req, res, ["POST"])) return;
+  res.setHeader("Cache-Control", "no-store");
 
   try {
     if (!isAuthorized(req)) {
       fail(res, 401, "Unauthorized");
       return;
     }
+    const userSession = req.headers["x-rai-user-session"];
+    if (typeof userSession !== "string" || !userSession) {
+      fail(res, 401, "A verified RxLedger user session is required");
+      return;
+    }
 
     const body = parseBody(req.body);
     const tenantLookup = requireText(body.tenant_id, "tenant_id");
-    const startDate = validDate(body.start_date) || "2026-01-01";
-    const endDate = validDate(body.end_date) || new Date().toISOString().slice(0, 10);
+    const startDate = validDate(body.start_date);
+    const endDate = validDate(body.end_date);
+    if (!startDate || !endDate || Date.parse(endDate) - Date.parse(startDate) > 365 * 86400000) throw new TypeError("Valid start_date and end_date spanning at most 366 days are required");
+    if (body.timezone !== "Africa/Lagos" || body.include_voided === true || body.include_returns === true) throw new TypeError("Unsupported timezone or transaction filters");
     if (startDate > endDate) {
       fail(res, 400, "start_date cannot be after end_date");
       return;
     }
 
+    const actorId = requireText(body.actor_id, "actor_id");
     const tenant = await resolveTenantWorkspace(tenantLookup);
     if (!tenant) {
       fail(res, 404, "Tenant not found");
@@ -83,20 +95,33 @@ export default async function handler(
     }
 
     const db = tenant.db;
+    const actor = await getAuthenticatedUser({ headers: { authorization: `Bearer ${userSession}` } }, db);
+    if (!actor || actor.id !== actorId) {
+      fail(res, 403, "Rai access is not available for this user");
+      return;
+    }
     const branchScope = resolveBranchScope(db, body.branch_ids);
-    const medications = buildMedications(db, branchScope.branchIds, startDate, endDate);
-    const dispenseRecords = buildDispenseRecords(db, branchScope.branchIds, startDate, endDate);
+    const capabilities = parseCapabilities(body.capabilities);
+    const access = resolveRaiAccessScope({ db, user: actor, requestedBranchIds: branchScope.branchIds, requiredCapabilities: capabilities });
+    if (!access.ok) {
+      fail(res, 403, access.reason);
+      return;
+    }
+    const medications = buildMedications(db, access.branchIds, startDate, endDate).map((item) => redactMedication(item, access.capabilities));
+    const dispenseRecords = access.capabilities.includes("continuity_analytics")
+      ? buildDispenseRecords(db, access.branchIds, startDate, endDate)
+      : [];
 
     res.status(200).json({
       data: {
         medications,
-        dispensed_medication_records: dispenseRecords,
+        continuity_summary: access.capabilities.includes("continuity_analytics") ? { dispense_line_count: dispenseRecords.length } : undefined,
       },
       meta: {
         source: "rxledger",
         generated_at: new Date().toISOString(),
         tenant_id: tenant.slug,
-        branch_ids: branchScope.branchIds,
+        branch_ids: access.branchIds,
         date_range: {
           start_date: startDate,
           end_date: endDate,
@@ -105,17 +130,34 @@ export default async function handler(
         filters: {
           include_voided: false,
           include_returns: false,
+          capabilities: access.capabilities,
         },
-        warnings: branchScope.warnings,
+        warnings: [...branchScope.warnings, "Snapshot supports inventory and demand inputs only; historical revenue, realised profit and unique-patient counts are unavailable."],
       },
     });
   } catch (error) {
     fail(
       res,
-      500,
-      error instanceof Error ? error.message : "Unable to create Rai analytics snapshot",
+      error instanceof TypeError ? 400 : 500,
+      error instanceof TypeError ? error.message : "Unable to create Rai analytics snapshot",
     );
   }
+}
+
+function parseCapabilities(value: unknown): RaiCapability[] {
+  const allowed: RaiCapability[] = ["inventory_analytics", "sales_analytics", "financial_analytics", "continuity_analytics"];
+  const values = Array.isArray(value) ? value.map(text).filter(Boolean) : [];
+  if (!values.length || values.length !== (value as unknown[]).length || values.some(item => !allowed.includes(item as RaiCapability))) throw new TypeError("Explicit supported capabilities are required");
+  return Array.from(new Set(values)) as RaiCapability[];
+}
+
+function redactMedication(item: RaiMedication, capabilities: RaiCapability[]): Partial<RaiMedication> {
+  const result: Partial<RaiMedication> = { medication_id: item.medication_id, medication_name: item.medication_name, strength: item.strength, category: item.category, unit: item.unit };
+  if (capabilities.includes("inventory_analytics")) Object.assign(result, { current_stock: item.current_stock, expiry_risk_quantity: item.expiry_risk_quantity, days_until_stockout: item.days_until_stockout, average_monthly_usage: item.average_monthly_usage, days_since_last_sale: item.days_since_last_sale });
+  if (capabilities.includes("sales_analytics")) Object.assign(result, { average_monthly_usage: item.average_monthly_usage, days_since_last_sale: item.days_since_last_sale });
+  if (capabilities.includes("continuity_analytics")) result.pending_owed_quantity = item.pending_owed_quantity;
+  if (capabilities.includes("financial_analytics")) Object.assign(result, { cost_per_unit: item.cost_per_unit, selling_price_per_unit: item.selling_price_per_unit, stock_value: item.stock_value });
+  return result;
 }
 
 function isAuthorized(req: HandlerRequest) {
@@ -152,25 +194,15 @@ function resolveBranchScope(db: Database, value: unknown): { branchIds: string[]
     : [];
   const activeBranches = db.branches.filter((branch) => branch.active);
 
-  if (!requested.length || requested.includes("main") || requested.includes("all")) {
-    return {
-      branchIds: activeBranches.map((branch) => branch.id),
-      warnings: [],
-    };
-  }
+  if (!requested.length || requested.length > 20 || requested.length !== (value as unknown[]).length) throw new TypeError("Explicit branch ids are required (maximum 20)");
 
   const warnings: string[] = [];
   const branchIds = requested.map((branchLookup) => {
-    const normalized = normalizeCompanySlug(branchLookup);
-    const match = activeBranches.find((branch) =>
-      [branch.id, branch.name, branch.code].some(
-        (value) => normalizeCompanySlug(value || "") === normalized,
-      ),
-    );
+    const match = activeBranches.find((branch) => branch.id === branchLookup);
     if (!match) {
-      warnings.push(`Branch '${branchLookup}' was not found; returned an empty branch scope for that id.`);
+      throw new TypeError("Unknown or inactive branch");
     }
-    return match?.id || normalized;
+    return match.id;
   });
 
   return {
@@ -387,7 +419,7 @@ function requireText(value: unknown, label: string) {
 
 function validDate(value: unknown) {
   const result = text(value);
-  return /^\d{4}-\d{2}-\d{2}$/.test(result) ? result : "";
+  return /^\d{4}-\d{2}-\d{2}$/.test(result) && Number.isFinite(Date.parse(result)) && new Date(result).toISOString().slice(0, 10) === result ? result : "";
 }
 
 function text(value: unknown) {
