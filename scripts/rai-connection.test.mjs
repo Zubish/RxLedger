@@ -29,6 +29,16 @@ function fixture(overrides = {}) {
 }
 const consent = { action: 'authorize', confirmed: true, tenant_id: 'tenant', branch_ids: ['b'], capabilities: ['inventory_analytics'], redirect_uri: 'https://rai.example/callback', code_challenge: 'challenge', code_challenge_method: 'S256' };
 const browser = { origin: 'https://rxledger.example', cookie: 'session', authorization: 'Bearer spoofed' };
+
+test('consent options contain only authorized branches and capabilities and issue no code', async () => {
+  const app = fixture();
+  const result = await app.call({ action: 'options', tenant_id: 'tenant' }, browser);
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(result.body.data.capabilities, ['inventory_analytics']);
+  assert.deepEqual(result.body.data.branches.map(branch => branch.id), ['b']);
+  assert.equal(app.issued.length, 0);
+  assert.equal((await app.call({ action: 'options', tenant_id: 'tenant' }, {})).statusCode, 403);
+});
 test('consent requires RxLedger origin, cookie and explicit approval', async () => {
   const app = fixture();
   for (const headers of [{}, { ...browser, origin: 'https://evil.example' }, { origin: browser.origin }]) assert.equal((await app.call(consent, headers)).statusCode, 403);

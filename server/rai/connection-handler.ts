@@ -21,17 +21,23 @@ export function createConnectionHandler(deps: Dependencies) {
     try {
       if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body) || JSON.stringify(req.body).length > 8192) throw badRequest('Invalid request.');
       const body = req.body as Record<string, unknown>;
-      if (!['authorize', 'exchange', 'inspect', 'revoke'].includes(String(body.action))) throw badRequest('Unknown connection action.');
-      if (body.action !== 'authorize' && !deps.isServiceAuthorized(req)) return fail(401, 'Unauthorized');
+      if (!['options', 'authorize', 'exchange', 'inspect', 'revoke'].includes(String(body.action))) throw badRequest('Unknown connection action.');
+      if (!['authorize', 'options'].includes(String(body.action)) && !deps.isServiceAuthorized(req)) return fail(401, 'Unauthorized');
       const service = deps.getService();
-      if (body.action === 'authorize') {
+      if (body.action === 'authorize' || body.action === 'options') {
         const origin = deps.consentOrigin();
-        if (!origin || !origin.startsWith('https://') || req.headers.origin !== origin || !deps.getCookieToken(req) || body.confirmed !== true) return fail(403, 'Signed-in, same-origin consent is required.');
+        if (!origin || !origin.startsWith('https://') || req.headers.origin !== origin || !deps.getCookieToken(req) || (body.action === 'authorize' && body.confirmed !== true)) return fail(403, 'Signed-in, same-origin consent is required.');
         const tenant = await deps.resolveTenant(requiredText(body.tenant_id));
         if (!tenant) return fail(404, 'Workspace not found');
         // Consent must use the browser identity, never a supplied bearer identity.
         const user = await deps.authenticate({ headers: { cookie: req.headers.cookie } }, tenant.db);
         if (!user) return fail(401, 'Sign in to RxLedger first.');
+        if (body.action === 'options') {
+          const candidates: RaiCapability[] = ['inventory_analytics', 'sales_analytics', 'financial_analytics', 'continuity_analytics'];
+          const branches = tenant.db.branches.filter(branch => branch.active && candidates.some(capability => deps.resolveAccess({ db: tenant.db, user, requestedBranchIds: [branch.id], requiredCapabilities: [capability] }).ok));
+          const capabilities = candidates.filter(capability => branches.some(branch => deps.resolveAccess({ db: tenant.db, user, requestedBranchIds: [branch.id], requiredCapabilities: [capability] }).ok));
+          return res.status(200).json({ data: { tenantId: tenant.slug, branches: branches.map(branch => ({ id: branch.id, name: branch.name })), capabilities } });
+        }
         const access = deps.resolveAccess({ db: tenant.db, user, requestedBranchIds: stringList(body.branch_ids), requiredCapabilities: stringList(body.capabilities) as RaiCapability[] });
         if (!access.ok) return fail(403, access.reason);
         const result = await service.authorize({

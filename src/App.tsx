@@ -80,6 +80,7 @@ import {
 import { applyDatabasePatch } from "./databasePatch";
 import { slugifyCompany } from "./company";
 import { AuthScreen } from "./components/AuthViews";
+import { RaiConsent } from './components/RaiConsent';
 import {
   AppLoadingScreen,
   BrandMark,
@@ -3038,7 +3039,7 @@ function App() {
     const result = await resolveCompany(value);
     storeCompanySlug(result.slug);
     setCompanySlug(result.slug);
-    window.history.replaceState(null, "", `/${result.slug}`);
+    window.history.replaceState(null, "", `/${result.slug}${new URLSearchParams(window.location.search).get('rai_connect') === '1' ? window.location.search : ''}`);
     const boot = await bootstrap();
     setHasUsers(boot.hasUsers);
     setTenantExists(boot.tenantExists);
@@ -3295,6 +3296,8 @@ function App() {
       />
     );
   }
+
+  if (new URLSearchParams(window.location.search).get('rai_connect') === '1') return <RaiConsent tenant={companySlug} />;
 
   const pendingUsers = canAdmin
     ? db.users.filter((user) => user.status === "pending").length
