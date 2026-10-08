@@ -12,8 +12,8 @@ import {
   requireMethod,
   sanitizeDatabase,
   setServerTiming,
-} from "./_shared.js";
-import type { HandlerRequest, HandlerResponse } from "./_shared.js";
+} from "../server/_shared.js";
+import type { HandlerRequest, HandlerResponse } from "../server/_shared.js";
 
 export default async function handler(
   req: HandlerRequest & {

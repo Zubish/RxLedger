@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createConnectionHandler } from '../api/rai/connection-handler.ts';
-import { resolveRaiAccessScope } from '../api/rai/access-policy.ts';
+import { createConnectionHandler } from '../server/rai/connection-handler.ts';
+import { resolveRaiAccessScope } from '../server/rai/access-policy.ts';
 
 const user = { id: 'u', role: 'inventory', status: 'active', branchIds: ['b'], managedBranchIds: [] };
 const db = { users: [user], branches: [{ id: 'b', active: true }], settings: {} };

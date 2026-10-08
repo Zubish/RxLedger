@@ -26,7 +26,7 @@ import {
   setServerTiming,
   today,
   withReadModels,
-} from "./_shared.js";
+} from "../server/_shared.js";
 import type {
   Database,
   HandlerRequest,
@@ -39,13 +39,13 @@ import type {
   Sale,
   Supplier,
   User,
-} from "./_shared.js";
+} from "../server/_shared.js";
 import {
   buildDatabasePatch,
   snapshotHeavyCollections,
   stripHeavyCollections,
 } from "../src/databasePatch.js";
-import type { Branch } from "./_shared.js";
+import type { Branch } from "../server/_shared.js";
 
 type ActionBody = {
   action: string;

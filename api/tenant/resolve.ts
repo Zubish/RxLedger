@@ -3,8 +3,8 @@ import {
   normalizeCompanySlug,
   requireMethod,
   resolveTenantSlug,
-} from "../_shared.js";
-import type { HandlerRequest, HandlerResponse } from "../_shared.js";
+} from "../../server/_shared.js";
+import type { HandlerRequest, HandlerResponse } from "../../server/_shared.js";
 
 function extractWorkspaceLookup(value: string) {
   const trimmed = value.trim();

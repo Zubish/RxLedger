@@ -14,13 +14,13 @@ import {
   saveTenantDatabase,
   saveRootState,
   setSessionCookie,
-} from "./_shared.js";
+} from "../server/_shared.js";
 import type {
   Database,
   HandlerRequest,
   HandlerResponse,
   User,
-} from "./_shared.js";
+} from "../server/_shared.js";
 
 export default async function handler(
   req: HandlerRequest,

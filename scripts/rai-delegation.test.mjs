@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createHash } from 'node:crypto';
-import { createDelegationService, assertGrantScope } from '../api/rai/delegation.ts';
+import { createDelegationService, assertGrantScope } from '../server/rai/delegation.ts';
 
 const verifier = 'a'.repeat(43);
 const challenge = createHash('sha256').update(verifier).digest('base64url');

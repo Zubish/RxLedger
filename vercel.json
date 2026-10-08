@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/api/rai/:route(analytics-snapshot|connection)",
+      "destination": "/api/rai?route=:route"
+    },
+    {
       "source": "/((?!api/.*).*)",
       "destination": "/index.html"
     }

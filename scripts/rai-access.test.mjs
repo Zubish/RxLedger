@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveRaiAccessScope } from "../api/rai/access-policy.ts";
+import { resolveRaiAccessScope } from "../server/rai/access-policy.ts";
 
 const db = { settings: { primaryAdminId: "owner" }, branches: [{ id: "lagos", active: true }, { id: "abuja", active: true }] };
 const user = { id: "staff", role: "pharmacist", status: "active", branchIds: ["lagos"], managedBranchIds: [] };

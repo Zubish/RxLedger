@@ -13,13 +13,13 @@ import {
   requireMethod,
   saveTenantDatabase,
   sendSecurityEmail,
-} from "../_shared.js";
+} from "../../server/_shared.js";
 import { randomInt } from "node:crypto";
 import type {
   HandlerRequest,
   HandlerResponse,
   PasswordResetRequest,
-} from "../_shared.js";
+} from "../../server/_shared.js";
 
 export default async function handler(
   req: HandlerRequest,
