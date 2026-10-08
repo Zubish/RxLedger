@@ -462,12 +462,38 @@ html {
   }
 }
 
+/* Rai's burgundy palette is scoped to the public landing page. */
+.rxledger-landing {
+  --brand: oklch(0.39897 0.14049 16.234);
+  --brand-dark: oklch(0.33867 0.11815 16.598);
+  --brand-soft: oklch(0.95556 0.01249 358.765);
+  --rose: oklch(0.837 0.05235 1.578);
+  --primary: var(--brand);
+  --primary-foreground: oklch(1 0 0);
+  --accent-2: oklch(0.54626 0.12521 6.138);
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.23891 0.01076 346.282);
+  --card: oklch(1 0 0);
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --surface: oklch(0.98767 0.00344 354.689);
+  --secondary: var(--brand-soft);
+  --secondary-foreground: var(--brand-dark);
+  --muted: var(--surface);
+  --muted-foreground: oklch(0.47146 0.01928 348.261);
+  --accent: var(--brand-soft);
+  --accent-foreground: var(--brand);
+  --border: oklch(0.92983 0.01052 354.913);
+  --input: var(--border);
+  --ring: var(--brand);
+  --ink: var(--foreground);
+  --ink-soft: var(--muted-foreground);
+}
+
 /* UI/UX Pro Max landing polish: conversion, accessibility, and trust cues. */
 .rxledger-landing {
-  background:
-    radial-gradient(circle at 10% 0%, color-mix(in oklab, var(--brand) 12%, transparent), transparent 28%),
-    radial-gradient(circle at 95% 8%, color-mix(in oklab, var(--success) 10%, transparent), transparent 26%),
-    linear-gradient(180deg, var(--background) 0%, var(--surface) 100%);
+  background: var(--background);
 }
 
 .rxledger-landing header.sticky {
@@ -495,7 +521,7 @@ html {
 .rxledger-landing h1,
 .rxledger-landing h2,
 .rxledger-landing h3 {
-  letter-spacing: -0.035em;
+  letter-spacing: 0;
 }
 
 .rxledger-landing h1 {
@@ -522,8 +548,34 @@ html {
 }
 
 .rxledger-landing button.bg-brand:hover {
+  background-color: var(--brand-dark);
   box-shadow: 0 16px 34px color-mix(in oklab, var(--brand) 24%, transparent);
   transform: translateY(-1px);
+}
+
+.rxledger-landing header.sticky nav a:hover,
+.rxledger-landing footer a:hover {
+  color: var(--brand);
+}
+
+.rxledger-landing #hero > .landing-container > div:first-child > div:first-child {
+  background-color: var(--brand-soft);
+  border-color: var(--rose);
+}
+
+.rxledger-landing #product .bg-ink {
+  background-color: var(--brand-dark);
+  border-color: var(--brand-dark);
+}
+
+.rxledger-landing #pricing .border-brand {
+  background-color: var(--surface);
+  border-color: var(--brand);
+}
+
+.rxledger-landing #faq details[open] summary,
+.rxledger-landing #faq details[open] summary > span:last-child {
+  color: var(--brand);
 }
 
 .rxledger-landing button.border:hover,
@@ -694,8 +746,8 @@ html {
   }
 
   .rxledger-landing .landing-testimonial-panel {
-    background: oklch(0.995 0.003 150 / 74%);
-    border: 1px solid oklch(0.92 0.01 200 / 68%);
+    background: oklch(0.98767 0.00344 354.689 / 96%);
+    border: 1px solid var(--rose);
     border-radius: 24px;
     box-shadow: 0 30px 80px rgb(0 0 0 / 22%);
     color: var(--ink);

@@ -1,0 +1,234 @@
+/* Dashboard-only palette; shared brand and status tokens remain unchanged. */
+@media screen {
+  .app-shell[data-view="dashboard"] {
+    --dashboard-brand: #82172c;
+    --dashboard-brand-dark: #671121;
+    --dashboard-brand-soft: #f8edf0;
+    --dashboard-rose: #e8bcc7;
+    --dashboard-border: #eee5e8;
+    --dashboard-ink: #231d20;
+    --dashboard-muted: #64575d;
+    background: #fbfaf9;
+    color: var(--dashboard-ink);
+  }
+
+  .app-shell[data-view="dashboard"] .workspace {
+    background: transparent;
+  }
+
+  .app-shell[data-view="dashboard"] .sidebar {
+    background: var(--dashboard-brand);
+    border-right-color: var(--dashboard-brand-dark);
+    box-shadow: 12px 0 32px rgb(71 22 32 / 8%);
+    color: #ffffff;
+  }
+
+  .app-shell[data-view="dashboard"] .sidebar .brand-block,
+  .app-shell[data-view="dashboard"] .sidebar .user-panel {
+    border-color: rgb(255 255 255 / 22%);
+  }
+
+  .app-shell[data-view="dashboard"] .sidebar .brand-block span,
+  .app-shell[data-view="dashboard"] .sidebar .user-panel span {
+    color: #f1d1d9;
+  }
+
+  .app-shell[data-view="dashboard"] .brand-mark {
+    background: #ffffff;
+    color: var(--dashboard-brand);
+    box-shadow: 0 4px 12px rgb(71 22 32 / 12%);
+  }
+
+  .app-shell[data-view="dashboard"] .nav-item {
+    color: #fae9ee;
+  }
+
+  .app-shell[data-view="dashboard"] .nav-item:hover {
+    background: rgb(255 255 255 / 9%);
+    border-color: rgb(255 255 255 / 18%);
+  }
+
+  .app-shell[data-view="dashboard"] .nav-item.active {
+    background: rgb(255 255 255 / 16%);
+    border-color: rgb(255 255 255 / 22%);
+    box-shadow: inset 3px 0 0 var(--dashboard-rose);
+    color: #ffffff;
+  }
+
+  .app-shell[data-view="dashboard"] .sidebar-security-button,
+  .app-shell[data-view="dashboard"] .sidebar-close-button {
+    background: rgb(255 255 255 / 9%);
+    border-color: rgb(255 255 255 / 22%);
+    color: #ffffff;
+  }
+
+  .app-shell[data-view="dashboard"] .sidebar-security-button:hover,
+  .app-shell[data-view="dashboard"] .sidebar-close-button:hover {
+    background: rgb(255 255 255 / 16%);
+    border-color: var(--dashboard-rose);
+  }
+
+  .app-shell[data-view="dashboard"] .sidebar-close-button::before {
+    background: var(--dashboard-rose);
+  }
+
+  .app-shell[data-view="dashboard"] .sidebar-close-button::after {
+    display: none;
+  }
+
+  .app-shell[data-view="dashboard"] .drawer-handle {
+    background: var(--dashboard-brand);
+  }
+
+  .app-shell[data-view="dashboard"] .topbar {
+    background: #ffffff;
+    border-color: var(--dashboard-border);
+    box-shadow: 0 8px 24px rgb(71 22 32 / 5%);
+    backdrop-filter: none;
+  }
+
+  .app-shell[data-view="dashboard"] .topbar h1,
+  .app-shell[data-view="dashboard"] .section-heading h2 {
+    color: var(--dashboard-ink);
+    letter-spacing: 0;
+  }
+
+  .app-shell[data-view="dashboard"] .topbar .eyebrow,
+  .app-shell[data-view="dashboard"] .branch-switcher-trigger > svg {
+    color: var(--dashboard-brand);
+  }
+
+  .app-shell[data-view="dashboard"] .branch-switcher-trigger,
+  .app-shell[data-view="dashboard"] .branch-menu {
+    border-color: var(--dashboard-border);
+  }
+
+  .app-shell[data-view="dashboard"] .branch-menu button:hover,
+  .app-shell[data-view="dashboard"] .branch-menu button.active {
+    background: var(--dashboard-brand-soft);
+    color: var(--dashboard-brand);
+  }
+
+  .app-shell[data-view="dashboard"] .metric,
+  .app-shell[data-view="dashboard"] .content-section {
+    background: #ffffff;
+    border-color: var(--dashboard-border);
+    box-shadow: 0 8px 24px rgb(71 22 32 / 4%);
+  }
+
+  .app-shell[data-view="dashboard"] .metric::after {
+    display: none;
+  }
+
+  .app-shell[data-view="dashboard"] .metric.neutral svg {
+    background: var(--dashboard-brand-soft);
+    color: var(--dashboard-brand);
+  }
+
+  .app-shell[data-view="dashboard"] .metric span,
+  .app-shell[data-view="dashboard"] .section-heading p,
+  .app-shell[data-view="dashboard"] .branch-card span {
+    color: var(--dashboard-muted);
+  }
+
+  .app-shell[data-view="dashboard"] .metric.neutral strong {
+    color: var(--dashboard-ink);
+  }
+
+  /* The third summary tile is stock value, a neutral business metric. */
+  .app-shell[data-view="dashboard"] .metric.neutral:nth-child(3) {
+    background: var(--dashboard-brand);
+    border-color: var(--dashboard-brand);
+  }
+
+  .app-shell[data-view="dashboard"] .metric.neutral:nth-child(3) svg {
+    background: rgb(255 255 255 / 15%);
+    color: #ffffff;
+  }
+
+  .app-shell[data-view="dashboard"] .metric.neutral:nth-child(3) span {
+    color: #fae9ee;
+  }
+
+  .app-shell[data-view="dashboard"] .metric.neutral:nth-child(3) strong {
+    color: #ffffff;
+  }
+
+  .app-shell[data-view="dashboard"] .metric.warning svg {
+    background: #fff4df;
+  }
+
+  .app-shell[data-view="dashboard"] .metric.danger svg {
+    background: #fff0ee;
+  }
+
+  .app-shell[data-view="dashboard"] .metric.good svg {
+    background: #edf8f1;
+  }
+
+  .app-shell[data-view="dashboard"] .section-heading h2::after {
+    background: var(--dashboard-brand);
+  }
+
+  .app-shell[data-view="dashboard"] .branch-card,
+  .app-shell[data-view="dashboard"] .alert-item,
+  .app-shell[data-view="dashboard"] .table-wrap {
+    border-color: var(--dashboard-border);
+    box-shadow: none;
+  }
+
+  .app-shell[data-view="dashboard"] .branch-card {
+    background: #fdfafb;
+  }
+
+  .app-shell[data-view="dashboard"] .branch-card > svg {
+    color: var(--dashboard-brand);
+  }
+
+  .app-shell[data-view="dashboard"] .branch-card:hover,
+  .app-shell[data-view="dashboard"] .alert-item:hover {
+    border-color: var(--dashboard-rose);
+  }
+
+  .app-shell[data-view="dashboard"] .section-heading > .pill.active {
+    background: var(--dashboard-brand-soft);
+    color: var(--dashboard-brand);
+  }
+
+  .app-shell[data-view="dashboard"] .table-wrap thead th {
+    background: var(--dashboard-brand-soft);
+    color: var(--dashboard-ink);
+  }
+
+  .app-shell[data-view="dashboard"] tbody tr:hover {
+    background: #fdfafb;
+  }
+
+  .app-shell[data-view="dashboard"] .ghost-button {
+    background: #ffffff;
+    border-color: var(--dashboard-border);
+    color: var(--dashboard-brand);
+  }
+
+  .app-shell[data-view="dashboard"] .ghost-button:hover {
+    background: var(--dashboard-brand-soft);
+    border-color: var(--dashboard-rose);
+  }
+
+  .app-shell[data-view="dashboard"] .primary-button {
+    background: var(--dashboard-brand);
+    box-shadow: 0 6px 16px rgb(130 23 44 / 14%);
+  }
+
+  .app-shell[data-view="dashboard"] .primary-button:hover {
+    background: var(--dashboard-brand-dark);
+  }
+
+  .app-shell[data-view="dashboard"] .workspace button:focus-visible {
+    outline-color: var(--dashboard-brand);
+  }
+
+  .app-shell[data-view="dashboard"] .sidebar button:focus-visible {
+    outline-color: var(--dashboard-rose);
+  }
+}

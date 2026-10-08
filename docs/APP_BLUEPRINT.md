@@ -148,6 +148,7 @@ Before adding a new `max-height` or `overflow`, prefer these variables and check
 - Use lucide icons for actions and navigation.
 - Use cards for repeated items, modals, and framed tools. Do not put cards inside cards unless the inner item is a genuine repeated record.
 - Avoid one-hue pages. RxLedger uses green as the operational anchor with cyan/purple/amber as accents, but pages should not become a single-color wash.
+- The landing page and Dashboard use Rai's burgundy (`#82172C`), dark wine (`#671121`), and soft rose (`#F8EDF0`) with white surfaces. Landing tokens stay inside `.rxledger-landing`; dashboard styles live in `src/dashboard-burgundy.css` and require `.app-shell[data-view="dashboard"]`. Shared navigation returns to its original palette on other pages. Preserve semantic warning, expiry, and healthy-stock colours, global tokens, and print styles.
 - Text must fit its container on mobile and desktop.
 - Buttons should describe concrete actions. Icon buttons need titles or accessible labels.
 

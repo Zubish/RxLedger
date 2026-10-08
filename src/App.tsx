@@ -111,6 +111,7 @@ import {
   type SubscriptionPlanId,
 } from "./subscriptionPlans";
 import "./App.css";
+import "./dashboard-burgundy.css";
 
 const SIDEBAR_WIDTH = 280;
 
@@ -3320,6 +3321,7 @@ function App() {
   return (
     <div
       className={`${sidebarOpen ? "app-shell sidebar-open" : "app-shell"}${sidebarCollapsed ? " sidebar-collapsed" : ""}`}
+      data-view={activeView}
     >
       <button
         className="sidebar-backdrop"
