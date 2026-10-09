@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { CheckCircle2, Trophy } from "lucide-react";
+import { CheckCircle2, ChevronDown, Trophy } from "lucide-react";
 
 export type QuestCoachStep<TView extends string> = {
   id: string;
@@ -37,6 +37,11 @@ export function QuestCoach<TView extends string>({
   getStoredBoolean: (key: string) => boolean;
   setStoredValue: (key: string, value: string) => void;
 }) {
+  const [mobile, setMobile] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(max-width: 900px)").matches,
+  );
+  const [expanded, setExpanded] = useState(false);
+  const detailsId = useId();
   const [index, setIndex] = useState(() => getStoredNumber(indexKey, 0));
   const [dismissed, setDismissed] = useState(() =>
     getStoredBoolean(dismissedKey),
@@ -82,6 +87,13 @@ export function QuestCoach<TView extends string>({
     : 100;
   const stepId = step?.id ?? "";
   const stepTitle = step?.title ?? "";
+
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 900px)");
+    const handleChange = () => setMobile(query.matches);
+    query.addEventListener("change", handleChange);
+    return () => query.removeEventListener("change", handleChange);
+  }, []);
 
   useEffect(() => {
     setStoredValue(indexKey, String(safeIndex));
@@ -142,7 +154,7 @@ export function QuestCoach<TView extends string>({
   }
 
   function beginDrag(event: ReactPointerEvent<HTMLButtonElement>) {
-    if (!questRef.current) return;
+    if (mobile || !questRef.current) return;
     const rect = questRef.current.getBoundingClientRect();
     dragRef.current = {
       active: true,
@@ -200,10 +212,10 @@ export function QuestCoach<TView extends string>({
 
   return (
     <aside
-      className={completedTitle ? "quest-coach is-complete" : "quest-coach"}
+      className={`quest-coach${completedTitle ? " is-complete" : ""}${mobile ? " quest-coach-inline" : ""}`}
       ref={questRef}
       style={
-        position
+        position && !mobile
           ? { left: position.x, top: position.y, right: "auto", bottom: "auto" }
           : undefined
       }
@@ -211,67 +223,73 @@ export function QuestCoach<TView extends string>({
     >
       <div className="quest-coach-head">
         <button
-          className="quest-drag-handle"
+          className={mobile ? "quest-disclosure" : "quest-drag-handle"}
           type="button"
+          onClick={mobile ? () => setExpanded((open) => !open) : undefined}
+          aria-expanded={mobile ? expanded : undefined}
+          aria-controls={mobile ? detailsId : undefined}
           onPointerDown={beginDrag}
           onPointerMove={moveDrag}
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
-          title="Drag quest card"
+          title={mobile ? "Show or hide getting started help" : "Drag quest card"}
         >
           <Trophy size={16} />
-          Beta quest
+          {mobile ? "Getting started" : "Beta quest"}
+          {mobile && <ChevronDown size={16} className={expanded ? "is-expanded" : ""} aria-hidden="true" />}
         </button>
         <button type="button" onClick={() => setDismissed(true)}>
           Skip
         </button>
       </div>
-      <div className="quest-progress" aria-label={`${progress}% complete`}>
-        <span style={{ width: `${progress}%` }} />
-      </div>
-      {completedTitle ? (
-        <div className="quest-completion" role="status" aria-live="polite">
-          <CheckCircle2 size={28} />
-          <strong>Well done!</strong>
-          <p>
-            Congratulations, you just completed: {completedTitle}. Moving you to
-            the next quest...
-          </p>
+      <div id={detailsId} hidden={mobile && !expanded} className="quest-details">
+        <div className="quest-progress" aria-label={`${progress}% complete`}>
+          <span style={{ width: `${progress}%` }} />
         </div>
-      ) : (
-        <>
-          <strong>{step.title}</strong>
-          <p>{step.body}</p>
-        </>
-      )}
-      <div className="quest-status">
-        <span>
-          {safeIndex + 1} of {steps.length}
-        </span>
-        <b className={complete ? "done" : ""}>
-          {complete ? "Completed" : currentRoleLabel}
-        </b>
-      </div>
-      <div className="quest-actions">
-        <button
-          className="ghost-button"
-          type="button"
-          onClick={() => setActiveView(step.view)}
-          disabled={Boolean(completedTitle)}
-        >
-          {step.action}
-        </button>
-        <button
-          className="ghost-button"
-          type="button"
-          onClick={previous}
-          disabled={safeIndex === 0 || Boolean(completedTitle)}
-        >
-          Back
-        </button>
-        <button className="primary-button" type="button" onClick={next}>
-          {safeIndex >= steps.length - 1 ? "Finish" : "Next"}
-        </button>
+        {completedTitle ? (
+          <div className="quest-completion" role="status" aria-live="polite">
+            <CheckCircle2 size={28} />
+            <strong>Well done!</strong>
+            <p>
+              Congratulations, you just completed: {completedTitle}. Moving you to
+              the next quest...
+            </p>
+          </div>
+        ) : (
+          <>
+            <strong>{step.title}</strong>
+            <p>{step.body}</p>
+          </>
+        )}
+        <div className="quest-status">
+          <span>
+            {safeIndex + 1} of {steps.length}
+          </span>
+          <b className={complete ? "done" : ""}>
+            {complete ? "Completed" : currentRoleLabel}
+          </b>
+        </div>
+        <div className="quest-actions">
+          <button
+            className="ghost-button"
+            type="button"
+            onClick={() => setActiveView(step.view)}
+            disabled={Boolean(completedTitle)}
+          >
+            {step.action}
+          </button>
+          <button
+            className="ghost-button"
+            type="button"
+            onClick={previous}
+            disabled={safeIndex === 0 || Boolean(completedTitle)}
+          >
+            Back
+          </button>
+          <button className="primary-button" type="button" onClick={next}>
+            {safeIndex >= steps.length - 1 ? "Finish" : "Next"}
+          </button>
+        </div>
       </div>
     </aside>
   );

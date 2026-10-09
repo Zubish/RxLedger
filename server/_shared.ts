@@ -53,6 +53,7 @@ type User = {
   managedBranchIds: string[];
   branchAccessExpiresAt?: Record<string, string>;
   lastChatSeenAt?: string;
+  lastChatSeenAtByBranch?: Record<string, string>;
   passwordHash?: string;
   passwordSalt?: string;
   knownDevices?: Array<{
@@ -95,6 +96,8 @@ type Product = {
   costPrice: number;
   sellingPrice: number;
   quantity: number;
+  /** Signed movement totals for each branch, returned as a read model. */
+  quantityByBranch?: Record<string, number>;
   barcodes: string[];
   supplierId: string;
   active: boolean;
@@ -172,6 +175,7 @@ type ChatMessage = {
   id: string;
   userId: string;
   channel?: "group" | "direct";
+  branchId?: string;
   recipientUserId?: string;
   body: string;
   createdAt: string;
@@ -961,7 +965,7 @@ function makeLedgerCursor(entry: LedgerEntry) {
 
 export async function loadTenantSalesPage(
   slug: string,
-  options: { cursor?: string; limit?: number } = {},
+  options: { cursor?: string; limit?: number; branchIds?: string[] | null } = {},
 ) {
   const normalizedSlug = normalizeCompanySlug(slug);
   if (!normalizedSlug) return null;
@@ -985,8 +989,9 @@ export async function loadTenantSalesPage(
     filtered AS (
       SELECT sale
       FROM sales
-      WHERE ${cursor.soldAt} = ''
-         OR (sale->>'soldAt', sale->>'id') < (${cursor.soldAt}, ${cursor.id})
+      WHERE (${options.branchIds == null} OR sale->>'branchId' = ANY(${options.branchIds ?? []}::text[]))
+        AND (${cursor.soldAt} = ''
+         OR (sale->>'soldAt', sale->>'id') < (${cursor.soldAt}, ${cursor.id}))
       ORDER BY sale->>'soldAt' DESC, sale->>'id' DESC
       LIMIT ${queryLimit}
     )
@@ -1010,7 +1015,7 @@ export async function loadTenantSalesPage(
 
 export async function loadTenantLedgerPage(
   slug: string,
-  options: { cursor?: string; limit?: number } = {},
+  options: { cursor?: string; limit?: number; branchIds?: string[] | null } = {},
 ) {
   const normalizedSlug = normalizeCompanySlug(slug);
   if (!normalizedSlug) return null;
@@ -1034,8 +1039,12 @@ export async function loadTenantLedgerPage(
     filtered AS (
       SELECT entry
       FROM ledger
-      WHERE ${cursor.createdAt} = ''
-         OR (entry->>'createdAt', entry->>'id') < (${cursor.createdAt}, ${cursor.id})
+      WHERE (${options.branchIds == null} OR (entry->>'itemType' = 'product' AND COALESCE(NULLIF(entry->>'toBranchId', ''), entry->>'fromBranchId') = ANY(${options.branchIds ?? []}::text[])) OR EXISTS (
+        SELECT 1 FROM tenant_state AS workspace, jsonb_array_elements(workspace.data->'batches') AS batch
+        WHERE workspace.slug = ${normalizedSlug} AND batch->>'id' = entry->>'batchId'
+          AND batch->>'branchId' = ANY(${options.branchIds ?? []}::text[])
+      )) AND (${cursor.createdAt} = ''
+         OR (entry->>'createdAt', entry->>'id') < (${cursor.createdAt}, ${cursor.id}))
       ORDER BY entry->>'createdAt' DESC, entry->>'id' DESC
       LIMIT ${queryLimit}
     )

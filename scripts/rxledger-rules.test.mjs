@@ -213,7 +213,7 @@ for (const source of [app, action, shared, types]) {
 
 assertPresent(
   `${app}\n${continuityQueue}`,
-  /ContinuityCentre[\s\S]*Patient-linked follow-up for unavailable medicines/,
+  /ContinuityCentre[\s\S]*Review patient requests, available stock, and follow-up for the selected branch/,
   "RxLedger should keep Continuity Centre as the patient-linked action queue.",
 );
 assertPresent(

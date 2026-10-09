@@ -24,7 +24,7 @@ RxLedger should grow as separate, deliberate modules:
    Inventory, Mart, POS, branches, pricing, receiving, reports, users, audit, notifications, and settings.
 
 2. **Patient Continuity**
-   Patient lookup, medication history, refill timing, counseling/follow-up messages, and cross-branch patient memory.
+   Patient lookup, medication history, refill timing, and counseling/follow-up messages in the user's branch scope; global admins retain cross-branch patient context.
 
 3. **Continuity Centre**
    RxLedger-native workflow for unavailable requested/prescribed medicines, patient follow-up, stock-arrival matching, branch availability guidance, and contacted/fulfilled/cancelled outcomes. This is not the Totalenergies clinic pending-medication flow; it is branch-aware community-pharmacy continuity.
@@ -73,7 +73,7 @@ Current populated-workspace baseline (June 20, 2026):
 - Stock rows and high-volume report rows use per-render ID lookup maps for medicines, products, batches, suppliers, branches, users, and sale references. Do not reintroduce repeated `.find()` scans inside ledger/report row loops.
 - Normal action response core after heavy-collection deltas: approximately 428 KB, plus changed records.
 
-The next performance phase is server-side dashboard/report aggregation beyond stock and movement hydration, followed by relational history tables/indexes when the JSONB read-model boundary is no longer enough. It must preserve workspace-wide patient history, branch-aware reporting, auditability, and the existing sale/dispensing save boundary.
+The next performance phase is server-side dashboard/report aggregation beyond stock and movement hydration, followed by relational history tables/indexes when the JSONB read-model boundary is no longer enough. It must preserve branch-authorized patient history, branch-aware reporting, auditability, and the existing sale/dispensing save boundary.
 
 ## Authenticated Shell
 
@@ -196,9 +196,13 @@ Before adding a new `max-height` or `overflow`, prefer these variables and check
 ## Branch and Access Rules
 
 - Stock belongs to branches/sites.
-- Admin can see broad account context; non-admin users operate only assigned/managed branches.
+- Only the designated global admin sees broad account context. Other users, including branch admins, receive operational records only for active assigned/managed branches; expired assignments grant no access. The selected branch narrows their work surface further.
+- Scope initial/login/action payloads and history pagination on the server, including stock summaries, patients, receipts, continuity, staff, drafts, messages, and response deltas. Patient history and edits remain branch-specific for users without global access.
+- Continuity status filters live under an expandable Continuity navigation entry, with a compact selector in the queue. On small devices, keep the queue before its collapsed creation form.
+- Mart quantity is derived by branch from signed product movements. Never attribute legacy aggregate stock to a branch without provenance; receiving or an explicit branch stock correction establishes ownership. Group and direct messages carry a branch ID; unattributed historical messages stay available only to the global admin.
 - Branch switching should feel like switching workspaces and preserve scoped operational context.
 - Staff access is explicit. Do not silently grant branch write access from registration.
+- On phones and tablets, onboarding guidance starts collapsed in normal page flow. It must not cover working controls. Inputs use at least 16px text and primary touch controls at least 44px targets.
 
 ## Verification Checklist
 

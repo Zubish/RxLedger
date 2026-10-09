@@ -301,10 +301,37 @@
     .dashboard-page .metric {
       padding: 12px;
       gap: 8px;
-      min-height: 142px;
+      min-height: 116px;
+      grid-template-columns: 28px minmax(0, 1fr);
     }
     .dashboard-page .metric > strong {
-      font-size: 23px;
+      font-size: 21px;
+    }
+    .dashboard-page .metric > svg {
+      width: 28px;
+      height: 28px;
+      padding: 5px;
+    }
+    .dashboard-page {
+      gap: 12px;
+    }
+    .dashboard-overview {
+      gap: 12px;
+    }
+    .dashboard-page .assignment-strip {
+      padding: 12px 14px;
+      gap: 10px;
+    }
+    .snapshot-value-row > div:first-child {
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+    .snapshot-value-row strong {
+      overflow-wrap: anywhere;
+      max-width: 100%;
+    }
+    .dashboard-page .branch-card {
+      gap: 10px;
     }
     .dashboard-page .section-heading > .pill {
       max-width: 100%;
@@ -318,6 +345,14 @@
     .snapshot-donut {
       width: 144px;
       height: 144px;
+    }
+  }
+  @media (max-width: 360px) {
+    .dashboard-page .metric-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .dashboard-page .metric {
+      min-height: 90px;
     }
   }
 }

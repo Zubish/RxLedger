@@ -1,3 +1,4 @@
+import { accessibleBranchIds, productQuantityInBranches, scopeDatabaseForUser } from "../server/branch-scope.js";
 import {
   addAudit,
   addSecurityEvent,
@@ -92,7 +93,7 @@ export default async function handler(
       fail(res, 401, "Authentication required");
       return;
     }
-    const heavySnapshot = snapshotHeavyCollections(db);
+    const heavySnapshot = snapshotHeavyCollections(scopeDatabaseForUser(db, actor));
 
     switch (body.action) {
       case "updateUser":
@@ -171,7 +172,7 @@ export default async function handler(
         sendChatMessage(db, actor.id, body.payload);
         break;
       case "markChatRead":
-        markChatRead(db, actor.id);
+        markChatRead(db, actor.id, body.payload);
         break;
       default:
         fail(res, 400, "Unknown action");
@@ -182,7 +183,7 @@ export default async function handler(
     const dbWithReadModels = withReadModels(db);
     await saveTenantDatabase(companySlug, dbWithReadModels);
     saveMs = Date.now() - saveStartedAt;
-    const clean = sanitizeDatabase(dbWithReadModels);
+    const clean = scopeDatabaseForUser(sanitizeDatabase(dbWithReadModels), actor);
     const databasePatch = buildDatabasePatch(heavySnapshot, clean);
     const response = {
       db: stripHeavyCollections(clean),
@@ -943,6 +944,11 @@ function upsertProduct(
       ));
   if (!actor || !productManager)
     throw new Error("You do not have permission to save products");
+  const branchId = requireString(payload?.branchId, "Branch");
+  if (!db.branches.some(branch => branch.id === branchId && branch.active))
+    throw new Error("Active branch not found");
+  if (!canAdmin(actor, getPrimaryAdminId(db)) && !hasActiveBranchAssignment(actor, branchId))
+    throw new Error("You do not have permission to change stock in this branch");
   const input = (payload?.record ?? {}) as Partial<Product>;
   const costPrice = Number(input.costPrice) || 0;
   const provisionalId = input.id || id("prd");
@@ -991,6 +997,16 @@ function upsertProduct(
   if (duplicateBarcode)
     throw new Error(`Barcode already belongs to ${duplicateBarcode.name}`);
   const before = db.products.find((product) => product.id === record.id);
+  const currentBranchQuantity = productQuantityInBranches(db, record.id, [branchId]);
+  const requestedBranchQuantity = record.quantity;
+  const difference = requestedBranchQuantity - currentBranchQuantity;
+  record.quantity = Math.max(0, (before?.quantity ?? 0) + difference);
+  if (difference !== 0) db.ledger.unshift({
+    id: id("led"), itemType: "product", medicineId: "", productId: record.id,
+    batchId: "", type: "adjustment", quantity: difference,
+    reason: before ? "Branch product stock correction" : "Opening branch product stock",
+    reference: record.sku, userId: actorId, createdAt: nowIso(), toBranchId: branchId,
+  });
   db.products = before
     ? db.products.map((product) =>
         product.id === record.id ? record : product,
@@ -1496,7 +1512,9 @@ function createContinuityRequest(
   ) {
     throw new Error("Preferred branch not found");
   }
-  const bestBranch = bestContinuityBranch(db, medicineId, preferredBranchId || originBranchId);
+  if (preferredBranchId && !canAdmin(actor, getPrimaryAdminId(db)) && !hasActiveBranchAssignment(actor, preferredBranchId))
+    throw new Error("You do not have access to the preferred branch");
+  const bestBranch = bestContinuityBranch(scopeDatabaseForUser(db, actor), medicineId, preferredBranchId || originBranchId);
   const request: Database["continuityRequests"][number] = {
     id: id("ctr"),
     patientName,
@@ -1539,14 +1557,7 @@ function updateContinuityRequest(
   const requestId = requireString(payload?.requestId, "Continuity request");
   const request = db.continuityRequests.find((item) => item.id === requestId);
   if (!request) throw new Error("Continuity request not found");
-  const canAct =
-    canSellInBranch(db, { ...actor, role: actorRole }, request.originBranchId) ||
-    (request.matchedBranchId
-      ? canSellInBranch(db, { ...actor, role: actorRole }, request.matchedBranchId)
-      : false) ||
-    (request.preferredBranchId
-      ? canSellInBranch(db, { ...actor, role: actorRole }, request.preferredBranchId)
-      : false);
+  const canAct = canSellInBranch(db, { ...actor, role: actorRole }, request.originBranchId);
   if (!canAct)
     throw new Error("You do not have permission to update this continuity request");
   const before = { ...request };
@@ -1582,6 +1593,8 @@ function updateContinuityRequest(
   if ("note" in (payload ?? {})) request.note = optionalString(payload?.note) || undefined;
   const preferredBranchId = optionalString(payload?.preferredBranchId);
   if (preferredBranchId) {
+    if (!canAdmin(actor, getPrimaryAdminId(db)) && !hasActiveBranchAssignment(actor, preferredBranchId))
+      throw new Error("You do not have access to the preferred branch");
     if (!db.branches.some((branch) => branch.id === preferredBranchId && branch.active))
       throw new Error("Preferred branch not found");
     request.preferredBranchId = preferredBranchId;
@@ -1607,6 +1620,11 @@ function updatePatientProfile(
   if (!actor) throw new Error("Authentication required");
   if (actor.role === "viewer")
     throw new Error("Viewers cannot edit patient profiles");
+  const allowedBranches = accessibleBranchIds(actor, getPrimaryAdminId(db));
+  const branchId = allowedBranches === null ? "" : requireString(payload?.branchId, "Branch");
+  if (allowedBranches !== null && (!allowedBranches.includes(branchId) || !db.branches.some(branch => branch.id === branchId && branch.active)))
+    throw new Error("You do not have access to this patient branch");
+  const canEditBranch = (id: string) => allowedBranches === null || id === branchId;
   const oldPatientName = optionalString(payload?.oldPatientName);
   const oldPatientPhone = optionalString(payload?.oldPatientPhone);
   const patientName = requireString(payload?.patientName, "Patient name");
@@ -1623,10 +1641,10 @@ function updatePatientProfile(
     matchingSales: db.sales
       .filter(
         (sale) =>
-          (oldPhone && normalizePatientPhone(sale.customerPhone) === oldPhone) ||
+          canEditBranch(sale.branchId) && ((oldPhone && normalizePatientPhone(sale.customerPhone) === oldPhone) ||
           (!oldPhone &&
             sale.customerName.trim().toLowerCase() ===
-              oldPatientName.trim().toLowerCase()),
+              oldPatientName.trim().toLowerCase())),
       )
       .map((sale) => ({
         id: sale.id,
@@ -1636,10 +1654,10 @@ function updatePatientProfile(
     matchingContinuityRequests: db.continuityRequests
       .filter(
         (request) =>
-          (oldPhone && normalizePatientPhone(request.patientPhone) === oldPhone) ||
+          canEditBranch(request.originBranchId) && ((oldPhone && normalizePatientPhone(request.patientPhone) === oldPhone) ||
           (!oldPhone &&
             request.patientName.trim().toLowerCase() ===
-              oldPatientName.trim().toLowerCase()),
+              oldPatientName.trim().toLowerCase())),
       )
       .map((request) => ({
         id: request.id,
@@ -1650,6 +1668,7 @@ function updatePatientProfile(
   let updatedSales = 0;
   let updatedContinuity = 0;
   db.sales.forEach((sale) => {
+    if (!canEditBranch(sale.branchId)) return;
     const matches =
       (oldPhone && normalizePatientPhone(sale.customerPhone) === oldPhone) ||
       (!oldPhone &&
@@ -1661,6 +1680,7 @@ function updatePatientProfile(
     updatedSales += 1;
   });
   db.posDrafts.forEach((draft) => {
+    if (!canEditBranch(draft.branchId)) return;
     const matches =
       (oldPhone && normalizePatientPhone(draft.customerPhone) === oldPhone) ||
       (!oldPhone &&
@@ -1672,6 +1692,7 @@ function updatePatientProfile(
     draft.updatedAt = nowIso();
   });
   db.continuityRequests.forEach((request) => {
+    if (!canEditBranch(request.originBranchId)) return;
     const matches =
       (oldPhone && normalizePatientPhone(request.patientPhone) === oldPhone) ||
       (!oldPhone &&
@@ -1743,6 +1764,8 @@ function createRequisition(
   ) {
     throw new Error("You can only request into a branch you work in");
   }
+  if (!canAdmin(actor, getPrimaryAdminId(db)) && !hasActiveBranchAssignment(actor, sourceBranchId))
+    throw new Error("You do not have access to the supplying branch");
   const inputs = Array.isArray(payload?.items)
     ? (payload.items as Record<string, unknown>[])
     : [];
@@ -2209,6 +2232,9 @@ function clearPosDraft(
   payload: Record<string, unknown> | undefined,
 ) {
   const branchId = requireString(payload?.branchId, "Branch");
+  const actor = db.users.find(user => user.id === actorId);
+  if (!actor || !canSellInBranch(db, actor, branchId))
+    throw new Error("You do not have permission to delete drafts in this branch");
   const draftId = optionalString(payload?.draftId);
   const before = draftId
     ? db.posDrafts.find(
@@ -2216,7 +2242,7 @@ function clearPosDraft(
       )
     : activeDraft(db, actorId, branchId);
   db.posDrafts = draftId
-    ? db.posDrafts.filter((draft) => draft.id !== draftId)
+    ? db.posDrafts.filter((draft) => !(draft.id === draftId && draft.branchId === branchId))
     : db.posDrafts.filter(
         (draft) => !(draft.userId === actorId && draft.branchId === branchId),
       );
@@ -2334,7 +2360,8 @@ function recordSale(
         (item) => item.id === input.itemId && item.active,
       );
       if (!product) throw new Error("Active product not found");
-      if (quantity > product.quantity)
+      const pendingQuantity = ledgerEntries.reduce((total, entry) => entry.itemType === "product" && entry.productId === product.id ? total + entry.quantity : total, 0);
+      if (quantity > productQuantityInBranches(db, product.id, [branchId]) + pendingQuantity)
         throw new Error(`${product.name} does not have enough stock`);
       if (product.sellingPrice <= 0)
         throw new Error(
@@ -2707,6 +2734,12 @@ function sendChatMessage(
   actorId: string,
   payload: Record<string, unknown> | undefined,
 ) {
+  const actor = db.users.find(user => user.id === actorId);
+  if (!actor) throw new Error("Authentication required");
+  const branchId = requireString(payload?.branchId, "Branch");
+  if (!db.branches.some(branch => branch.id === branchId && branch.active) ||
+      (!canAdmin(actor, getPrimaryAdminId(db)) && !hasActiveBranchAssignment(actor, branchId)))
+    throw new Error("You do not have access to this message branch");
   const body = requireString(payload?.body, "Message");
   if (body.length > 2000) throw new Error("Message is too long");
   const channel: "group" | "direct" =
@@ -2722,20 +2755,35 @@ function sendChatMessage(
       (user) => user.id === recipientUserId && user.status === "active",
     );
     if (!recipient) throw new Error("Recipient not found or inactive");
+    if (!canAdmin(recipient, getPrimaryAdminId(db)) && !hasActiveBranchAssignment(recipient, branchId))
+      throw new Error("Recipient does not have access to this branch");
+    if (!scopeDatabaseForUser(db, actor).users.some(user => user.id === recipientUserId))
+      throw new Error("Recipient is outside your branch access");
   }
   const message = {
     id: id("msg"),
     userId: actorId,
+    branchId,
     channel,
     recipientUserId,
     body,
     createdAt: nowIso(),
   };
   db.chatMessages.unshift(message);
-  markChatRead(db, actorId);
+  markChatRead(db, actorId, { branchId });
 }
 
-function markChatRead(db: Database, actorId: string) {
+function markChatRead(db: Database, actorId: string, payload?: Record<string, unknown>) {
   const actor = db.users.find((user) => user.id === actorId);
-  if (actor) actor.lastChatSeenAt = nowIso();
+  if (!actor) throw new Error("Authentication required");
+  const branchId = optionalString(payload?.branchId);
+  if (!branchId) {
+    if (!canAdmin(actor, getPrimaryAdminId(db))) throw new Error("Branch is required");
+    actor.lastChatSeenAt = nowIso();
+    return;
+  }
+  if (!db.branches.some(branch => branch.id === branchId && branch.active) ||
+      (!canAdmin(actor, getPrimaryAdminId(db)) && !hasActiveBranchAssignment(actor, branchId)))
+    throw new Error("You do not have access to this message branch");
+  actor.lastChatSeenAtByBranch = { ...actor.lastChatSeenAtByBranch, [branchId]: nowIso() };
 }

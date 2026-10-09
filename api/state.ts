@@ -1,3 +1,4 @@
+import { accessibleBranchIds, primaryAdminIdForDatabase, scopeDatabaseForUser } from "../server/branch-scope.js";
 import {
   canAdmin,
   fail,
@@ -55,7 +56,7 @@ export default async function handler(
         Array.isArray(rawCursor) ? rawCursor[0] || "" : rawCursor || "",
       );
       const salesLoadStartedAt = Date.now();
-      const page = await loadTenantSalesPage(companySlug, { cursor, limit });
+      const page = await loadTenantSalesPage(companySlug, { cursor, limit, branchIds: accessibleBranchIds(user, primaryAdminIdForDatabase(authDb)) });
       loadMs += Date.now() - salesLoadStartedAt;
       if (!page) {
         fail(res, 404, "Company portal not found");
@@ -97,7 +98,7 @@ export default async function handler(
         Array.isArray(rawCursor) ? rawCursor[0] || "" : rawCursor || "",
       );
       const ledgerLoadStartedAt = Date.now();
-      const page = await loadTenantLedgerPage(companySlug, { cursor, limit });
+      const page = await loadTenantLedgerPage(companySlug, { cursor, limit, branchIds: accessibleBranchIds(user, primaryAdminIdForDatabase(authDb)) });
       loadMs += Date.now() - ledgerLoadStartedAt;
       if (!page) {
         fail(res, 404, "Company portal not found");
@@ -132,7 +133,7 @@ export default async function handler(
       return;
     }
     if (scope === "audit") {
-      if (!canAdmin(user, db.settings.primaryAdminId)) {
+      if (!canAdmin(user, primaryAdminIdForDatabase(db))) {
         fail(res, 403, "Only the global admin can view the audit trail");
         return;
       }
@@ -151,7 +152,7 @@ export default async function handler(
       res.status(200).json(response);
       return;
     }
-    const clean = sanitizeDatabase(db);
+    const clean = scopeDatabaseForUser(sanitizeDatabase(db), user);
     clean.auditLogs = [];
     clean.sales = [];
     clean.ledger = [];

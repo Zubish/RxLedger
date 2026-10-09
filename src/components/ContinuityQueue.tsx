@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { ChevronRight, ClipboardList, MapPin, Smartphone } from "lucide-react";
 
 import type {
@@ -28,6 +29,7 @@ export function ContinuityQueue({
   continuityGroups,
   expandedContinuityKey,
   setExpandedContinuityKey,
+  canViewWorkspace,
   scopeFilter,
   setScopeFilter,
   statusFilter,
@@ -47,6 +49,7 @@ export function ContinuityQueue({
   setExpandedContinuityKey: (
     updater: (current: string | null) => string | null,
   ) => void;
+  canViewWorkspace: boolean;
   scopeFilter: "my-branch" | "workspace";
   setScopeFilter: (scope: "my-branch" | "workspace") => void;
   statusFilter: "active" | ContinuityRequestStatus | "all";
@@ -65,55 +68,48 @@ export function ContinuityQueue({
   ) => void;
   onProcessInPos: (request: ContinuityRequest) => void;
 }) {
+  const medicineById = useMemo(() => new Map(db.medicines.map((medicine) => [medicine.id, medicine])), [db.medicines]);
+  const branchById = useMemo(() => new Map(db.branches.map((branch) => [branch.id, branch])), [db.branches]);
   return (
     <section className="content-section">
       <div className="section-heading">
         <div>
           <h2>Patient medication queue</h2>
           <p>
-            Review only the records your branch can act on. Other branches stay
-            quiet until a patient appears there or stock is available.
+            Review patient requests, available stock, and follow-up for the selected branch.
           </p>
         </div>
-        <div className="segmented-control">
+        <div className="continuity-queue-controls">
+          <label className="continuity-status-select">
+            Queue status
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
+            >
+              <option value="active">Active</option>
+              <option value="matched">Stock available</option>
+              <option value="open">Waiting</option>
+              <option value="contacted">Contacted</option>
+              <option value="transferred">Transfer requested</option>
+              <option value="fulfilled">Fulfilled</option>
+              <option value="cancelled">Cancelled</option>
+              <option value="all">All requests</option>
+            </select>
+          </label>
+          {canViewWorkspace && <div className="segmented-control">
           {(["my-branch", "workspace"] as const).map((scope) => (
             <button
               className={scopeFilter === scope ? "active" : ""}
               type="button"
               key={scope}
+              aria-pressed={scopeFilter === scope}
               onClick={() => setScopeFilter(scope)}
             >
               {scope === "my-branch" ? "My branch" : "Workspace"}
             </button>
           ))}
+          </div>}
         </div>
-      </div>
-      <div className="continuity-filter-row">
-        {(
-          [
-            "active",
-            "matched",
-            "open",
-            "contacted",
-            "transferred",
-            "fulfilled",
-            "cancelled",
-            "all",
-          ] as const
-        ).map((status) => (
-          <button
-            className={statusFilter === status ? "pill active" : "pill"}
-            type="button"
-            key={status}
-            onClick={() => setStatusFilter(status)}
-          >
-            {status === "active"
-              ? "Active"
-              : status === "all"
-                ? "All"
-                : statusLabels[status]}
-          </button>
-        ))}
       </div>
       <div className="continuity-list">
         {continuityGroups.map((group) => {
@@ -148,9 +144,7 @@ export function ContinuityQueue({
                   </span>
                   <div className="continuity-owed-list compact">
                     {visiblePreview.map((request) => {
-                      const medicine = db.medicines.find(
-                        (item) => item.id === request.medicineId,
-                      );
+                      const medicine = medicineById.get(request.medicineId);
                       return (
                         <span key={request.id}>
                           {request.requestedMedicineName}
@@ -194,22 +188,18 @@ export function ContinuityQueue({
                   )
                 }
                 aria-expanded={expanded}
+                aria-controls={`continuity-details-${group.requests[0].id}`}
+                aria-label={`${expanded ? "Hide" : "Show"} details for ${group.patientName}`}
               >
                 <span>Details</span>
                 <ChevronRight size={15} />
               </button>
               {expanded && (
-                <div className="continuity-request-list">
+                <div className="continuity-request-list" id={`continuity-details-${group.requests[0].id}`}>
                   {group.requests.map((request) => {
-                    const medicine = db.medicines.find(
-                      (item) => item.id === request.medicineId,
-                    );
-                    const origin = db.branches.find(
-                      (branch) => branch.id === request.originBranchId,
-                    );
-                    const matched = db.branches.find(
-                      (branch) => branch.id === request.matchedBranchId,
-                    );
+                    const medicine = medicineById.get(request.medicineId);
+                    const origin = branchById.get(request.originBranchId);
+                    const matched = request.matchedBranchId ? branchById.get(request.matchedBranchId) : undefined;
                     const availability = getAvailability(request);
                     const whatsapp = getWhatsappHref(request);
 

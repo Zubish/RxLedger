@@ -46,6 +46,7 @@ export type User = {
   managedBranchIds: string[];
   branchAccessExpiresAt?: Record<string, string>;
   lastChatSeenAt?: string;
+  lastChatSeenAtByBranch?: Record<string, string>;
   knownDevices?: Array<{
     id: string;
     label: string;
@@ -86,6 +87,8 @@ export type Product = {
   costPrice: number;
   sellingPrice: number;
   quantity: number;
+  /** Signed movement totals for each branch, returned as a read model. */
+  quantityByBranch?: Record<string, number>;
   barcodes: string[];
   supplierId: string;
   active: boolean;
@@ -261,6 +264,7 @@ export type ChatMessage = {
   id: string;
   userId: string;
   channel?: "group" | "direct";
+  branchId?: string;
   recipientUserId?: string;
   body: string;
   createdAt: string;

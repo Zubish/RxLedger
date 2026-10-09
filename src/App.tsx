@@ -26,6 +26,7 @@ import {
   Lock,
   LogOut,
   MapPin,
+  Menu,
   MessageSquare,
   Minus,
   PackageCheck,
@@ -117,6 +118,17 @@ import "./rxledger-theme.css";
 import "./dashboard-burgundy.css";
 
 const SIDEBAR_WIDTH = 280;
+type ContinuityFilter = "active" | ContinuityRequestStatus | "all";
+const continuityFilters: Array<{ value: ContinuityFilter; label: string }> = [
+  { value: "active", label: "Active" },
+  { value: "matched", label: "Stock available" },
+  { value: "open", label: "Waiting" },
+  { value: "contacted", label: "Contacted" },
+  { value: "transferred", label: "Transfer requested" },
+  { value: "fulfilled", label: "Fulfilled" },
+  { value: "cancelled", label: "Cancelled" },
+  { value: "all", label: "All requests" },
+];
 
 type Role = "admin" | "pharmacist" | "inventory" | "cashier" | "viewer";
 type UserStatus = "pending" | "active" | "suspended";
@@ -172,6 +184,7 @@ type User = {
   managedBranchIds: string[];
   branchAccessExpiresAt?: Record<string, string>;
   lastChatSeenAt?: string;
+  lastChatSeenAtByBranch?: Record<string, string>;
   knownDevices?: Array<{
     id: string;
     label: string;
@@ -212,6 +225,7 @@ type Product = {
   costPrice: number;
   sellingPrice: number;
   quantity: number;
+  quantityByBranch?: Record<string, number>;
   barcodes: string[];
   supplierId: string;
   active: boolean;
@@ -382,6 +396,7 @@ type AuditLog = {
 
 type ChatMessage = {
   id: string;
+  branchId?: string;
   userId: string;
   channel?: "group" | "direct";
   recipientUserId?: string;
@@ -2007,6 +2022,15 @@ function isChatMessageVisible(message: ChatMessage, currentUser: User) {
   return true;
 }
 
+function isUnreadChatMessage(message: ChatMessage, currentUser: User) {
+  const seenAt = message.branchId
+    ? currentUser.lastChatSeenAtByBranch?.[message.branchId]
+    : currentUser.lastChatSeenAt;
+  return isChatMessageVisible(message, currentUser) &&
+    message.userId !== currentUser.id &&
+    new Date(message.createdAt).getTime() > (seenAt ? new Date(seenAt).getTime() : 0);
+}
+
 function receiptMedicationSummary(db: Database, receipt: Receipt) {
   const medicineItems = receipt.items.filter(
     (item) => (item.itemType ?? "medicine") === "medicine" && item.medicineId,
@@ -2252,15 +2276,7 @@ function buildNotifications(
   activeBranch?: Branch,
 ): AppNotification[] {
   const notifications: AppNotification[] = [];
-  const lastChatSeen = currentUser.lastChatSeenAt
-    ? new Date(currentUser.lastChatSeenAt).getTime()
-    : 0;
-  const unreadChat = db.chatMessages.filter(
-    (message) =>
-      isChatMessageVisible(message, currentUser) &&
-      message.userId !== currentUser.id &&
-      new Date(message.createdAt).getTime() > lastChatSeen,
-  );
+  const unreadChat = db.chatMessages.filter((message) => isUnreadChatMessage(message, currentUser));
   const pendingUsers = db.users.filter((user) => user.status === "pending");
   const relevantRequisitions = db.requisitions.filter(
     (request) =>
@@ -2573,6 +2589,13 @@ function App() {
     "landing",
   );
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [continuityMenuOpen, setContinuityMenuOpen] = useState(false);
+  const [continuityFilter, setContinuityFilter] = useState<ContinuityFilter>("active");
+  const sidebarRef = useRef<HTMLElement>(null);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
+  const [mobileNavigation, setMobileNavigation] = useState(() =>
+    window.matchMedia("(max-width: 900px)").matches,
+  );
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [drawerHandleTop, setDrawerHandleTop] = useState(() =>
     typeof window === "undefined" ? 360 : Math.round(window.innerHeight / 2),
@@ -2596,7 +2619,9 @@ function App() {
     db.users.find(
       (user) => user.id === sessionUserId && user.status === "active",
     ) ?? null;
-  const activeBranches = useMemo(() => getActiveBranches(db), [db]);
+  const activeBranches = useMemo(() => getActiveBranches(db).filter((branch) =>
+    currentUser ? canViewBranch(db, currentUser, branch.id) : false,
+  ), [db, currentUser]);
   const assignedBranch = useMemo(
     () => getUserHomeBranch(db, currentUser),
     [currentUser, db],
@@ -2608,8 +2633,7 @@ function App() {
   const activeBranch =
     activeBranches.find((branch) => branch.id === activeBranchId) ??
     assignedBranch ??
-    activeBranches[0] ??
-    db.branches[0];
+    activeBranches[0];
   const stockRows = useMemo(() => getStockRows(db), [db]);
   const activeBranchStockRows = useMemo(
     () =>
@@ -2651,6 +2675,34 @@ function App() {
     ? currentUser.role === "admin" || currentUser.role === "pharmacist"
     : false;
   const canAdmin = isSuperAdmin(db, currentUser);
+  // Catalog metadata is shared; operational counts and records follow the active branch.
+  const activeBranchDb = useMemo<Database>(() => {
+    const branchId = activeBranch?.id;
+    const products = db.products.map((product) => ({
+      ...product,
+      quantity: branchId ? product.quantityByBranch?.[branchId] ?? 0 : 0,
+    }));
+    if (canAdmin) return { ...db, products };
+    const batchBranchById = new Map(db.batches.map((batch) => [batch.id, batch.branchId]));
+    const branchBatchIds = new Set(db.batches.filter((batch) => batch.branchId === branchId).map((batch) => batch.id));
+    return {
+      ...db,
+      products,
+      branches: db.branches.filter((branch) => currentUser && canViewBranch(db, currentUser, branch.id)),
+      users: db.users.filter((user) => user.id === currentUser?.id || isSuperAdmin(db, user) || (branchId && hasActiveBranchAssignment(user, branchId))),
+      chatMessages: db.chatMessages.filter((message) => message.branchId === branchId),
+      sales: db.sales.filter((sale) => sale.branchId === branchId),
+      ledger: db.ledger.filter((entry) => branchBatchIds.has(entry.batchId) || entry.fromBranchId === branchId || entry.toBranchId === branchId),
+      receipts: db.receipts.map((receipt) => ({
+        ...receipt,
+        items: receipt.items.filter((item) => (item.branchId ?? batchBranchById.get(item.batchId)) === branchId),
+      })).filter((receipt) => receipt.items.length > 0),
+      continuityRequests: db.continuityRequests.filter((request) => request.originBranchId === branchId),
+      requisitions: db.requisitions.filter((request) => request.sourceBranchId === branchId || request.requestingBranchId === branchId),
+      branchAccessRequests: db.branchAccessRequests.filter((request) => request.branchId === branchId),
+    };
+  }, [db, activeBranch?.id, canAdmin, currentUser]);
+
   async function hydrateAuditHistory() {
     if (!canAdmin || !sessionUserId || auditHistoryLoaded || auditHistoryLoading)
       return;
@@ -2754,7 +2806,7 @@ function App() {
     () =>
       currentUser
         ? buildNotifications(
-            db,
+            canAdmin ? db : activeBranchDb,
             notificationStockRows,
             notificationStockTotals,
             currentUser,
@@ -2765,6 +2817,8 @@ function App() {
       activeBranch,
       currentUser,
       db,
+      canAdmin,
+      activeBranchDb,
       notificationStockRows,
       notificationStockTotals,
     ],
@@ -3069,10 +3123,12 @@ function App() {
         ? "dashboard"
         : view;
     setActiveView(nextView);
+    if (nextView === "continuity") setContinuityMenuOpen(true);
+    setBranchMenuOpen(false);
     if (nextView === "audit" && canAdmin) {
       void hydrateAuditHistory();
     }
-    if (nextView === "pos" || nextView === "patients" || nextView === "reports") {
+    if (nextView === "pos" || nextView === "patients" || nextView === "reports" || nextView === "continuity") {
       void hydrateSalesHistory();
     }
     if (nextView === "reports") {
@@ -3124,9 +3180,7 @@ function App() {
   }
 
   function switchActiveBranch(branchId: string) {
-    const nextBranch =
-      activeBranches.find((branch) => branch.id === branchId) ??
-      db.branches.find((branch) => branch.id === branchId);
+    const nextBranch = activeBranches.find((branch) => branch.id === branchId);
     setBranchMenuOpen(false);
     if (!nextBranch || branchId === activeBranchId) return;
     window.clearTimeout(branchSwitchTimerRef.current);
@@ -3246,6 +3300,49 @@ function App() {
     return () => window.clearTimeout(branchSwitchTimerRef.current);
   }, []);
 
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 900px)");
+    const update = () => setMobileNavigation(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
+    if (!sidebarOpen || !mobileNavigation) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const fallbackFocus = menuTriggerRef.current;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    sidebarRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    function handleNavigationKey(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSidebarOpen(false);
+        setSidebarCollapsed(true);
+      }
+      if (event.key !== "Tab") return;
+      const controls = [...(sidebarRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), [tabindex="0"]',
+      ) ?? [])].filter((element) => element.getClientRects().length > 0);
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    }
+    document.addEventListener("keydown", handleNavigationKey);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleNavigationKey);
+      if (previousFocus?.isConnected) previousFocus.focus();
+      else fallbackFocus?.focus();
+    };
+  }, [sidebarOpen, mobileNavigation]);
+
   const isWorkspaceRoute = Boolean(getWorkspaceSlugFromLocation());
 
   if (
@@ -3309,17 +3406,7 @@ function App() {
   const pendingAdminTasks = pendingUsers;
   const unreadChat = notifications.some(
     (notification) => notification.id === "chat-unread",
-  )
-    ? db.chatMessages.filter(
-        (message) =>
-          isChatMessageVisible(message, currentUser) &&
-          message.userId !== currentUser.id &&
-          new Date(message.createdAt).getTime() >
-            (currentUser.lastChatSeenAt
-              ? new Date(currentUser.lastChatSeenAt).getTime()
-              : 0),
-      ).length
-    : 0;
+  ) ? activeBranchDb.chatMessages.filter((message) => isUnreadChatMessage(message, currentUser)).length : 0;
 
   return (
     <div
@@ -3330,9 +3417,18 @@ function App() {
         className="sidebar-backdrop"
         type="button"
         aria-label="Close menu"
+        tabIndex={-1}
         onClick={collapseSidebar}
       />
-      <aside className="sidebar">
+      <aside
+        className="sidebar"
+        id="primary-navigation-panel"
+        ref={sidebarRef}
+        inert={sidebarCollapsed}
+        role={mobileNavigation && sidebarOpen ? "dialog" : undefined}
+        aria-modal={mobileNavigation && sidebarOpen ? true : undefined}
+        aria-label="Control panel"
+      >
         <div className="brand-block">
           <div className="brand-identity">
             <BrandMark settings={db.settings} />
@@ -3357,9 +3453,55 @@ function App() {
             .filter(({ adminOnly }) => !adminOnly || canAdmin)
             .map(({ id: viewId, label, icon: Icon, adminOnly }) => {
             const disabled = adminOnly && !canAdmin;
+            if (viewId === "continuity") {
+              return (
+                <div className="nav-group" key={viewId}>
+                  <button
+                    className={activeView === viewId ? "nav-item active" : "nav-item"}
+                    type="button"
+                    aria-expanded={continuityMenuOpen}
+                    aria-controls="continuity-submenu"
+                    onClick={() => {
+                      setContinuityMenuOpen((open) => !open);
+                      if (activeView !== "continuity") {
+                        setActiveView("continuity");
+                        void hydrateSalesHistory();
+                      }
+                    }}
+                  >
+                    <Icon size={18} />
+                    <span>{label}</span>
+                    <ChevronDown size={16} className={`nav-disclosure-chevron${continuityMenuOpen ? " is-expanded" : ""}`} />
+                  </button>
+                  {continuityMenuOpen && (
+                    <div className="nav-submenu" id="continuity-submenu">
+                      {continuityFilters.map((filter) => (
+                        <button
+                          key={filter.value}
+                          className={`nav-subitem${activeView === "continuity" && continuityFilter === filter.value ? " active" : ""}`}
+                          type="button"
+                          aria-current={activeView === "continuity" && continuityFilter === filter.value ? "page" : undefined}
+                          onClick={() => {
+                            setContinuityFilter(filter.value);
+                            navigate("continuity");
+                          }}
+                        >
+                          {filter.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
             return (
+              <div className="nav-group" key={viewId}>
+                {(["dashboard", "medicines", "reports"] as View[]).includes(viewId) && (
+                  <span className="nav-group-label">
+                    {viewId === "dashboard" ? "Patient care" : viewId === "medicines" ? "Inventory" : "Workspace"}
+                  </span>
+                )}
               <button
-                key={viewId}
                 className={
                   activeView === viewId ? "nav-item active" : "nav-item"
                 }
@@ -3367,6 +3509,7 @@ function App() {
                 onClick={() => !disabled && navigate(viewId)}
                 disabled={disabled}
                 title={label}
+                aria-current={activeView === viewId ? "page" : undefined}
               >
                 <Icon size={18} />
                 <span>{label}</span>
@@ -3380,6 +3523,7 @@ function App() {
                   <b className="nav-badge">{notifications.length}</b>
                 )}
               </button>
+              </div>
             );
           })}
         </nav>
@@ -3431,6 +3575,8 @@ function App() {
           sidebarCollapsed ? "Open control panel" : "Collapse control panel"
         }
         aria-expanded={!sidebarCollapsed}
+        aria-controls="primary-navigation-panel"
+        tabIndex={mobileNavigation ? -1 : 0}
         onKeyDown={handleDrawerKeyDown}
         onPointerDown={startDrawerHandleDrag}
         onPointerMove={moveDrawerHandle}
@@ -3444,9 +3590,20 @@ function App() {
         )}
       </button>
 
-      <main className="workspace">
+      <main className="workspace" inert={mobileNavigation && sidebarOpen}>
         <header className="topbar">
           <div className="topbar-title">
+            <button
+              ref={menuTriggerRef}
+              type="button"
+              className="icon-button mobile-menu-button"
+              aria-label="Open navigation menu"
+              aria-controls="primary-navigation-panel"
+              aria-expanded={sidebarOpen}
+              onClick={toggleSidebar}
+            >
+              <Menu size={22} />
+            </button>
             <div>
               <span className="eyebrow">{db.settings.accountName}</span>
               <h1>{views.find((view) => view.id === activeView)?.label}</h1>
@@ -3568,7 +3725,7 @@ function App() {
           )}
           {activeView === "dashboard" && (
             <Dashboard
-              db={db}
+              db={canAdmin ? db : activeBranchDb}
               currentUser={currentUser}
               stockRows={dashboardStockRows}
               alertStockRows={notificationStockRows}
@@ -3581,7 +3738,7 @@ function App() {
           )}
           {activeView === "medicines" && (
             <Medicines
-              db={db}
+              db={activeBranchDb}
               currentUser={currentUser}
               stockRows={medicinePageStockRows}
               stockTotals={medicinePageStockTotals}
@@ -3595,7 +3752,9 @@ function App() {
           )}
           {activeView === "products" && activeBranch && (
             <ProductsView
-              db={db}
+              key={activeBranch.id}
+              db={activeBranchDb}
+              activeBranchId={activeBranch.id}
               canWrite={Boolean(canManagePrices)}
               executeAction={executeAction}
               flash={flash}
@@ -3610,7 +3769,8 @@ function App() {
           )}
           {activeView === "receive" && activeBranch && (
             <ReceiveStock
-              db={db}
+              key={activeBranch.id}
+              db={activeBranchDb}
               activeBranch={activeBranch}
               canWrite={Boolean(canWriteActiveBranch)}
               executeAction={executeAction}
@@ -3620,11 +3780,11 @@ function App() {
           {activeView === "pos" && activeBranch && (
             <POSView
               key={`${currentUser.id}-${activeBranch.id}`}
-              db={db}
+              db={activeBranchDb}
               currentUser={currentUser}
               activeBranch={activeBranch}
               stockRows={activeBranchStockRows}
-              workspaceStockRows={stockRows}
+              workspaceStockRows={canAdmin ? stockRows : activeBranchStockRows}
               canSell={Boolean(canSell)}
               executeAction={executeAction}
               flash={flash}
@@ -3634,7 +3794,8 @@ function App() {
           )}
           {activeView === "patients" && (
             <PatientsView
-              db={db}
+              key={`${currentUser.id}-${activeBranch?.id ?? "none"}`}
+              db={activeBranchDb}
               activeBranch={activeBranch}
               salesHistoryLoaded={salesHistoryLoaded}
               salesHistoryLoading={salesHistoryLoading}
@@ -3646,13 +3807,16 @@ function App() {
           )}
           {activeView === "continuity" && (
             <ContinuityCentre
-              db={db}
+              key={`${currentUser.id}-${activeBranch?.id ?? "none"}`}
+              db={activeBranchDb}
               currentUser={currentUser}
               activeBranch={activeBranch}
-              stockRows={stockRows}
+              stockRows={canAdmin ? stockRows : activeBranchStockRows}
               executeAction={executeAction}
               flash={flash}
               processInPos={processContinuityRequest}
+              statusFilter={continuityFilter}
+              setStatusFilter={setContinuityFilter}
             />
           )}
           {activeView === "issue" && activeBranch && (
@@ -3676,7 +3840,7 @@ function App() {
           )}
           {activeView === "reports" && (
             <Reports
-              db={db}
+              db={canAdmin ? db : activeBranchDb}
               stockRows={dashboardStockRows}
               stockTotals={dashboardStockTotals}
               activeBranch={canAdmin ? undefined : activeBranch}
@@ -3686,9 +3850,11 @@ function App() {
               onLoadMoreLedgerHistory={loadMoreLedgerHistory}
             />
           )}
-          {activeView === "chat" && (
+          {activeView === "chat" && activeBranch && (
             <ChatView
-              db={db}
+              key={`${currentUser.id}-${activeBranch.id}`}
+              db={activeBranchDb}
+              activeBranchId={activeBranch.id}
               currentUser={currentUser}
               executeAction={executeAction}
             />
@@ -3716,7 +3882,7 @@ function App() {
           )}
           {activeView === "branches" && activeBranch && (
             <BranchesView
-              db={db}
+              db={canAdmin ? db : activeBranchDb}
               currentUser={currentUser}
               activeBranchId={activeBranch.id}
               setActiveBranchId={switchActiveBranch}
@@ -6964,11 +7130,13 @@ function IssueStock({
 
 function ProductsView({
   db,
+  activeBranchId,
   canWrite,
   executeAction,
   flash,
 }: {
   db: Database;
+  activeBranchId: string;
   canWrite: boolean;
   executeAction: ExecuteAction;
   flash: (message: string) => void;
@@ -7044,7 +7212,7 @@ function ProductsView({
       flash("Selling price must be equal to or greater than cost price");
       return;
     }
-    void executeAction("upsertProduct", { record }, `${record.name} saved`);
+    void executeAction("upsertProduct", { record, branchId: activeBranchId }, `${record.name} saved`);
     reset();
   }
 
@@ -7129,7 +7297,7 @@ function ProductsView({
         <div className="section-heading">
           <div>
             <h2>{form.id ? "Edit Product" : "Add Product"}</h2>
-            <p>Cost, selling price, and quantity feed directly into POS.</p>
+            <p>Prices feed into POS. Stock quantity applies to the selected branch.</p>
           </div>
         </div>
         {!canWrite && (
@@ -7181,7 +7349,7 @@ function ProductsView({
             />
           </label>
           <label>
-            Quantity
+            Branch stock quantity
             <input
               type="number"
               min="0"
@@ -7603,7 +7771,12 @@ function POSView({
     canManageBranch(db, currentUser, activeBranch.id) ||
     ((currentUser.role === "pharmacist" || currentUser.role === "cashier") &&
       hasActiveBranchAssignment(currentUser, activeBranch.id));
-  const patientProfiles = useMemo(() => buildPatientProfiles(db), [db]);
+  const patientProfiles = useMemo(() => buildPatientProfiles(
+    isSuperAdmin(db, currentUser) ? db : {
+      ...db,
+      sales: db.sales.filter((sale) => sale.branchId === activeBranch.id),
+    },
+  ), [db, currentUser, activeBranch.id]);
   const selectedPatient = useMemo(() => {
     const phone = normalizePhone(customerPhone);
     if (!phone) return undefined;
@@ -9025,6 +9198,8 @@ function ContinuityCentre({
   executeAction,
   flash,
   processInPos,
+  statusFilter,
+  setStatusFilter,
 }: {
   db: Database;
   currentUser: User;
@@ -9033,10 +9208,9 @@ function ContinuityCentre({
   executeAction: ExecuteAction;
   flash: (message: string) => void;
   processInPos: (request: ContinuityRequest) => void;
+  statusFilter: ContinuityFilter;
+  setStatusFilter: (status: ContinuityFilter) => void;
 }) {
-  const [statusFilter, setStatusFilter] = useState<
-    "active" | ContinuityRequestStatus | "all"
-  >("active");
   const [scopeFilter, setScopeFilter] = useState<"my-branch" | "workspace">(
     "my-branch",
   );
@@ -9052,16 +9226,23 @@ function ContinuityCentre({
     preferredBranchId: activeBranch?.id ?? "",
     note: "",
   });
-  const refillRows = useMemo(() => buildRefillRows(db), [db]);
-  const visibleRequests = db.continuityRequests
+  const refillRows = useMemo(() => buildRefillRows(
+    isSuperAdmin(db, currentUser) ? db : {
+      ...db,
+      sales: db.sales.filter((sale) => sale.branchId === activeBranch?.id),
+    },
+  ), [db, currentUser, activeBranch?.id]);
+  const scopedRequests = db.continuityRequests
+    .filter((request) => isSuperAdmin(db, currentUser) || request.originBranchId === activeBranch?.id)
     .filter((request) =>
       continuityVisibleToUser(
         db,
         currentUser,
         request,
-        scopeFilter === "my-branch" ? activeBranch : undefined,
+        scopeFilter === "my-branch" || !isSuperAdmin(db, currentUser) ? activeBranch : undefined,
       ),
-    )
+    );
+  const visibleRequests = scopedRequests
     .filter((request) =>
       statusFilter === "active"
         ? request.status !== "fulfilled" && request.status !== "cancelled"
@@ -9076,13 +9257,13 @@ function ContinuityCentre({
         b.updatedAt.localeCompare(a.updatedAt)
       );
     });
-  const activeRequests = visibleRequests.filter(
+  const activeRequests = scopedRequests.filter(
     (request) => request.status !== "fulfilled" && request.status !== "cancelled",
   );
-  const matchedRequests = visibleRequests.filter(
+  const matchedRequests = scopedRequests.filter(
     (request) => request.status === "matched",
   );
-  const waitingRequests = visibleRequests.filter(
+  const waitingRequests = scopedRequests.filter(
     (request) => request.status === "open",
   );
   const dueRefills = refillRows.filter((row) => row.daysUntilDue <= 7);
@@ -9206,23 +9387,50 @@ function ContinuityCentre({
         />
       </section>
 
-      <section className="content-section continuity-brief">
-        <div className="section-heading">
-          <div>
-            <h2>Continuity Centre</h2>
-            <p>
-              Patient-linked follow-up for unavailable medicines, refill timing,
-              and branch stock options. Built as a queue so RxLedger stays calm
-              while pharmacists keep the context.
-            </p>
-          </div>
-        </div>
-      </section>
+      <ContinuityQueue
+        db={db}
+        continuityGroups={continuityGroups}
+        expandedContinuityKey={expandedContinuityKey}
+        setExpandedContinuityKey={setExpandedContinuityKey}
+        canViewWorkspace={isSuperAdmin(db, currentUser)}
+        scopeFilter={scopeFilter}
+        setScopeFilter={setScopeFilter}
+        statusFilter={statusFilter}
+        setStatusFilter={setStatusFilter}
+        statusLabels={continuityStatusLabels}
+        urgencyLabels={continuityUrgencyLabels}
+        medicineMeta={medicineMeta}
+        getAvailability={(request) =>
+          getMedicineBranchAvailability(
+            db,
+            stockRows,
+            request.medicineId,
+            activeBranch,
+          ).slice(0, 3)
+        }
+        getWhatsappHref={(request) => {
+          const matchedBranch = request.matchedBranchId
+            ? db.branches.find((branch) => branch.id === request.matchedBranchId)
+            : undefined;
+          return whatsappHref(
+            request.patientPhone,
+            continuityMessage(db, request, matchedBranch),
+          );
+        }}
+        onCopyPatientMessage={(request) => {
+          void copyPatientMessage(request);
+        }}
+        onUpdateRequest={updateRequest}
+        onProcessInPos={processInPos}
+      />
 
-      <section className="content-section">
+      <details className="content-section continuity-create-panel">
+        <summary>
+          <span>Create continuity request</span>
+          <ChevronDown size={18} aria-hidden="true" />
+        </summary>
         <div className="section-heading">
           <div>
-            <h2>Create continuity request</h2>
             <p>
               Use this when a patient needs a medicine that is not available on
               the current shelf, or when staff should follow up before therapy
@@ -9296,7 +9504,9 @@ function ContinuityCentre({
               }
               disabled={!canCreate}
             >
-              {getActiveBranches(db).map((branch) => (
+              {getActiveBranches(db).filter((branch) =>
+                isSuperAdmin(db, currentUser) || branch.id === activeBranch?.id,
+              ).map((branch) => (
                 <option value={branch.id} key={branch.id}>
                   {branch.name}
                 </option>
@@ -9340,43 +9550,7 @@ function ContinuityCentre({
             Add to Continuity
           </button>
         </form>
-      </section>
-
-      <ContinuityQueue
-        db={db}
-        continuityGroups={continuityGroups}
-        expandedContinuityKey={expandedContinuityKey}
-        setExpandedContinuityKey={setExpandedContinuityKey}
-        scopeFilter={scopeFilter}
-        setScopeFilter={setScopeFilter}
-        statusFilter={statusFilter}
-        setStatusFilter={setStatusFilter}
-        statusLabels={continuityStatusLabels}
-        urgencyLabels={continuityUrgencyLabels}
-        medicineMeta={medicineMeta}
-        getAvailability={(request) =>
-          getMedicineBranchAvailability(
-            db,
-            stockRows,
-            request.medicineId,
-            activeBranch,
-          ).slice(0, 3)
-        }
-        getWhatsappHref={(request) => {
-          const matchedBranch = request.matchedBranchId
-            ? db.branches.find((branch) => branch.id === request.matchedBranchId)
-            : undefined;
-          return whatsappHref(
-            request.patientPhone,
-            continuityMessage(db, request, matchedBranch),
-          );
-        }}
-        onCopyPatientMessage={(request) => {
-          void copyPatientMessage(request);
-        }}
-        onUpdateRequest={updateRequest}
-        onProcessInPos={processInPos}
-      />
+      </details>
     </div>
   );
 }
@@ -9557,6 +9731,7 @@ function PatientsView({
     const updated = await executeAction(
       "updatePatientProfile",
       {
+        branchId: activeBranch?.id,
         oldPatientName: selectedProfile.name,
         oldPatientPhone: selectedProfile.phone,
         patientName: patientEdit.name,
@@ -10158,7 +10333,7 @@ function Reports({
             (!supplierDate || receipt.receivedAt.slice(0, 10) === supplierDate),
         )
         .flatMap((receipt) =>
-          receipt.items.map((item) => {
+          receipt.items.filter((item) => !activeBranch || (item.branchId ?? batchesById.get(item.batchId)?.branchId) === activeBranch.id).map((item) => {
             const batch =
               item.itemType === "product"
                 ? undefined
@@ -10404,10 +10579,12 @@ function Reports({
 
 function ChatView({
   db,
+  activeBranchId,
   currentUser,
   executeAction,
 }: {
   db: Database;
+  activeBranchId: string;
   currentUser: User;
   executeAction: ExecuteAction;
 }) {
@@ -10419,18 +10596,19 @@ function ChatView({
     () =>
       db.users
         .filter(
-          (user) => user.status === "active" && user.id !== currentUser.id,
+          (user) => user.status === "active" && user.id !== currentUser.id &&
+            (isSuperAdmin(db, user) || hasActiveBranchAssignment(user, activeBranchId)),
         )
         .sort((a, b) => a.name.localeCompare(b.name)),
-    [currentUser.id, db.users],
+    [currentUser.id, db, activeBranchId],
   );
 
   useEffect(() => {
     if (!readMarked.current) {
       readMarked.current = true;
-      void executeAction("markChatRead", {});
+      void executeAction("markChatRead", { branchId: activeBranchId });
     }
-  }, [executeAction]);
+  }, [executeAction, activeBranchId]);
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -10440,6 +10618,7 @@ function ChatView({
       "sendChatMessage",
       {
         body,
+        branchId: activeBranchId,
         channel,
         recipientUserId: channel === "direct" ? recipientUserId : "",
       },
@@ -10449,7 +10628,7 @@ function ChatView({
   }
 
   const messages = db.chatMessages
-    .filter((message) => isChatMessageVisible(message, currentUser))
+    .filter((message) => (isSuperAdmin(db, currentUser) || message.branchId === activeBranchId) && isChatMessageVisible(message, currentUser))
     .filter((message) =>
       channel === "group"
         ? message.channel !== "direct"
@@ -10469,8 +10648,7 @@ function ChatView({
         <div>
           <h2>Messages</h2>
           <p>
-            Send workspace updates to everyone or private notes to another
-            employee.
+            Send updates to your branch team or private notes to a colleague.
           </p>
         </div>
       </div>
@@ -10482,7 +10660,7 @@ function ChatView({
             onClick={() => setChannel("group")}
           >
             <Users size={16} />
-            Group chat
+            Branch chat
           </button>
           <button
             className={channel === "direct" ? "active" : ""}
@@ -10530,7 +10708,8 @@ function ChatView({
                   <span>
                     {message.channel === "direct"
                       ? `Direct${recipient ? ` to ${mine ? recipient.name : "you"}` : ""}`
-                      : "Group"}{" "}
+                      : "Branch"}{" "}
+                    {isSuperAdmin(db, currentUser) && ` / ${message.branchId ? getBranchName(db, message.branchId) : "Legacy workspace"}`}
                     / {new Date(message.createdAt).toLocaleString()}
                   </span>
                 </div>
@@ -10555,7 +10734,7 @@ function ChatView({
               ? activeRecipient
                 ? `Message ${activeRecipient.name}`
                 : "Choose an employee before typing a direct message"
-              : "Type a message for the group"
+              : "Type a message for your branch team"
           }
           maxLength={2000}
           disabled={channel === "direct" && !recipientUserId}

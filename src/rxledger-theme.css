@@ -130,6 +130,134 @@
   .topbar-actions {
     gap: 12px;
   }
+  /* Keep grid children and long record names inside their own surfaces. */
+  .app-shell :is(.content-section, .two-column, .form-grid, .report-filters,
+    .patient-profile-grid, .pos-terminal-grid) > * {
+    min-width: 0;
+  }
+  .app-shell :is(.button-row, .form-actions, .section-heading) {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .app-shell :is(.branch-card, .supplier-card, .audit-item, .alert-item) > div {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .report-filters {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  }
+  .tabs {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+  .tabs button {
+    flex-shrink: 0;
+  }
+  .modal-backdrop,
+  .pos-modal-backdrop {
+    z-index: 200;
+  }
+  .mobile-menu-button {
+    display: none;
+  }
+  .nav-group {
+    display: grid;
+    min-width: 0;
+  }
+  .nav-group-label {
+    color: #f1d1d9;
+    font-size: 11px;
+    font-weight: 650;
+    padding: 12px 10px 5px;
+    text-align: left;
+  }
+  .nav-group > .nav-item > span {
+    flex: 1;
+    text-align: left;
+  }
+  .nav-disclosure-chevron {
+    flex-shrink: 0;
+    transition: transform 160ms ease;
+  }
+  .nav-disclosure-chevron.is-expanded {
+    transform: rotate(180deg);
+  }
+  .nav-submenu {
+    display: grid;
+    gap: 3px;
+    margin: 4px 0 4px 20px;
+    padding-left: 10px;
+    border-left: 1px solid rgb(255 255 255 / 25%);
+  }
+  .nav-subitem {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    background: transparent;
+    color: #fae9ee;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 8px 10px;
+    min-height: 44px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+  }
+  .nav-subitem:hover,
+  .nav-subitem.active {
+    background: rgb(255 255 255 / 13%);
+    border-color: rgb(255 255 255 / 20%);
+    color: white;
+  }
+  .continuity-create-panel {
+    padding: 0;
+  }
+  .continuity-create-panel > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    list-style: none;
+    cursor: pointer;
+    padding: 16px;
+    min-height: 48px;
+  }
+  .continuity-create-panel > summary::-webkit-details-marker {
+    display: none;
+  }
+  .continuity-create-panel[open] > summary > svg {
+    transform: rotate(180deg);
+  }
+  .continuity-create-panel[open] > summary {
+    border-bottom: 1px solid var(--rx-border);
+    margin-bottom: 14px;
+  }
+  .continuity-create-panel > form {
+    padding: 0 16px 16px;
+  }
+  .continuity-create-panel > .section-heading {
+    padding-inline: 16px;
+  }
+  .continuity-status-select {
+    display: grid;
+    gap: 6px;
+    min-width: 160px;
+    font-size: 12px;
+    color: var(--rx-muted);
+  }
+  .continuity-queue-controls {
+    display: flex;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .quest-details:not([hidden]) {
+    display: grid;
+    gap: 12px;
+  }
   .topbar-notifications,
   .topbar-profile {
     display: inline-flex;
@@ -497,6 +625,95 @@
       display: none;
     }
   }
+  @media (max-width: 900px) {
+    .quest-coach.quest-coach-inline {
+      position: static;
+      width: 100%;
+      max-width: none;
+      margin-top: 14px;
+      padding: 10px 14px;
+      box-shadow: none;
+    }
+    .quest-disclosure {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--rx-brand);
+      font: inherit;
+      font-weight: 650;
+      text-align: left;
+      cursor: pointer;
+    }
+    .quest-disclosure svg.is-expanded {
+      transform: rotate(180deg);
+    }
+    .drawer-handle {
+      display: none;
+    }
+    .topbar {
+      position: static;
+      padding-left: 16px;
+    }
+    .mobile-menu-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      width: 44px;
+      height: 44px;
+      border: 1px solid var(--rx-border);
+      border-radius: 8px;
+      background: var(--rx-brand-soft);
+      color: var(--rx-brand);
+      cursor: pointer;
+    }
+    .topbar-title {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      min-width: 0;
+    }
+    .topbar-title > div {
+      min-width: 0;
+    }
+    .two-column,
+    .patients-layout,
+    .pricing-settings-grid,
+    .pricing-rule-editors {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .patient-profile-edit {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .patient-profile-edit > div {
+      grid-column: 1 / -1;
+    }
+    .receive-review-summary {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .app-shell :is(button, .file-button, .patient-message-list a,
+      .patient-reminder-list a, .branch-availability-list a) {
+      min-height: 44px;
+    }
+    .app-shell :is(.icon-button, .pos-icon-button, .pos-modal-header button) {
+      min-width: 44px;
+      flex-shrink: 0;
+    }
+    .app-shell :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+      font-size: 16px;
+      min-height: 44px;
+      max-width: 100%;
+    }
+    .pos-qty-stepper button {
+      width: 44px;
+    }
+    .pos-qty-stepper input {
+      width: 48px;
+    }
+    .pos-discount-control {
+      grid-template-columns: minmax(0, 1fr) 44px 44px;
+    }
+  }
   @media (max-width: 760px) {
     .topbar-actions {
       display: grid;
@@ -537,6 +754,127 @@
     }
     .topbar-profile > svg {
       display: none;
+    }
+    .topbar {
+      padding: 12px;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .topbar h1 {
+      font-size: 21px;
+      line-height: 1.25;
+    }
+    .topbar-actions .branch-switcher {
+      grid-column: 1;
+      grid-row: 1;
+    }
+    .topbar-actions .topbar-notifications,
+    .topbar-actions .topbar-profile {
+      grid-row: 1;
+    }
+    .topbar-actions > .ghost-button {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      justify-self: start;
+    }
+    .branch-switcher-trigger {
+      padding: 8px;
+      gap: 6px;
+    }
+    .branch-menu {
+      width: min(320px, calc(100vw - 48px));
+      max-height: 50dvh;
+      overflow-y: auto;
+    }
+    .page-grid {
+      gap: 12px;
+    }
+    .content-section {
+      padding: 14px;
+    }
+    .metric-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .metric {
+      min-height: 92px;
+      padding: 12px;
+    }
+    .metric strong {
+      font-size: 22px;
+      overflow-wrap: anywhere;
+    }
+    .branch-grid,
+    .cart-layout,
+    .user-profile-grid,
+    .workspace-access-grid,
+    .patient-profile-edit {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .patient-profile-actions {
+      justify-items: start;
+    }
+    .app-shell :is(.pos-product-grid, .received-stock-summary) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .pos-quick-heading,
+    .line-card-heading {
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .pos-appbar-left,
+    .pos-appbar-right {
+      flex-direction: row;
+      align-items: center;
+      flex-wrap: wrap;
+      width: 100%;
+    }
+    .pos-appbar-right {
+      justify-content: space-between;
+    }
+    .pos-branch-meta {
+      flex-basis: 100%;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      letter-spacing: 0;
+    }
+    .pos-cart-lines {
+      min-height: 0;
+    }
+    .pos-payment-block > div {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .pos-payment-block button {
+      gap: 4px;
+      font-size: 12px;
+    }
+    .continuity-status-select {
+      width: 100%;
+    }
+    .modal-backdrop,
+    .pos-modal-backdrop {
+      padding: 10px 10px max(10px, env(safe-area-inset-bottom));
+    }
+    .modal-panel,
+    .pos-modal-panel {
+      max-height: calc(100dvh - 20px - env(safe-area-inset-bottom));
+      overflow-y: auto;
+    }
+    .modal-panel > .section-heading,
+    .pos-modal-header {
+      flex-direction: row;
+      flex-wrap: nowrap;
+      align-items: flex-start;
+    }
+    .modal-panel > .section-heading > div,
+    .pos-modal-header > div {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .notice-overlay {
+      left: 12px;
+      right: 12px;
+      max-width: calc(100vw - 24px);
     }
   }
 }
