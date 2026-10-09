@@ -14,6 +14,8 @@
     --rx-surface: #fbfafb;
     --rx-border: #e9e1e4;
     --rx-focus-ring: rgb(130 23 44 / 35%);
+    --rx-whatsapp: #075e54;
+    --rx-whatsapp-deep: #05473f;
     --rx-shadow-card: 0 3px 12px rgb(71 22 32 / 4%);
     --rx-shadow-soft: 0 12px 32px rgb(71 22 32 / 7%);
   }
@@ -619,6 +621,129 @@
   .pos-patient-snapshot:hover {
     border-color: var(--rx-rose);
     box-shadow: none;
+  }
+  /* Brand interactions use burgundy in every state. Semantic stock/success
+     greens and WhatsApp identity remain distinct from the brand palette. */
+  .drawer-handle:hover,
+  .drawer-handle.is-open,
+  .drawer-handle.is-open:hover {
+    background: var(--rx-brand-deep);
+    border-color: var(--rx-rose);
+    box-shadow: 0 14px 28px rgb(71 22 32 / 20%),
+      0 0 0 4px rgb(130 23 44 / 13%);
+  }
+  .drawer-handle.is-open::before {
+    background: var(--rx-brand-deep);
+    border-color: var(--rx-rose);
+  }
+  .branch-menu button b,
+  .pos-product b,
+  .report-summary strong,
+  .assignment-strip > svg {
+    color: var(--rx-brand);
+  }
+  .continuity-dropdown,
+  .continuity-request-item footer button,
+  .continuity-request-item footer a {
+    background: white;
+    border-color: var(--rx-border);
+    color: var(--rx-brand);
+  }
+  .continuity-dropdown:hover,
+  .continuity-request-item footer button:hover,
+  .continuity-request-item footer a:hover,
+  .patient-profile-actions button:hover,
+  .patient-profile-edit button:not([type="submit"]):hover,
+  .patient-message-list button:hover,
+  .patient-reminder-list button:hover,
+  .password-control button:hover,
+  .tabs button:hover,
+  .segmented-control button:hover,
+  .report-mode-switch button:hover,
+  .quest-drag-handle:hover {
+    background: var(--rx-brand-soft);
+    border-color: var(--rx-rose);
+    color: var(--rx-brand);
+    box-shadow: none;
+    transform: none;
+  }
+  .patient-history-visit:hover,
+  .patient-history-visit.active {
+    background: var(--rx-brand-soft);
+    border-color: var(--rx-rose);
+  }
+  .patient-history-day,
+  .patient-history-visit,
+  .patient-profile-edit,
+  .continuity-card,
+  .continuity-request-item,
+  .branch-availability-list > div,
+  .pos-modal-filter,
+  .report-summary {
+    background: white;
+    border-color: var(--rx-border);
+  }
+  .continuity-brief {
+    background: white;
+  }
+  .continuity-meta-grid span {
+    background: var(--rx-brand-soft);
+    border-left-color: var(--rx-rose);
+  }
+  .segmented-control,
+  .report-mode-switch,
+  .access-request-box,
+  .receive-review-policy {
+    background: var(--rx-brand-soft);
+    border-color: var(--rx-border);
+  }
+  .receive-review-policy {
+    color: var(--rx-brand);
+  }
+  .segmented-control button.active,
+  .report-mode-switch button.active {
+    background: white;
+    color: var(--rx-brand);
+    box-shadow: var(--rx-shadow-card);
+  }
+  .patient-profile-actions button,
+  .patient-profile-edit button:not([type="submit"]),
+  .patient-message-list button,
+  .patient-reminder-list button {
+    border-color: var(--rx-border);
+    color: var(--rx-brand);
+  }
+  .app-shell a[href^="https://wa.me/"] {
+    background: var(--rx-whatsapp);
+    border-color: var(--rx-whatsapp);
+    color: white;
+  }
+  .app-shell a[href^="https://wa.me/"]:hover {
+    background: var(--rx-whatsapp-deep);
+    border-color: var(--rx-whatsapp-deep);
+  }
+  .pill {
+    background: #f4f1f2;
+  }
+  .pill.active {
+    background: var(--rx-brand-soft);
+    color: var(--rx-brand);
+  }
+  .supplier-card > svg,
+  .supplier-card a {
+    color: var(--rx-brand);
+  }
+  .form-success {
+    background: #edf8f1;
+  }
+  /* Focus rings also cover links, custom controls, and disclosure summaries. */
+  .app-shell :is(button, a, summary):focus-visible,
+  .login-screen :is(button, a):focus-visible {
+    outline: 3px solid var(--rx-focus-ring);
+    outline-offset: 3px;
+  }
+  .sidebar :is(button, a):focus-visible {
+    outline-color: var(--rx-rose);
   }
   @media (max-width: 1200px) {
     .topbar-profile-text {

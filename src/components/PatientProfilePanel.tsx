@@ -1,5 +1,6 @@
 import type { Dispatch, FormEvent, SetStateAction } from "react";
-import { ClipboardList, Smartphone } from "lucide-react";
+import { ClipboardList } from "lucide-react";
+import { WhatsAppIcon } from "./WhatsAppIcon";
 
 const money = new Intl.NumberFormat("en-NG", {
   style: "currency",
@@ -263,7 +264,7 @@ export function PatientProfilePanel({
                       target="_blank"
                       rel="noreferrer"
                     >
-                      <Smartphone size={14} /> WhatsApp
+                      <WhatsAppIcon size={14} /> WhatsApp
                     </a>
                   )}
                 </footer>

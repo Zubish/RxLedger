@@ -8266,7 +8266,7 @@ function POSView({
           <title>POS sales reconciliation</title>
           <style>
             body { color: #172024; font-family: Arial, sans-serif; margin: 32px; }
-            header { border-bottom: 2px solid #006b45; margin-bottom: 18px; padding-bottom: 12px; }
+            header { border-bottom: 2px solid #82172c; margin-bottom: 18px; padding-bottom: 12px; }
             h1 { margin: 0 0 8px; }
             article { border-bottom: 1px solid #d7e4e3; padding: 14px 0; }
             h3 { margin: 0 0 6px; }
