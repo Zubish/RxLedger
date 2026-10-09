@@ -1,234 +1,323 @@
-/* Dashboard-only palette; shared brand and status tokens remain unchanged. */
+/* Dashboard layout only. Shared palette lives in rxledger-theme.css. */
 @media screen {
-  .app-shell[data-view="dashboard"] {
-    --dashboard-brand: #82172c;
-    --dashboard-brand-dark: #671121;
-    --dashboard-brand-soft: #f8edf0;
-    --dashboard-rose: #e8bcc7;
-    --dashboard-border: #eee5e8;
-    --dashboard-ink: #231d20;
-    --dashboard-muted: #64575d;
-    background: #fbfaf9;
-    color: var(--dashboard-ink);
+  .dashboard-welcome {
+    color: var(--rx-muted);
+    font-size: 13px;
+    line-height: 1.5;
+    margin: 6px 0 0;
   }
-
-  .app-shell[data-view="dashboard"] .workspace {
+  .dashboard-page {
+    gap: 20px;
+  }
+  .dashboard-page .metric-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .dashboard-page .metric {
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    min-height: 146px;
+    padding: 16px;
+  }
+  .dashboard-page .metric > svg {
+    grid-column: 1;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+  }
+  .dashboard-page .metric.neutral > svg {
+    background: var(--rx-brand);
+    color: #ffffff;
+  }
+  .dashboard-page .metric > span {
+    grid-column: 2;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .dashboard-page .metric > strong {
+    grid-column: 1 / -1;
+    font-size: 26px;
+    overflow-wrap: anywhere;
+  }
+  .dashboard-page .metric > small {
+    grid-column: 1 / -1;
+    font-size: 11px;
+    color: var(--rx-muted);
+    line-height: 1.5;
+    align-self: start;
+  }
+  .dashboard-overview {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+  }
+  .dashboard-account {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .dashboard-alerts {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .dashboard-snapshot {
+    grid-column: 2;
+    grid-row: 1 / 3;
+  }
+  .dashboard-page .section-heading h2::after {
+    display: none;
+  }
+  .dashboard-page .section-heading {
+    margin-bottom: 16px;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .dashboard-page .section-heading h2 {
+    font-size: 17px;
+  }
+  .dashboard-page .section-heading p {
+    margin-top: 7px;
+    line-height: 1.55;
+  }
+  .dashboard-page .branch-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .dashboard-page .branch-card {
+    border: 0;
+    border-bottom: 1px solid var(--rx-border);
+    border-radius: 0;
+    background: transparent;
+    padding: 14px 0;
+    gap: 14px;
+  }
+  .dashboard-page .branch-card:last-child {
+    border-bottom: 0;
+  }
+  .dashboard-page .branch-card > svg {
+    background: var(--rx-brand-soft);
+    color: var(--rx-brand);
+    padding: 10px;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    flex-shrink: 0;
+  }
+  .dashboard-page .branch-card span {
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .dashboard-page .alert-list {
+    gap: 0;
+  }
+  .dashboard-page .alert-item {
+    border: 0;
+    border-bottom: 1px solid var(--rx-border);
+    border-radius: 0;
+    padding: 14px 0;
     background: transparent;
   }
-
-  .app-shell[data-view="dashboard"] .sidebar {
-    background: var(--dashboard-brand);
-    border-right-color: var(--dashboard-brand-dark);
-    box-shadow: 12px 0 32px rgb(71 22 32 / 8%);
-    color: #ffffff;
+  .dashboard-page .alert-item:last-child {
+    border-bottom: 0;
   }
-
-  .app-shell[data-view="dashboard"] .sidebar .brand-block,
-  .app-shell[data-view="dashboard"] .sidebar .user-panel {
-    border-color: rgb(255 255 255 / 22%);
+  .dashboard-page .alert-item > svg {
+    flex-shrink: 0;
   }
-
-  .app-shell[data-view="dashboard"] .sidebar .brand-block span,
-  .app-shell[data-view="dashboard"] .sidebar .user-panel span {
-    color: #f1d1d9;
+  .dashboard-page .alert-item span {
+    line-height: 1.55;
   }
-
-  .app-shell[data-view="dashboard"] .brand-mark {
-    background: #ffffff;
-    color: var(--dashboard-brand);
-    box-shadow: 0 4px 12px rgb(71 22 32 / 12%);
+  .dashboard-alerts-action {
+    margin-top: 16px;
   }
-
-  .app-shell[data-view="dashboard"] .nav-item {
-    color: #fae9ee;
+  .dashboard-page .assignment-strip {
+    padding: 18px 20px;
   }
-
-  .app-shell[data-view="dashboard"] .nav-item:hover {
-    background: rgb(255 255 255 / 9%);
-    border-color: rgb(255 255 255 / 18%);
+  .dashboard-page .assignment-strip > svg {
+    color: var(--rx-brand);
   }
-
-  .app-shell[data-view="dashboard"] .nav-item.active {
-    background: rgb(255 255 255 / 16%);
-    border-color: rgb(255 255 255 / 22%);
-    box-shadow: inset 3px 0 0 var(--dashboard-rose);
-    color: #ffffff;
+  .snapshot-scope,
+  .snapshot-empty {
+    color: var(--rx-muted);
+    font-size: 13px;
+    line-height: 1.5;
+    margin: 0 0 18px;
   }
-
-  .app-shell[data-view="dashboard"] .sidebar-security-button,
-  .app-shell[data-view="dashboard"] .sidebar-close-button {
-    background: rgb(255 255 255 / 9%);
-    border-color: rgb(255 255 255 / 22%);
-    color: #ffffff;
+  .snapshot-health {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 12px 0 28px;
   }
-
-  .app-shell[data-view="dashboard"] .sidebar-security-button:hover,
-  .app-shell[data-view="dashboard"] .sidebar-close-button:hover {
-    background: rgb(255 255 255 / 16%);
-    border-color: var(--dashboard-rose);
+  .snapshot-donut {
+    flex-shrink: 0;
+    width: 154px;
+    height: 154px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
   }
-
-  .app-shell[data-view="dashboard"] .sidebar-close-button::before {
-    background: var(--dashboard-rose);
+  .snapshot-donut > div {
+    background: white;
+    width: 112px;
+    height: 112px;
+    border-radius: 50%;
+    display: grid;
+    align-content: center;
+    text-align: center;
+    gap: 4px;
+    padding: 8px;
   }
-
-  .app-shell[data-view="dashboard"] .sidebar-close-button::after {
-    display: none;
+  .snapshot-donut strong {
+    font-size: 28px;
   }
-
-  .app-shell[data-view="dashboard"] .drawer-handle {
-    background: var(--dashboard-brand);
+  .snapshot-donut span {
+    font-size: 11px;
+    color: var(--rx-muted);
   }
-
-  .app-shell[data-view="dashboard"] .topbar {
-    background: #ffffff;
-    border-color: var(--dashboard-border);
-    box-shadow: 0 8px 24px rgb(71 22 32 / 5%);
-    backdrop-filter: none;
+  .snapshot-legend {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
   }
-
-  .app-shell[data-view="dashboard"] .topbar h1,
-  .app-shell[data-view="dashboard"] .section-heading h2 {
-    color: var(--dashboard-ink);
-    letter-spacing: 0;
+  .snapshot-legend > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: space-between;
+    padding: 13px 0;
+    border-bottom: 1px solid var(--rx-border);
+    font-size: 12px;
   }
-
-  .app-shell[data-view="dashboard"] .topbar .eyebrow,
-  .app-shell[data-view="dashboard"] .branch-switcher-trigger > svg {
-    color: var(--dashboard-brand);
+  .snapshot-legend > div:last-child {
+    border-bottom: 0;
   }
-
-  .app-shell[data-view="dashboard"] .branch-switcher-trigger,
-  .app-shell[data-view="dashboard"] .branch-menu {
-    border-color: var(--dashboard-border);
+  .snapshot-legend dt {
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
-
-  .app-shell[data-view="dashboard"] .branch-menu button:hover,
-  .app-shell[data-view="dashboard"] .branch-menu button.active {
-    background: var(--dashboard-brand-soft);
-    color: var(--dashboard-brand);
+  .snapshot-legend i {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
   }
-
-  .app-shell[data-view="dashboard"] .metric,
-  .app-shell[data-view="dashboard"] .content-section {
-    background: #ffffff;
-    border-color: var(--dashboard-border);
-    box-shadow: 0 8px 24px rgb(71 22 32 / 4%);
+  .snapshot-legend .healthy {
+    background: var(--rx-brand);
   }
-
-  .app-shell[data-view="dashboard"] .metric::after {
-    display: none;
+  .snapshot-legend .near-expiry {
+    background: var(--rx-amber);
   }
-
-  .app-shell[data-view="dashboard"] .metric.neutral svg {
-    background: var(--dashboard-brand-soft);
-    color: var(--dashboard-brand);
+  .snapshot-legend .expired {
+    background: #ad322b;
   }
-
-  .app-shell[data-view="dashboard"] .metric span,
-  .app-shell[data-view="dashboard"] .section-heading p,
-  .app-shell[data-view="dashboard"] .branch-card span {
-    color: var(--dashboard-muted);
+  .snapshot-legend dd {
+    margin: 0;
+    font-weight: 700;
   }
-
-  .app-shell[data-view="dashboard"] .metric.neutral strong {
-    color: var(--dashboard-ink);
+  .snapshot-legend dd span {
+    color: var(--rx-muted);
+    font-weight: 400;
   }
-
-  /* The third summary tile is stock value, a neutral business metric. */
-  .app-shell[data-view="dashboard"] .metric.neutral:nth-child(3) {
-    background: var(--dashboard-brand);
-    border-color: var(--dashboard-brand);
+  .snapshot-branch-values {
+    border-top: 1px solid var(--rx-border);
+    padding-top: 22px;
   }
-
-  .app-shell[data-view="dashboard"] .metric.neutral:nth-child(3) svg {
-    background: rgb(255 255 255 / 15%);
-    color: #ffffff;
+  .snapshot-branch-values h3 {
+    margin: 0;
+    font-size: 16px;
   }
-
-  .app-shell[data-view="dashboard"] .metric.neutral:nth-child(3) span {
-    color: #fae9ee;
+  .snapshot-branch-values > p {
+    margin: 7px 0 20px;
+    color: var(--rx-muted);
+    font-size: 12px;
+    line-height: 1.5;
   }
-
-  .app-shell[data-view="dashboard"] .metric.neutral:nth-child(3) strong {
-    color: #ffffff;
+  .snapshot-value-row {
+    margin-bottom: 22px;
   }
-
-  .app-shell[data-view="dashboard"] .metric.warning svg {
-    background: #fff4df;
+  .snapshot-value-row > div:first-child {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 9px;
+    font-size: 13px;
   }
-
-  .app-shell[data-view="dashboard"] .metric.danger svg {
-    background: #fff0ee;
+  .snapshot-value-row span {
+    overflow-wrap: anywhere;
   }
-
-  .app-shell[data-view="dashboard"] .metric.good svg {
-    background: #edf8f1;
+  .snapshot-value-row strong {
+    flex-shrink: 0;
+    font-size: 12px;
   }
-
-  .app-shell[data-view="dashboard"] .section-heading h2::after {
-    background: var(--dashboard-brand);
+  .snapshot-value-track {
+    height: 7px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: var(--rx-brand-soft);
   }
-
-  .app-shell[data-view="dashboard"] .branch-card,
-  .app-shell[data-view="dashboard"] .alert-item,
-  .app-shell[data-view="dashboard"] .table-wrap {
-    border-color: var(--dashboard-border);
-    box-shadow: none;
+  .snapshot-value-track span {
+    display: block;
+    height: 100%;
+    background: var(--rx-brand);
+    border-radius: 4px;
   }
-
-  .app-shell[data-view="dashboard"] .branch-card {
-    background: #fdfafb;
+  @media (max-width: 1350px) {
+    .dashboard-page .metric-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .snapshot-health {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .snapshot-donut {
+      align-self: center;
+    }
   }
-
-  .app-shell[data-view="dashboard"] .branch-card > svg {
-    color: var(--dashboard-brand);
+  @media (max-width: 1000px) {
+    .dashboard-overview {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .dashboard-account,
+    .dashboard-alerts,
+    .dashboard-snapshot {
+      grid-column: auto;
+      grid-row: auto;
+    }
+    .snapshot-health {
+      flex-direction: row;
+      align-items: center;
+    }
   }
-
-  .app-shell[data-view="dashboard"] .branch-card:hover,
-  .app-shell[data-view="dashboard"] .alert-item:hover {
-    border-color: var(--dashboard-rose);
-  }
-
-  .app-shell[data-view="dashboard"] .section-heading > .pill.active {
-    background: var(--dashboard-brand-soft);
-    color: var(--dashboard-brand);
-  }
-
-  .app-shell[data-view="dashboard"] .table-wrap thead th {
-    background: var(--dashboard-brand-soft);
-    color: var(--dashboard-ink);
-  }
-
-  .app-shell[data-view="dashboard"] tbody tr:hover {
-    background: #fdfafb;
-  }
-
-  .app-shell[data-view="dashboard"] .ghost-button {
-    background: #ffffff;
-    border-color: var(--dashboard-border);
-    color: var(--dashboard-brand);
-  }
-
-  .app-shell[data-view="dashboard"] .ghost-button:hover {
-    background: var(--dashboard-brand-soft);
-    border-color: var(--dashboard-rose);
-  }
-
-  .app-shell[data-view="dashboard"] .primary-button {
-    background: var(--dashboard-brand);
-    box-shadow: 0 6px 16px rgb(130 23 44 / 14%);
-  }
-
-  .app-shell[data-view="dashboard"] .primary-button:hover {
-    background: var(--dashboard-brand-dark);
-  }
-
-  .app-shell[data-view="dashboard"] .workspace button:focus-visible {
-    outline-color: var(--dashboard-brand);
-  }
-
-  .app-shell[data-view="dashboard"] .sidebar button:focus-visible {
-    outline-color: var(--dashboard-rose);
+  @media (max-width: 600px) {
+    .dashboard-page .metric-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .dashboard-page .metric {
+      padding: 12px;
+      gap: 8px;
+      min-height: 142px;
+    }
+    .dashboard-page .metric > strong {
+      font-size: 23px;
+    }
+    .dashboard-page .section-heading > .pill {
+      max-width: 100%;
+      white-space: normal;
+    }
+    .snapshot-health {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 12px;
+    }
+    .snapshot-donut {
+      width: 144px;
+      height: 144px;
+    }
   }
 }

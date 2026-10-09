@@ -1,0 +1,542 @@
+/* Shared screen palette. Warning, danger, success and print colours remain semantic. */
+@media screen {
+  :root {
+    --rx-brand: #82172c;
+    --rx-brand-deep: #671121;
+    --rx-brand-soft: #f8edf0;
+    --rx-rose: #e8bcc7;
+    --rx-purple: var(--rx-brand);
+    --rx-purple-deep: var(--rx-brand-deep);
+    --rx-cyan: var(--rx-brand);
+    --rx-cyan-soft: var(--rx-brand-soft);
+    --rx-ink: #231d20;
+    --rx-muted: #64575d;
+    --rx-surface: #fbfafb;
+    --rx-border: #e9e1e4;
+    --rx-focus-ring: rgb(130 23 44 / 35%);
+    --rx-shadow-card: 0 3px 12px rgb(71 22 32 / 4%);
+    --rx-shadow-soft: 0 12px 32px rgb(71 22 32 / 7%);
+  }
+  .app-shell,
+  .login-screen {
+    background: var(--rx-surface);
+    color: var(--rx-ink);
+  }
+  .workspace {
+    background: transparent;
+  }
+  .sidebar {
+    background: var(--rx-brand);
+    border-right-color: var(--rx-brand-deep);
+    box-shadow: none;
+    color: white;
+  }
+  .sidebar .brand-block,
+  .sidebar .user-panel {
+    border-color: rgb(255 255 255 / 22%);
+  }
+  .sidebar .brand-block span,
+  .sidebar .user-panel span {
+    color: #f1d1d9;
+  }
+  .brand-mark {
+    background: var(--rx-brand);
+    color: white;
+    box-shadow: none;
+    border-radius: 8px;
+  }
+  .sidebar .brand-mark {
+    background: white;
+    color: var(--rx-brand);
+  }
+  .nav-item {
+    color: #fae9ee;
+    border-radius: 8px;
+  }
+  .nav-badge {
+    background: white;
+    color: var(--rx-brand);
+  }
+  .nav-item:hover {
+    background: rgb(255 255 255 / 9%);
+    border-color: rgb(255 255 255 / 18%);
+    transform: none;
+  }
+  .nav-item.active {
+    background: rgb(255 255 255 / 16%);
+    border-color: rgb(255 255 255 / 22%);
+    box-shadow: inset 3px 0 0 var(--rx-rose);
+    color: white;
+  }
+  .sidebar-security-button,
+  .sidebar-close-button {
+    background: rgb(255 255 255 / 9%);
+    border-color: rgb(255 255 255 / 22%);
+    box-shadow: none;
+    color: white;
+  }
+  .sidebar-security-button:hover,
+  .sidebar-close-button:hover {
+    background: rgb(255 255 255 / 16%);
+    border-color: var(--rx-rose);
+    box-shadow: none;
+  }
+  .sidebar-close-button::before {
+    background: var(--rx-rose);
+  }
+  .sidebar-close-button::after {
+    display: none;
+  }
+  .sidebar button:focus-visible {
+    outline-color: var(--rx-rose);
+  }
+  .drawer-handle {
+    background: var(--rx-brand);
+  }
+  .topbar {
+    background: white;
+    border-color: var(--rx-border);
+    border-radius: 8px;
+    box-shadow: var(--rx-shadow-card);
+    backdrop-filter: none;
+    gap: 16px;
+  }
+  .topbar h1,
+  .login-panel h1,
+  .section-heading h2 {
+    color: var(--rx-ink);
+    letter-spacing: 0;
+  }
+  .app-shell h1,
+  .app-shell h2,
+  .app-shell h3 {
+    font-weight: 650;
+  }
+  .eyebrow,
+  .topbar .eyebrow,
+  .branch-switcher-trigger > svg {
+    color: var(--rx-brand);
+    letter-spacing: 0;
+  }
+  .branch-switcher-trigger,
+  .branch-menu {
+    border-color: var(--rx-border);
+  }
+  .branch-menu button:hover,
+  .branch-menu button.active {
+    background: var(--rx-brand-soft);
+    color: var(--rx-brand);
+  }
+  .topbar-actions {
+    gap: 12px;
+  }
+  .topbar-notifications,
+  .topbar-profile {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: white;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    min-height: 44px;
+    cursor: pointer;
+    color: var(--rx-ink);
+    font: inherit;
+  }
+  .topbar-notifications {
+    width: 44px;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .topbar-notifications:hover,
+  .topbar-profile:hover {
+    background: var(--rx-brand-soft);
+    border-color: var(--rx-border);
+  }
+  .topbar-notification-count {
+    position: absolute;
+    top: 0;
+    right: 0;
+    background: var(--rx-brand);
+    color: white;
+    border-radius: 12px;
+    padding: 2px 5px;
+    min-width: 18px;
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .topbar-profile {
+    gap: 9px;
+    padding: 5px 8px;
+    min-width: 0;
+  }
+  .topbar-avatar {
+    background: var(--rx-brand);
+    color: white;
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  .topbar-profile-text {
+    display: grid;
+    gap: 3px;
+    text-align: left;
+    max-width: 170px;
+  }
+  .topbar-profile-text strong {
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+  .topbar-profile-text small {
+    font-size: 11px;
+    color: var(--rx-muted);
+  }
+  .metric,
+  .content-section,
+  .login-panel,
+  .workspace-finder,
+  .workspace-confirmation {
+    background: white;
+    border-color: var(--rx-border);
+    border-radius: 8px;
+    box-shadow: var(--rx-shadow-card);
+  }
+  .metric::after {
+    display: none;
+  }
+  .metric.neutral svg {
+    background: var(--rx-brand-soft);
+    color: var(--rx-brand);
+  }
+  .metric span,
+  .section-heading p,
+  .branch-card span {
+    color: var(--rx-muted);
+  }
+  .metric strong {
+    font-size: 28px;
+  }
+  .metric.warning svg {
+    background: #fff4df;
+  }
+  .metric.danger svg {
+    background: #fff0ee;
+  }
+  .metric.good svg {
+    background: #edf8f1;
+  }
+  .section-heading h2::after {
+    background: var(--rx-brand);
+  }
+  .alert-item,
+  .audit-item,
+  .supplier-card,
+  .branch-card,
+  .line-card,
+  .cart-item,
+  .patient-list-item,
+  .patient-timeline article,
+  .patient-message-list article,
+  .patient-reminder-list article,
+  .pending-medication-card,
+  .notification-item,
+  .pos-catalog-card,
+  .pos-line-item,
+  .pos-draft-item,
+  .user-profile-card,
+  .workspace-access-card,
+  .copy-value-card,
+  .patient-profile-panel,
+  .patient-timeline,
+  .patient-message-list,
+  .patient-reminder-list,
+  .patient-care-queue,
+  .pos-sale-cart,
+  .pos-customer-panel,
+  .pos-total-panel,
+  .pos-catalog-panel {
+    border-color: var(--rx-border);
+    border-radius: 8px;
+    box-shadow: none;
+  }
+  .alert-item:hover,
+  .supplier-card:hover,
+  .branch-card:hover,
+  .patient-list-item:hover,
+  .notification-item:hover,
+  .pos-catalog-card:hover {
+    border-color: var(--rx-rose);
+    box-shadow: none;
+    transform: none;
+  }
+  .branch-card > svg {
+    color: var(--rx-brand);
+  }
+  .branch-card.selected,
+  .patient-list-item.active {
+    background: var(--rx-brand-soft);
+    border-color: var(--rx-rose);
+  }
+  .table-wrap {
+    border-color: var(--rx-border);
+    border-radius: 8px;
+  }
+  th {
+    background: var(--rx-brand-soft);
+    color: var(--rx-ink);
+    letter-spacing: 0;
+  }
+  td {
+    border-color: var(--rx-border);
+  }
+  tbody tr:hover {
+    background: #fdf8fa;
+  }
+  input,
+  select,
+  textarea {
+    accent-color: var(--rx-brand);
+    border-color: var(--rx-border);
+    border-radius: 8px;
+  }
+  input:focus,
+  select:focus,
+  textarea:focus {
+    border-color: var(--rx-brand);
+    box-shadow: 0 0 0 3px rgb(130 23 44 / 10%);
+  }
+  .primary-button,
+  .ghost-button,
+  .file-button,
+  .icon-button,
+  .tabs button,
+  .pos-action-row button {
+    border-radius: 8px;
+  }
+  .primary-button {
+    background: var(--rx-brand);
+    color: white;
+    box-shadow: none;
+  }
+  .primary-button:hover {
+    background: var(--rx-brand-deep);
+    box-shadow: none;
+    transform: none;
+  }
+  .ghost-button {
+    background: white;
+    color: var(--rx-brand);
+    border-color: var(--rx-border);
+  }
+  .ghost-button:hover,
+  .file-button:hover,
+  .icon-button:hover {
+    background: var(--rx-brand-soft);
+    border-color: var(--rx-rose);
+    color: var(--rx-brand);
+    box-shadow: none;
+    transform: none;
+  }
+  .file-button,
+  .icon-button {
+    background: var(--rx-brand-soft);
+    color: var(--rx-brand);
+  }
+  .tabs button.active {
+    color: var(--rx-brand);
+    border-bottom-color: var(--rx-brand);
+  }
+  .segmented-control button.active,
+  .report-mode-switch button.active {
+    color: var(--rx-brand);
+  }
+  .workspace-finder,
+  .workspace-confirmation {
+    background: white;
+  }
+  .workspace-loading-company,
+  .chat-message.mine {
+    background: var(--rx-brand-soft);
+    border-color: var(--rx-border);
+  }
+  .company-selector,
+  .subscription-plan-boundary,
+  .switch-row {
+    background: var(--rx-brand-soft);
+    border-color: var(--rx-border);
+  }
+  .switch-row,
+  .value-summary,
+  .value-summary strong {
+    color: var(--rx-brand);
+  }
+  .value-summary {
+    background: var(--rx-brand-soft);
+    border-color: var(--rx-border);
+  }
+  .loading-spinner {
+    border-top-color: var(--rx-brand);
+  }
+  .user-profile-header > svg {
+    color: var(--rx-brand);
+    background: var(--rx-brand-soft);
+  }
+  .empty-state {
+    background: #faf7f8;
+    border-color: var(--rx-border);
+    color: var(--rx-muted);
+  }
+  .search-box > svg,
+  .scan-field svg {
+    color: var(--rx-brand);
+  }
+  .dashboard-account .pill.active {
+    background: var(--rx-brand-soft);
+    color: var(--rx-brand);
+  }
+  .pos-cart-header {
+    background: var(--rx-brand-soft);
+  }
+  .pos-title-icon,
+  .pos-draft-pill b,
+  .pos-category-row button.active,
+  .pos-counseling-chips button.active,
+  .pos-payment-block button.active,
+  .pos-action-row button.complete,
+  .pos-period-filter button,
+  .pos-draft-item button:first-child,
+  .patient-profile-edit button[type="submit"] {
+    background: var(--rx-brand);
+    border-color: var(--rx-brand);
+    color: white;
+    box-shadow: none;
+  }
+  .pos-action-row button.complete:hover:not(:disabled) {
+    background: var(--rx-brand-deep);
+  }
+  .pos-icon-button,
+  .pos-branch-options button,
+  .pos-draft-pill,
+  .pos-counseling-chips button,
+  .settings-chip-preview span,
+  .pos-followup-suggestion button,
+  .pos-patient-snapshot strong,
+  .pos-modal-kicker,
+  .pos-modal-filter span,
+  .pos-payment-summary strong,
+  .patient-profile-actions strong,
+  .received-stock-list .line-card b,
+  .branch-availability-list svg,
+  .branch-availability-list a,
+  .requisition-detail-grid span,
+  .quest-drag-handle {
+    color: var(--rx-brand);
+    letter-spacing: 0;
+  }
+  .pos-icon-button,
+  .pos-branch-options button,
+  .pos-draft-pill,
+  .pos-counseling-chips button,
+  .settings-chip-preview span {
+    border-color: var(--rx-border);
+  }
+  .pos-line-avatar,
+  .pos-followup-suggestion,
+  .pos-patient-snapshot,
+  .pos-counseling-chips button:not(.active),
+  .settings-chip-preview span {
+    background: var(--rx-brand-soft);
+    border-color: var(--rx-border);
+  }
+  .pos-line-avatar {
+    color: var(--rx-brand);
+  }
+  .pos-icon-button:hover,
+  .pos-draft-pill:hover,
+  .pos-patient-suggestions button:hover,
+  .patient-list-item:hover {
+    background: var(--rx-brand-soft);
+    border-color: var(--rx-rose);
+  }
+  .pos-total-panel {
+    background: #2e1a21;
+  }
+  .pos-total-panel span {
+    color: #eddde3;
+    letter-spacing: 0;
+  }
+  .pos-total-panel section > div:first-child strong {
+    letter-spacing: 0;
+  }
+  .pos-time-pill {
+    background: var(--rx-brand-soft);
+    color: var(--rx-brand);
+    letter-spacing: 0;
+  }
+  .pending-medication-card .ghost-button {
+    color: var(--rx-brand);
+  }
+  .quest-progress span {
+    background: var(--rx-brand);
+  }
+  .requisition-summary-card:hover,
+  .requisition-open-row:hover,
+  .pos-product:hover,
+  .pos-scan-button:hover,
+  .pos-back-button:hover,
+  .pos-patient-snapshot:hover {
+    border-color: var(--rx-rose);
+    box-shadow: none;
+  }
+  @media (max-width: 1200px) {
+    .topbar-profile-text {
+      display: none;
+    }
+  }
+  @media (max-width: 760px) {
+    .topbar-actions {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 44px 44px;
+      width: 100%;
+      gap: 8px;
+    }
+    .topbar-actions .branch-switcher {
+      grid-column: 1 / -1;
+      min-width: 0;
+    }
+    .topbar-actions > .ghost-button {
+      width: auto;
+      grid-column: 1;
+    }
+    .topbar-actions .topbar-notifications {
+      width: 44px;
+      grid-column: 2;
+    }
+    .topbar-actions .topbar-profile {
+      width: 44px;
+      grid-column: 3;
+    }
+    .topbar-actions .branch-switcher-trigger {
+      width: 100%;
+      min-width: 0;
+    }
+    .branch-trigger-text {
+      min-width: 0;
+    }
+    .branch-trigger-text strong,
+    .branch-trigger-text small {
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+    .topbar-profile {
+      padding: 4px;
+    }
+    .topbar-profile > svg {
+      display: none;
+    }
+  }
+}

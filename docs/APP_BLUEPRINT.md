@@ -147,8 +147,9 @@ Before adding a new `max-height` or `overflow`, prefer these variables and check
 - Authenticated pages should be dense but readable: smaller headings inside cards, clear hierarchy, restrained decoration.
 - Use lucide icons for actions and navigation.
 - Use cards for repeated items, modals, and framed tools. Do not put cards inside cards unless the inner item is a genuine repeated record.
-- Avoid one-hue pages. RxLedger uses green as the operational anchor with cyan/purple/amber as accents, but pages should not become a single-color wash.
-- The landing page and Dashboard use Rai's burgundy (`#82172C`), dark wine (`#671121`), and soft rose (`#F8EDF0`) with white surfaces. Landing tokens stay inside `.rxledger-landing`; dashboard styles live in `src/dashboard-burgundy.css` and require `.app-shell[data-view="dashboard"]`. Shared navigation returns to its original palette on other pages. Preserve semantic warning, expiry, and healthy-stock colours, global tokens, and print styles.
+- Use Rai's burgundy (`#82172C`), dark wine (`#671121`), and soft rose (`#F8EDF0`) for brand/navigation/action accents throughout RxLedger, balanced by white surfaces and readable neutral text. Shared screen tokens and component styling live in `src/rxledger-theme.css`; preserve semantic warning, expiry, success and healthy-stock colours and existing print styles. No frosted glass or additional animation is required.
+- The landing page keeps its existing design and scoped tokens. Dashboard layout lives in `src/dashboard-burgundy.css`: compact summary cards, branch context, branch overview and operational alerts alongside a current inventory snapshot. `DashboardInventorySnapshot` is read-only and uses only already-permitted dashboard stock rows and branch summaries. Batch health categories are mutually exclusive and exclude zero-stock batches. Branch value bars show current cost value, not a fabricated historical trend. Existing metric calculations, alert details, FEFO table and role/branch rules remain unchanged.
+- Shared header notification and profile controls lead to existing Notifications and Settings pages. They do not introduce new permission or data-loading paths.
 - Text must fit its container on mobile and desktop.
 - Buttons should describe concrete actions. Icon buttons need titles or accessible labels.
 

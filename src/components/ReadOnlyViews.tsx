@@ -39,11 +39,13 @@ export function Metric({
   icon: Icon,
   label,
   value,
+  description,
   tone = "neutral",
 }: {
   icon: LucideIcon;
   label: string;
   value: string | number;
+  description?: string;
   tone?: "neutral" | "warning" | "danger" | "good";
 }) {
   return (
@@ -51,6 +53,7 @@ export function Metric({
       <Icon size={21} />
       <span>{label}</span>
       <strong>{value}</strong>
+      {description && <small>{description}</small>}
     </div>
   );
 }

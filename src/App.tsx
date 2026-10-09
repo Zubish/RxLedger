@@ -15,6 +15,7 @@ import {
   Building2,
   Calculator,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
@@ -102,6 +103,7 @@ import {
 } from "./components/ReadOnlyViews";
 import { QuestCoach as QuestCoachCard } from "./components/QuestCoach";
 import { ReportsPanel } from "./components/ReportsPanel";
+import { DashboardInventorySnapshot } from "./components/DashboardInventorySnapshot";
 import RxLedgerLanding from "./RxLedgerLanding";
 import {
   planById,
@@ -111,6 +113,7 @@ import {
   type SubscriptionPlanId,
 } from "./subscriptionPlans";
 import "./App.css";
+import "./rxledger-theme.css";
 import "./dashboard-burgundy.css";
 
 const SIDEBAR_WIDTH = 280;
@@ -3447,6 +3450,11 @@ function App() {
             <div>
               <span className="eyebrow">{db.settings.accountName}</span>
               <h1>{views.find((view) => view.id === activeView)?.label}</h1>
+              {activeView === "dashboard" && (
+                <p className="dashboard-welcome">
+                  Welcome back, {currentUser.name}. Here is your inventory today.
+                </p>
+              )}
             </div>
           </div>
           <div className="topbar-actions">
@@ -3469,6 +3477,7 @@ function App() {
                           : `Assigned: ${assignedBranch?.name ?? "None"}`}
                     </small>
                   </span>
+                  <ChevronDown size={16} aria-hidden="true" />
                 </button>
                 {branchMenuOpen && (
                   <div className="branch-menu">
@@ -3503,17 +3512,41 @@ function App() {
                 {pendingAdminTasks} pending
               </button>
             )}
-            {notifications.length > 0 && (
-              <button
-                className="ghost-button"
-                type="button"
-                onClick={() => navigate("notifications")}
-              >
-                <Bell size={16} />
-                {notifications.length} notification
-                {notifications.length > 1 ? "s" : ""}
-              </button>
-            )}
+            <button
+              className="topbar-notifications"
+              type="button"
+              onClick={() => navigate("notifications")}
+              aria-label={`Notifications, ${notifications.length} active`}
+              title="Notifications"
+            >
+              <Bell size={19} aria-hidden="true" />
+              {notifications.length > 0 && (
+                <span className="topbar-notification-count">{notifications.length}</span>
+              )}
+            </button>
+            <button
+              className="topbar-profile"
+              type="button"
+              onClick={() => navigate("settings")}
+              aria-label="Open your profile and settings"
+              title="Your profile and settings"
+            >
+              <span className="topbar-avatar" aria-hidden="true">
+                {currentUser.name
+                  .trim()
+                  .split(/\s+/)
+                  .slice(0, 2)
+                  .map((part) => part[0])
+                  .join("")}
+              </span>
+              <span className="topbar-profile-text">
+                <strong>{currentUser.name}</strong>
+                <small>
+                  {getUserHomeRoleLabel(db, currentUser, assignedBranch?.id)}
+                </small>
+              </span>
+              <ChevronDown size={15} aria-hidden="true" />
+            </button>
           </div>
         </header>
 
@@ -3836,17 +3869,19 @@ function Dashboard({
   });
 
   return (
-    <div className="page-grid">
+    <div className="page-grid dashboard-page">
       <section className="metric-grid">
         <Metric
           icon={Boxes}
           label="Active SKUs"
           value={compactNumber(activeSkuCount)}
+          description="Active medicine SKUs"
         />
         <Metric
           icon={Building2}
           label="Active branches"
           value={compactNumber(activeBranches.length)}
+          description="Branches in your scope"
         />
         <Metric
           icon={Archive}
@@ -3856,23 +3891,27 @@ function Dashboard({
               : `${activeBranch?.code || "Branch"} stock value at cost`
           }
           value={compactMoney(costValue)}
+          description="Inventory value at cost"
         />
         <Metric
           icon={AlertTriangle}
           label="Low stock items"
           value={compactNumber(lowStock.length)}
           tone={lowStock.length ? "warning" : "good"}
+          description="At or below reorder level"
         />
         <Metric
           icon={XCircle}
           label="Expired batches"
           value={compactNumber(expired.length)}
           tone={expired.length ? "danger" : "good"}
+          description="Require immediate attention"
         />
         <Metric
           icon={Activity}
           label="Movements today"
           value={compactNumber(todayMovements)}
+          description="Recorded stock movements"
         />
       </section>
 
@@ -3894,124 +3933,144 @@ function Dashboard({
         </section>
       )}
 
-      <section className="content-section">
-        <div className="section-heading">
-          <div>
-            <h2>Main Account Overview</h2>
-            <p>
-              Company-level view across branches/sites. Stock remains held by
-              branches.
-            </p>
+      <div className="dashboard-overview">
+        <section className="content-section dashboard-account">
+          <div className="section-heading">
+            <div>
+              <h2>Main Account Overview</h2>
+              <p>
+                Company-level view across branches/sites. Stock remains held by
+                branches.
+              </p>
+            </div>
+            <span className="pill active">{db.settings.accountName}</span>
           </div>
-          <span className="pill active">{db.settings.accountName}</span>
-        </div>
-        <div className="branch-grid dashboard-scroll-list">
-          {branchSummaries.map(
-            ({
-              branch,
-              branchStockValue,
-              branchExpired,
-              branchNearExpiry,
-              branchSkuCount,
-            }) => (
-              <article className="branch-card" key={branch.id}>
-                <Building2 size={19} />
-                <div>
-                  <strong>{branch.name}</strong>
-                  <span>{branch.code}</span>
-                  <span>
-                    {branchSkuCount} stocked SKU
-                    {branchSkuCount === 1 ? "" : "s"} /{" "}
-                    {compactMoney(branchStockValue)}
-                  </span>
-                  <span>
-                    {branchNearExpiry} near expiry / {branchExpired} expired
-                  </span>
-                </div>
-              </article>
-            ),
-          )}
-        </div>
-      </section>
+          <div className="branch-grid dashboard-scroll-list">
+            {branchSummaries.map(
+              ({
+                branch,
+                branchStockValue,
+                branchExpired,
+                branchNearExpiry,
+                branchSkuCount,
+              }) => (
+                <article className="branch-card" key={branch.id}>
+                  <Building2 size={19} />
+                  <div>
+                    <strong>{branch.name}</strong>
+                    <span>{branch.code}</span>
+                    <span>
+                      {branchSkuCount} stocked SKU
+                      {branchSkuCount === 1 ? "" : "s"} /{" "}
+                      {compactMoney(branchStockValue)}
+                    </span>
+                    <span>
+                      {branchNearExpiry} near expiry / {branchExpired} expired
+                    </span>
+                  </div>
+                </article>
+              ),
+            )}
+          </div>
+        </section>
 
-      <section className="content-section">
-        <div className="section-heading">
-          <div>
-            <h2>Operational Alerts</h2>
-            <p>
-              {activeBranch
-                ? `${activeBranch.name} alerts based on current branch scope.`
-                : "Low stock, expiry risk, expired inventory, and access approvals."}
-            </p>
+        <section className="content-section dashboard-alerts">
+          <div className="section-heading">
+            <div>
+              <h2>Operational Alerts</h2>
+              <p>
+                {activeBranch
+                  ? `${activeBranch.name} alerts based on current branch scope.`
+                  : "Low stock, expiry risk, expired inventory, and access approvals."}
+              </p>
+            </div>
+            <button
+              className="ghost-button"
+              type="button"
+              onClick={() => setActiveView("reports")}
+            >
+              <FileText size={16} />
+              Reports
+            </button>
           </div>
-          <button
-            className="ghost-button"
-            type="button"
-            onClick={() => setActiveView("reports")}
-          >
-            <FileText size={16} />
-            Reports
-          </button>
-        </div>
-        <div className="alert-list dashboard-scroll-list">
-          {pendingUsers > 0 && (
-            <AlertItem
-              tone="warning"
-              title={`${pendingUsers} staff access request${pendingUsers > 1 ? "s" : ""} pending`}
-              detail="An admin should approve users and assign the correct role before they can sign in."
-            />
-          )}
-          {expired.map((row) => (
-            <AlertItem
-              key={row.batch.id}
-              tone="danger"
-              title={
-                <MedicineIdentity
-                  medicine={row.medicine}
-                  meta={medicineMeta(row.medicine)}
-                />
-              }
-              detail={`Expired batch ${row.batch.batchNumber} has ${medicineStockLabel(row.medicine, row.quantity)} in ${row.batch.location}`}
-            />
-          ))}
-          {nearExpiry.slice(0, 5).map((row) => (
-            <AlertItem
-              key={row.batch.id}
-              tone="warning"
-              title={
-                <MedicineIdentity
-                  medicine={row.medicine}
-                  meta={medicineMeta(row.medicine)}
-                />
-              }
-              detail={`Batch ${row.batch.batchNumber} expires in ${row.daysToExpiry} days. ${medicineStockLabel(row.medicine, row.quantity)} available`}
-            />
-          ))}
-          {lowStock.map((medicine) => (
-            <AlertItem
-              key={medicine.id}
-              tone="info"
-              title={
-                <MedicineIdentity
-                  medicine={medicine}
-                  meta={medicineMeta(medicine)}
-                />
-              }
-              detail={`At or below reorder level. Available: ${medicineStockLabel(medicine, alertStockTotals.get(medicine.id) ?? 0)}. Reorder level: ${medicineStockLabel(medicine, medicine.reorderLevel)}`}
-            />
-          ))}
-          {!pendingUsers &&
-            !expired.length &&
-            !nearExpiry.length &&
-            !lowStock.length && (
+          <div className="alert-list dashboard-scroll-list">
+            {pendingUsers > 0 && (
               <AlertItem
-                tone="good"
-                title="No active inventory alerts"
-                detail="Stock levels, expiry windows, and access approvals are currently clear."
+                tone="warning"
+                title={`${pendingUsers} staff access request${pendingUsers > 1 ? "s" : ""} pending`}
+                detail="An admin should approve users and assign the correct role before they can sign in."
               />
             )}
-        </div>
-      </section>
+            {expired.map((row) => (
+              <AlertItem
+                key={row.batch.id}
+                tone="danger"
+                title={
+                  <MedicineIdentity
+                    medicine={row.medicine}
+                    meta={medicineMeta(row.medicine)}
+                  />
+                }
+                detail={`Expired batch ${row.batch.batchNumber} has ${medicineStockLabel(row.medicine, row.quantity)} in ${row.batch.location}`}
+              />
+            ))}
+            {nearExpiry.slice(0, 5).map((row) => (
+              <AlertItem
+                key={row.batch.id}
+                tone="warning"
+                title={
+                  <MedicineIdentity
+                    medicine={row.medicine}
+                    meta={medicineMeta(row.medicine)}
+                  />
+                }
+                detail={`Batch ${row.batch.batchNumber} expires in ${row.daysToExpiry} days. ${medicineStockLabel(row.medicine, row.quantity)} available`}
+              />
+            ))}
+            {lowStock.map((medicine) => (
+              <AlertItem
+                key={medicine.id}
+                tone="info"
+                title={
+                  <MedicineIdentity
+                    medicine={medicine}
+                    meta={medicineMeta(medicine)}
+                  />
+                }
+                detail={`At or below reorder level. Available: ${medicineStockLabel(medicine, alertStockTotals.get(medicine.id) ?? 0)}. Reorder level: ${medicineStockLabel(medicine, medicine.reorderLevel)}`}
+              />
+            ))}
+            {!pendingUsers &&
+              !expired.length &&
+              !nearExpiry.length &&
+              !lowStock.length && (
+                <AlertItem
+                  tone="good"
+                  title="No active inventory alerts"
+                  detail="Stock levels, expiry windows, and access approvals are currently clear."
+                />
+              )}
+          </div>
+          <button
+            className="primary-button dashboard-alerts-action"
+            type="button"
+            onClick={() => setActiveView("notifications")}
+          >
+            <Bell size={16} /> View all alerts
+          </button>
+        </section>
+
+        <DashboardInventorySnapshot
+          rows={stockRows}
+          branches={branchSummaries.map(({ branch, branchStockValue }) => ({
+            id: branch.id,
+            name: branch.name,
+            value: branchStockValue,
+          }))}
+          formatMoney={compactMoney}
+          onViewReports={() => setActiveView("reports")}
+        />
+      </div>
 
       <section className="content-section">
         <div className="section-heading">
