@@ -1,0 +1,65 @@
+/* Progressive disclosure for the dashboard; the desktop overview stays complete. */
+.dashboard-mobile-navigation { display: none; }
+.dashboard-stock-section { display: contents; }
+
+@media screen and (max-width: 767px) {
+  .dashboard-mobile-navigation {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid var(--rx-border);
+    border-radius: 12px;
+    background: var(--rx-surface);
+  }
+  .dashboard-mobile-navigation button {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 0;
+    min-height: 44px;
+    padding: 8px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--rx-muted);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 650;
+    cursor: pointer;
+  }
+  .dashboard-mobile-navigation button[aria-pressed="true"] {
+    background: var(--rx-brand);
+    color: #fff;
+  }
+  .dashboard-mobile-navigation button:focus-visible {
+    outline: 2px solid var(--rx-brand);
+    outline-offset: 2px;
+  }
+  .dashboard-mobile-alert-count {
+    padding: 1px 5px;
+    border-radius: 20px;
+    background: var(--rx-rose);
+    color: var(--rx-brand);
+    font-size: 11px;
+  }
+  .dashboard-page .dashboard-overview > *,
+  .dashboard-page .dashboard-batch-section,
+  .dashboard-page .metric-grid > * { display: none; }
+
+  .dashboard-page[data-mobile-section="overview"] .dashboard-account,
+  .dashboard-page[data-mobile-section="alerts"] .dashboard-alerts,
+  .dashboard-page[data-mobile-section="stock"] .dashboard-batch-section,
+  .dashboard-page[data-mobile-section="stock"] .dashboard-snapshot,
+  .dashboard-page[data-mobile-section="overview"] .metric-grid > :nth-child(-n+3),
+  .dashboard-page[data-mobile-section="overview"] .metric-grid > :nth-child(6),
+  .dashboard-page[data-mobile-section="stock"] .metric-grid > :nth-child(1),
+  .dashboard-page[data-mobile-section="stock"] .metric-grid > :nth-child(3),
+  .dashboard-page[data-mobile-section="alerts"] .metric-grid > :nth-child(4),
+  .dashboard-page[data-mobile-section="alerts"] .metric-grid > :nth-child(5) { display: grid; }
+
+  .dashboard-page[data-mobile-section="stock"] .dashboard-stock-section { display: contents; }
+  .dashboard-page .dashboard-overview > * { grid-column: auto; grid-row: auto; }
+  .dashboard-page .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

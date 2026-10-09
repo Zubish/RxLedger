@@ -1,0 +1,94 @@
+.patient-mobile-sections,
+.patient-mobile-history-hint,
+.patient-overview-toggle {
+  display: none;
+}
+
+.patient-overview-content {
+  display: grid;
+  gap: 18px;
+}
+
+@media (max-width: 767px) {
+  .patients-page .patient-overview-toggle {
+    width: 100%;
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--rx-border);
+    border-radius: 10px;
+    background: #fff;
+    color: var(--rx-brand);
+    text-align: left;
+    font-weight: 700;
+  }
+  .patient-overview-toggle[aria-expanded="true"] svg {
+    transform: rotate(180deg);
+  }
+  .patients-page .patient-overview-content[data-mobile-open="false"] {
+    display: none;
+  }
+  .patients-page .patient-overview-content[data-mobile-open="true"] {
+    margin-top: 12px;
+  }
+  .patient-mobile-sections {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    margin-bottom: 16px;
+    background: var(--rx-brand-soft, #f8edf0);
+    border: 1px solid var(--rx-border, #ead7dd);
+    border-radius: 10px;
+  }
+
+  .patient-mobile-sections button {
+    flex: 1;
+    min-width: 0;
+    min-height: 44px;
+    padding: 8px 6px;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    color: var(--rx-brand, #82172c);
+    background: transparent;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .patient-mobile-sections button[aria-pressed="true"] {
+    color: #fff;
+    background: var(--rx-brand, #82172c);
+  }
+
+  .patient-mobile-sections button:focus-visible {
+    outline: 2px solid var(--rx-brand, #82172c);
+    outline-offset: 2px;
+  }
+
+  .patient-profile-panel .patient-mobile-section[data-mobile-active="false"] {
+    display: none;
+  }
+
+  .patient-mobile-history-hint {
+    display: block;
+    margin: 0 0 12px;
+    color: var(--rx-muted, #63545a);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .patient-profile-panel .patient-timeline,
+  .patient-profile-panel .patient-message-list {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+    scrollbar-gutter: auto;
+  }
+
+  .patient-profile-panel .patient-profile-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

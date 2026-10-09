@@ -1,6 +1,7 @@
-import type { Dispatch, FormEvent, SetStateAction } from "react";
+import { useId, useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
 import { ClipboardList } from "lucide-react";
 import { WhatsAppIcon } from "./WhatsAppIcon";
+import "./PatientProfilePanel.css";
 
 const money = new Intl.NumberFormat("en-NG", {
   style: "currency",
@@ -94,6 +95,9 @@ export function PatientProfilePanel({
   followUpCard?: PatientFollowUpCard;
   onCopyFollowUp: (message: string) => void;
 }) {
+  const sectionId = useId();
+  const [mobileSection, setMobileSection] = useState<"history" | "messages" | "care">("history");
+  const activeSection = mobileSection === "care" && !continuityItems.length ? "history" : mobileSection;
   if (!profile) {
     return <div className="empty-state">{emptyMessage}</div>;
   }
@@ -160,8 +164,26 @@ export function PatientProfilePanel({
         </form>
       )}
 
+      <nav className="patient-mobile-sections" aria-label="Patient profile sections">
+        {([
+          { id: "history", label: "History" },
+          { id: "messages", label: "Messages" },
+          ...(continuityItems.length ? [{ id: "care", label: "Continuity" }] : []),
+        ] as const).map((section) => (
+          <button
+            key={section.id}
+            type="button"
+            aria-pressed={activeSection === section.id}
+            aria-controls={`${sectionId}-${section.id}`}
+            onClick={() => setMobileSection(section.id as typeof mobileSection)}
+          >
+            {section.label}
+          </button>
+        ))}
+      </nav>
+
       {continuityItems.length > 0 && (
-        <section className="patient-continuity-strip">
+        <section id={`${sectionId}-care`} className="patient-continuity-strip patient-mobile-section" data-mobile-active={activeSection === "care"}>
           {continuityEyebrow ? (
             <div>
               <span className="eyebrow">{continuityEyebrow}</span>
@@ -189,9 +211,11 @@ export function PatientProfilePanel({
       )}
 
       <div className="patient-profile-grid">
-        <section>
+        <section id={`${sectionId}-history`} className="patient-mobile-section" data-mobile-active={activeSection === "history"}>
           <h3>Medication History</h3>
+          <p className="patient-mobile-history-hint">Select a visit, then open Messages to see its follow-up.</p>
           <div className="patient-timeline">
+            {!historyGroups.length && <div className="empty-state">No medication history is available for this patient.</div>}
             {historyGroups.map((group) => (
               <section className="patient-history-day" key={group.dateLabel}>
                 <h4>{group.dateLabel}</h4>
@@ -241,7 +265,7 @@ export function PatientProfilePanel({
           )}
         </section>
 
-        <section>
+        <section id={`${sectionId}-messages`} className="patient-mobile-section" data-mobile-active={activeSection === "messages"}>
           <h3>Follow-up Messages</h3>
           <div className="patient-message-list">
             {followUpCard ? (

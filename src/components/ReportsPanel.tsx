@@ -2,6 +2,7 @@ import { Archive, Boxes, Download, Pill, Printer } from "lucide-react";
 
 import type { Supplier } from "../types";
 import { ReportTable } from "./ReadOnlyViews";
+import { MobileDisclosure } from "./MobileDisclosure";
 
 export type ReportKind = "stock" | "movement" | "supplier" | "expiry" | "reorder";
 export type ReportItemType = "medicine" | "product";
@@ -103,8 +104,17 @@ export function ReportsPanel({
     setGenericFilter("");
   }
 
+  const activeFilterCount = report === "supplier"
+    ? [supplierFilter, supplierDate].filter(Boolean).length
+    : [medicineFilter, genericFilter, categoryFilter,
+        ...(report === "movement" ? [movementStartDate, movementEndDate, movementType] : [])]
+        .filter(Boolean).length;
+  const filterSummary = activeFilterCount
+    ? `${activeFilterCount} filter${activeFilterCount === 1 ? "" : "s"} applied`
+    : "All items · tap to narrow results";
+
   return (
-    <section className="content-section">
+    <section className="content-section reports-panel">
       <div className="section-heading">
         <div>
           <h2>Reports and Exports</h2>
@@ -128,7 +138,17 @@ export function ReportsPanel({
           </button>
         </div>
       </div>
-      <div className="tabs">
+      <label className="mobile-report-selector">
+        Report
+        <select value={report} onChange={(event) => setReport(event.target.value as ReportKind)}>
+          <option value="stock">Stock on hand</option>
+          <option value="movement">Movement ledger</option>
+          <option value="supplier">Supplier</option>
+          <option value="expiry">Expiry</option>
+          <option value="reorder">Reorder</option>
+        </select>
+      </label>
+      <div className="tabs report-desktop-tabs">
         <button
           className={report === "stock" ? "active" : ""}
           onClick={() => setReport("stock")}
@@ -191,6 +211,7 @@ export function ReportsPanel({
               Mart
             </button>
           </div>
+          <MobileDisclosure title="Filters" summary={filterSummary}>
           <div className="report-filters">
             <label>
               Start date
@@ -259,6 +280,7 @@ export function ReportsPanel({
               </select>
             </label>
           </div>
+          </MobileDisclosure>
         </>
       )}
       {report === "stock" && (
@@ -287,6 +309,7 @@ export function ReportsPanel({
               Mart
             </button>
           </div>
+          <MobileDisclosure title="Filters" summary={filterSummary}>
           <div className="report-filters">
             <label>
               {stockItemType === "medicine" ? "Brand" : "Product"}
@@ -325,6 +348,7 @@ export function ReportsPanel({
               </select>
             </label>
           </div>
+          </MobileDisclosure>
           <div className="report-summary">
             <Archive size={16} />
             <strong>{number.format(stockQuantityTotal)}</strong>
@@ -336,7 +360,8 @@ export function ReportsPanel({
         </>
       )}
       {report === "supplier" && (
-        <div className="report-filters">
+        <MobileDisclosure title="Filters" summary={filterSummary}>
+          <div className="report-filters">
           <label>
             Supplier
             <select
@@ -360,6 +385,7 @@ export function ReportsPanel({
             />
           </label>
         </div>
+          </MobileDisclosure>
       )}
       {report === "movement" && (
         <div className="report-summary">

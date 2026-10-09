@@ -98,11 +98,18 @@ try {
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${device} ${screen} overflow`);
       if (screen === 'Patients') {
         await page.locator('.patient-list-item').filter({ hasText: 'Jane Patient' }).click();
+        const messages = page.locator('.patient-mobile-sections button').filter({ hasText: /^Messages$/ });
+        if (await messages.isVisible()) await messages.click();
         const followup = page.locator('.patient-message-list');
-        assert.equal(await followup.locator('.whatsapp-icon').count(), 1, 'Exactly one follow-up uses WhatsApp logo');
-        assert.ok(await page.locator('.patient-reminder-list .lucide-smartphone').count() > 0, 'Refill WhatsApp icons remain Smartphone');
+        assert.equal(await followup.locator('.whatsapp-icon').count(), 1, 'Follow-up uses WhatsApp logo');
+        const whatsappActions = page.locator('a[href^="https://wa.me/"]');
+        assert.ok(await whatsappActions.count() > 1, 'Fixture contains follow-up and refill WhatsApp actions');
+        assert.equal(await whatsappActions.locator('.whatsapp-icon').count(), await whatsappActions.count(), 'Every patient WhatsApp action uses the brand logo');
+        assert.equal(await whatsappActions.locator('.lucide-smartphone').count(), 0, 'WhatsApp actions no longer use generic phone icons');
         await page.screenshot({ path: `${output}/${device}-whatsapp-preview.png`, fullPage: true });
         await followup.screenshot({ path: `${output}/${device}-whatsapp-detail.png` });
+        const history = page.locator('.patient-mobile-sections button').filter({ hasText: /^History$/ });
+        if (await history.isVisible()) await history.click();
         await assertInteraction(page, '.patient-history-visit', 'backgroundColor', 'rgb(255, 255, 255)', 'rgb(248, 237, 240)').catch(async error => {
           // The fixture's first visit may already be selected, so its default is rose.
           if (await page.locator('.patient-history-visit').first().getAttribute('class').then(value => value.includes('active'))) {

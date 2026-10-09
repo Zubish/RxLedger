@@ -82,6 +82,7 @@ import {
 import { applyDatabasePatch } from "./databasePatch";
 import { slugifyCompany } from "./company";
 import { AuthScreen } from "./components/AuthViews";
+import { WhatsAppIcon } from "./components/WhatsAppIcon";
 import { RaiConsent } from './components/RaiConsent';
 import {
   AppLoadingScreen,
@@ -116,6 +117,7 @@ import {
 import "./App.css";
 import "./rxledger-theme.css";
 import "./dashboard-burgundy.css";
+import "./dashboard-mobile.css";
 
 const SIDEBAR_WIDTH = 280;
 type ContinuityFilter = "active" | ContinuityRequestStatus | "all";
@@ -3794,6 +3796,7 @@ function App() {
           )}
           {activeView === "patients" && (
             <PatientsView
+              scopeLabel={canAdmin ? "all workspace branches" : activeBranch?.name ?? "your accessible branches"}
               key={`${currentUser.id}-${activeBranch?.id ?? "none"}`}
               db={activeBranchDb}
               activeBranch={activeBranch}
@@ -3970,6 +3973,7 @@ function Dashboard({
   assignedBranch?: Branch;
   setActiveView: (view: View) => void;
 }) {
+  const [mobileSection, setMobileSection] = useState<"overview" | "stock" | "alerts">("overview");
   const scopedMedicineIds = new Set(stockRows.map((row) => row.medicine.id));
   const lowStock = getLowStockMedicines(
     db,
@@ -4035,7 +4039,24 @@ function Dashboard({
   });
 
   return (
-    <div className="page-grid dashboard-page">
+    <div className="page-grid dashboard-page" data-mobile-section={mobileSection}>
+      <nav className="dashboard-mobile-navigation" aria-label="Dashboard sections">
+        {(["overview", "stock", "alerts"] as const).map((section) => (
+          <button
+            type="button"
+            key={section}
+            aria-pressed={mobileSection === section}
+            onClick={() => setMobileSection(section)}
+          >
+            {section === "overview" ? "Overview" : section === "stock" ? "Stock" : "Alerts"}
+            {section === "alerts" && expired.length + nearExpiry.length + lowStock.length + pendingUsers > 0 && (
+              <span className="dashboard-mobile-alert-count">
+                {expired.length + nearExpiry.length + lowStock.length + pendingUsers}
+              </span>
+            )}
+          </button>
+        ))}
+      </nav>
       <section className="metric-grid">
         <Metric
           icon={Boxes}
@@ -4103,10 +4124,11 @@ function Dashboard({
         <section className="content-section dashboard-account">
           <div className="section-heading">
             <div>
-              <h2>Main Account Overview</h2>
+              <h2>{canAdmin ? "Main Account Overview" : "Branch Overview"}</h2>
               <p>
-                Company-level view across branches/sites. Stock remains held by
-                branches.
+                {canAdmin
+                  ? "Company-level view across branches/sites. Stock remains held by branches."
+                  : "Inventory summary for branches in your access scope."}
               </p>
             </div>
             <span className="pill active">{db.settings.accountName}</span>
@@ -4226,19 +4248,21 @@ function Dashboard({
           </button>
         </section>
 
-        <DashboardInventorySnapshot
-          rows={stockRows}
-          branches={branchSummaries.map(({ branch, branchStockValue }) => ({
-            id: branch.id,
-            name: branch.name,
-            value: branchStockValue,
-          }))}
-          formatMoney={compactMoney}
-          onViewReports={() => setActiveView("reports")}
-        />
+        <div className="dashboard-stock-section">
+          <DashboardInventorySnapshot
+            rows={stockRows}
+            branches={branchSummaries.map(({ branch, branchStockValue }) => ({
+              id: branch.id,
+              name: branch.name,
+              value: branchStockValue,
+            }))}
+            formatMoney={compactMoney}
+            onViewReports={() => setActiveView("reports")}
+          />
+        </div>
       </div>
 
-      <section className="content-section">
+      <section className="content-section dashboard-batch-section">
         <div className="section-heading">
           <div>
             <h2>Batch Stock Snapshot</h2>
@@ -9557,6 +9581,7 @@ function ContinuityCentre({
 
 function PatientsView({
   db,
+  scopeLabel,
   activeBranch,
   salesHistoryLoaded,
   salesHistoryLoading,
@@ -9566,6 +9591,7 @@ function PatientsView({
   flash,
 }: {
   db: Database;
+  scopeLabel: string;
   activeBranch?: Branch;
   salesHistoryLoaded: boolean;
   salesHistoryLoading: boolean;
@@ -9578,6 +9604,7 @@ function PatientsView({
   const [selectedKey, setSelectedKey] = useState("");
   const [selectedSaleId, setSelectedSaleId] = useState("");
   const [editingPatient, setEditingPatient] = useState(false);
+  const [overviewOpen, setOverviewOpen] = useState(false);
   const [patientEdit, setPatientEdit] = useState({ name: "", phone: "" });
   const profiles = useMemo(() => buildPatientProfiles(db), [db]);
   const refillRows = useMemo(() => buildRefillRows(db), [db]);
@@ -9744,6 +9771,12 @@ function PatientsView({
 
   return (
     <div className="page-grid patients-page">
+      <div className="patient-overview-disclosure">
+      <button className="patient-overview-toggle" type="button" aria-expanded={overviewOpen} aria-controls="patient-overview-content" onClick={() => setOverviewOpen((open) => !open)}>
+        <span>Patient overview · {dueRows.length} refills due soon</span>
+        <ChevronDown size={18} aria-hidden="true" />
+      </button>
+      <div id="patient-overview-content" className="patient-overview-content" data-mobile-open={overviewOpen}>
       <section className="metric-grid">
         <Metric
           icon={Users}
@@ -9779,17 +9812,18 @@ function PatientsView({
           </article>
         ))}
       </section>
+      </div>
+      </div>
 
       <section className="content-section">
         <div className="section-heading">
           <div>
             <h2>Patient Lookup</h2>
             <p>
-              Search by phone, name, or receipt reference across every branch in
-              this workspace.
+              Search by phone, name, or receipt reference in {scopeLabel}.
             </p>
           </div>
-          <span className="pill active">All workspace branches</span>
+          <span className="pill active">{scopeLabel}</span>
         </div>
         <label className="patient-search">
           <Search size={18} />
@@ -9842,7 +9876,7 @@ function PatientsView({
           <div className="patient-profile-panel">
             <PatientProfilePanel
               profile={patientProfileSummary}
-              workspaceLabel="workspace branches"
+              workspaceLabel={scopeLabel}
               emptyMessage="Select a patient to see their medication history and follow-up messages."
               editingPatient={editingPatient}
               patientEdit={patientEdit}
@@ -9878,7 +9912,7 @@ function PatientsView({
           <div>
             <h2>Refill Reminders</h2>
             <p>
-              Generated from workspace-wide medicine sales with therapy days
+              Generated from medicine sales in your branch scope with therapy days
               recorded at checkout.
             </p>
           </div>
@@ -9918,7 +9952,7 @@ function PatientsView({
                   </button>
                   {href && (
                     <a href={href} target="_blank" rel="noreferrer">
-                      <Smartphone size={14} /> WhatsApp
+                      <WhatsAppIcon size={14} /> WhatsApp
                     </a>
                   )}
                 </footer>

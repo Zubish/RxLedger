@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { ChevronRight, ClipboardList, MapPin, Smartphone } from "lucide-react";
+import { ChevronRight, ClipboardList, MapPin } from "lucide-react";
 
 import type {
   Branch,
@@ -8,6 +8,9 @@ import type {
   ContinuityUrgency,
   Database,
 } from "../types";
+
+import { WhatsAppIcon } from "./WhatsAppIcon";
+import { MobileDisclosure } from "./MobileDisclosure";
 
 const number = new Intl.NumberFormat("en-NG");
 
@@ -215,10 +218,11 @@ export function ContinuityQueue({
                           </strong>
                           <span>{statusLabels[request.status]}</span>
                         </div>
+                        <p className="continuity-quantity">Needed: {number.format(request.quantityRequested)}</p>
+                        <MobileDisclosure title="Stock and request details"
+                          summary={availability.length ? `${availability.length} branch${availability.length === 1 ? "" : "es"} with stock` : "Awaiting stock"}>
                         <div className="continuity-meta-grid">
-                          <span>
-                            Needed: {number.format(request.quantityRequested)}
-                          </span>
+                          <span className="continuity-desktop-quantity">Needed: {number.format(request.quantityRequested)}</span>
                           <span>
                             Recorded {formatDateTime(request.createdAt)} by{" "}
                             {getUserName(db, request.createdBy)}
@@ -264,6 +268,7 @@ export function ContinuityQueue({
                             </small>
                           )}
                         </div>
+                        </MobileDisclosure>
                         <footer>
                           <button
                             type="button"
@@ -277,9 +282,17 @@ export function ContinuityQueue({
                               target="_blank"
                               rel="noreferrer"
                             >
-                              <Smartphone size={14} /> WhatsApp
+                              <WhatsAppIcon size={14} /> WhatsApp
                             </a>
                           )}
+                          <button
+                            type="button"
+                            onClick={() => onProcessInPos(request)}
+                          >
+                            Process in POS
+                          </button>
+                          <MobileDisclosure title="More actions" summary="Contact status, transfer or cancel">
+                            <div className="continuity-secondary-actions">
                           <button
                             type="button"
                             onClick={() =>
@@ -296,12 +309,7 @@ export function ContinuityQueue({
                           >
                             Request transfer
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => onProcessInPos(request)}
-                          >
-                            Process in POS
-                          </button>
+
                           <button
                             type="button"
                             onClick={() =>
@@ -310,6 +318,8 @@ export function ContinuityQueue({
                           >
                             Cancel
                           </button>
+                            </div>
+                          </MobileDisclosure>
                         </footer>
                       </section>
                     );

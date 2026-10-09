@@ -6,9 +6,9 @@ Green remains where it conveys stock health, successful operations, availability
 
 The sweep fixes drawer hover, Continuity controls, patient history selection, POS prices, branch/account labels, report summaries, supplier links, secondary buttons, and decorative legacy green/cyan backgrounds. WhatsApp actions share an accessible dark green with a deeper hover shade. The existing sign-in/loading favicon shape uses burgundy and rose instead of purple and cyan.
 
-Only the selected patient Follow-up Messages WhatsApp action receives the recognizable WhatsApp logo. Refills and other WhatsApp actions retain their prior icons so this single preview can be reviewed before a broader icon change.
+The accepted WhatsApp logo now appears on all WhatsApp calls to action, including patient Follow-up Messages, refills, and continuity requests.
 
-Run `npm run test:colours` against the local Vite server for computed-colour, hover/focus, overflow, and single-icon preview checks at phone, tablet, and desktop sizes. The test uses controlled operational fixtures and captures screenshots and remaining semantic green usage under ignored `artifacts/ux-audit/`. The regular `npm run test:browser` shares the same fixtures.
+Run `npm run test:colours` against the local Vite server for computed-colour, hover/focus, overflow, and WhatsApp icon consistency checks at phone, tablet, and desktop sizes. The test uses controlled operational fixtures and captures screenshots and remaining semantic green usage under ignored `artifacts/ux-audit/`. The regular `npm run test:browser` shares the same fixtures.
 
 Browser checks use Chromium emulation, not native iOS Safari, and do not exercise a live authenticated database. Build, lint, and existing business/access tests provide additional verification.
 

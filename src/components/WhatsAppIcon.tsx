@@ -4,7 +4,6 @@ export function WhatsAppIcon({ size = 14 }: { size?: number }) {
   return (
     <svg
       className="whatsapp-icon"
-      data-whatsapp-preview="true"
       aria-hidden="true"
       focusable="false"
       width={size}

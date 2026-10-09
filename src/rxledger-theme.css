@@ -84,7 +84,7 @@
     box-shadow: none;
   }
   .sidebar-close-button::before {
-    background: var(--rx-rose);
+    display: none;
   }
   .sidebar-close-button::after {
     display: none;
