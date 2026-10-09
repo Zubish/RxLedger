@@ -36,6 +36,20 @@ export function clearStoredCompanySlug() {
   localStorage.removeItem(COMPANY_KEY);
 }
 
+export function clearWorkspaceBrowserData(slug: string) {
+  if (!slug) return;
+  const prefix = `rxledger:${slug}:`;
+  for (const storage of [localStorage, sessionStorage]) {
+    Object.keys(storage).forEach(key => {
+      if (key.startsWith(prefix)) storage.removeItem(key);
+    });
+  }
+  if (getStoredCompanySlug() === slug) {
+    clearStoredToken();
+    clearStoredCompanySlug();
+  }
+}
+
 async function request<T>(path: string, options: RequestInit = {}) {
   const companySlug = getStoredCompanySlug();
   const headers = new Headers(options.headers);
@@ -61,12 +75,16 @@ async function request<T>(path: string, options: RequestInit = {}) {
 }
 
 export async function bootstrap() {
-  return request<{
+  const result = await request<{
     hasUsers: boolean;
     tenantExists: boolean;
     requestedSlug: string;
     settings: Database["settings"];
   }>("/api/bootstrap");
+  if (!result.tenantExists && result.requestedSlug) {
+    clearWorkspaceBrowserData(result.requestedSlug);
+  }
+  return result;
 }
 
 export async function loadState() {

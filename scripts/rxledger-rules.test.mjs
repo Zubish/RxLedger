@@ -329,7 +329,7 @@ assertPresent(
 );
 assertPresent(
   shared,
-  /saveTenantDatabase[\s\S]*INSERT INTO tenant_state[\s\S]*ON CONFLICT \(slug\)[\s\S]*DO UPDATE SET data/,
+  /saveTenantDatabase[\s\S]*UPDATE tenant_state[\s\S]*SET data[\s\S]*WHERE slug =/,
   "Tenant state saves should update only the requested workspace row.",
 );
 assertAbsent(

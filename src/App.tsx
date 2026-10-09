@@ -2553,6 +2553,7 @@ function inferNoticeTone(message: string): NoticeTone {
 function App() {
   const [db, setDb] = useState<Database>(createEmptyDatabase);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+  const workspaceGeneration = useRef(0);
   const [activeView, setActiveView] = useState<View>(() => readNavigation().view);
   const [notice, setNotice] = useState<NoticeState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -2693,8 +2694,10 @@ function App() {
     if (!canAdmin || !sessionUserId || auditHistoryLoaded || auditHistoryLoading)
       return;
     setAuditHistoryLoading(true);
+    const generation = workspaceGeneration.current;
     try {
       const result = await loadAuditHistory();
+      if (generation !== workspaceGeneration.current) return;
       setDb((previous) => ({
         ...previous,
         auditLogs: result.auditLogs,
@@ -2720,8 +2723,10 @@ function App() {
   }
   async function loadSalesHistoryPage(cursor: string) {
     setSalesHistoryLoading(true);
+    const generation = workspaceGeneration.current;
     try {
       const result = await loadSalesHistory({ cursor, limit: 500 });
+      if (generation !== workspaceGeneration.current) return;
       setDb((previous) => ({
         ...previous,
         sales: mergeSalesHistory(previous.sales, result.sales),
@@ -2747,8 +2752,10 @@ function App() {
   }
   async function loadLedgerHistoryPage(cursor: string) {
     setLedgerHistoryLoading(true);
+    const generation = workspaceGeneration.current;
     try {
       const result = await loadLedgerHistory({ cursor, limit: 500 });
+      if (generation !== workspaceGeneration.current) return;
       setDb((previous) => ({
         ...previous,
         ledger: mergeLedgerHistory(previous.ledger, result.ledger),
@@ -2928,6 +2935,7 @@ function App() {
   );
 
   const returnToSignIn = useCallback((message?: string) => {
+    workspaceGeneration.current += 1;
     setSessionUserId(null);
     setAuditHistoryLoaded(false);
     setAuditHistoryLoading(false);
@@ -2947,6 +2955,7 @@ function App() {
 
   const forceSignOut = useCallback(
     async (message?: string) => {
+      workspaceGeneration.current += 1;
       const userId = sessionUserId;
       try {
         await apiLogout();
@@ -2959,13 +2968,43 @@ function App() {
     [forgetBrowserUser, returnToSignIn, sessionUserId],
   );
 
+  const checkWorkspaceExists = useEffectEvent(async () => {
+    if (document.visibilityState === "hidden") return;
+    try {
+      const result = await bootstrap();
+      if (!result.tenantExists) {
+        await forceSignOut("This workspace no longer exists. Please choose another workspace.");
+        setDb(createEmptyDatabase());
+        setHasUsers(false);
+        setTenantExists(false);
+        setCompanySlug("");
+      }
+    } catch {
+      // A temporary connection failure must not erase a valid workspace session.
+    }
+  });
+  useEffect(() => {
+    if (!sessionUserId) return;
+    const check = () => { void checkWorkspaceExists(); };
+    const interval = window.setInterval(check, 60_000);
+    window.addEventListener("focus", check);
+    document.addEventListener("visibilitychange", check);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", check);
+      document.removeEventListener("visibilitychange", check);
+    };
+  }, [sessionUserId]);
+
   async function executeAction(
     action: string,
     payload: Record<string, unknown>,
     successMessage?: string,
   ) {
+    const generation = workspaceGeneration.current;
     try {
       const result = await runAction(action, payload);
+      if (generation !== workspaceGeneration.current) return false;
       setDb((previous) =>
         applyDatabasePatch(previous, result.db, result.databasePatch),
       );

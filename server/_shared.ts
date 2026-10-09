@@ -721,6 +721,7 @@ export function requireMethod(
   res: HandlerResponse,
   methods: string[],
 ) {
+  res.setHeader("Cache-Control", "no-store");
   if (!req.method || !methods.includes(req.method)) {
     res.setHeader("Allow", methods.join(", "));
     res.status(405).json({ error: "Method not allowed" });
@@ -887,7 +888,7 @@ export async function loadTenantDatabase(slug: string) {
   const tenant = root.tenants.find((item) => item.slug === normalizedSlug);
   if (!tenant) return null;
   const db = normalizeDatabase(tenant.workspace);
-  await saveTenantDatabase(normalizedSlug, db);
+  await saveTenantDatabase(normalizedSlug, db, true);
   return db;
 }
 
@@ -1068,7 +1069,7 @@ export async function loadTenantLedgerPage(
   };
 }
 
-export async function saveTenantDatabase(slug: string, db: Database) {
+export async function saveTenantDatabase(slug: string, db: Database, allowCreation = false) {
   const normalizedSlug = normalizeCompanySlug(slug);
   if (!normalizedSlug) throw new Error("Company portal not found");
   const clean = normalizeDatabase({
@@ -1080,12 +1081,22 @@ export async function saveTenantDatabase(slug: string, db: Database) {
   });
   await ensureSchema();
   const sql = getSql();
-  await sql`
-    INSERT INTO tenant_state (slug, data, updated_at)
-    VALUES (${normalizedSlug}, ${JSON.stringify(clean)}::jsonb, now())
-    ON CONFLICT (slug)
-    DO UPDATE SET data = EXCLUDED.data, updated_at = now()
+  if (allowCreation) {
+    await sql`
+      INSERT INTO tenant_state (slug, data, updated_at)
+      VALUES (${normalizedSlug}, ${JSON.stringify(clean)}::jsonb, now())
+      ON CONFLICT (slug) DO NOTHING
+    `;
+    return;
+  }
+  // An in-flight request must never recreate a workspace that was deleted.
+  const saved = await sql`
+    UPDATE tenant_state
+    SET data = ${JSON.stringify(clean)}::jsonb, updated_at = now()
+    WHERE slug = ${normalizedSlug}
+    RETURNING slug
   `;
+  if (!saved.length) throw new Error("Authentication required: company portal no longer exists");
 }
 
 export async function tenantWorkspaceExists(slug: string) {

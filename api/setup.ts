@@ -180,7 +180,7 @@ export default async function handler(
     root.tenants.unshift(tenant);
     root.defaultSlug = tenant.slug;
     await saveRootState(root);
-    await saveTenantDatabase(companySlug, db);
+    await saveTenantDatabase(companySlug, db, true);
     const session = await createSession(adminId);
     setSessionCookie(res, session);
     res.status(200).json({
