@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import type {
   FormEvent,
   KeyboardEvent,
@@ -79,6 +79,7 @@ import {
   setupWorkspace,
   storeCompanySlug,
 } from "./api";
+import { readNavigation, writeNavigation, type NavigationView } from "./navigation";
 import { applyDatabasePatch } from "./databasePatch";
 import { slugifyCompany } from "./company";
 import { AuthScreen } from "./components/AuthViews";
@@ -156,24 +157,7 @@ type PatientRiskContext = {
   chronicMedicines?: string;
   notes?: string;
 };
-type View =
-  | "dashboard"
-  | "medicines"
-  | "products"
-  | "suppliers"
-  | "receive"
-  | "pos"
-  | "patients"
-  | "continuity"
-  | "issue"
-  | "adjust"
-  | "reports"
-  | "chat"
-  | "notifications"
-  | "audit"
-  | "users"
-  | "branches"
-  | "settings";
+type View = NavigationView;
 
 type User = {
   id: string;
@@ -2569,7 +2553,7 @@ function inferNoticeTone(message: string): NoticeTone {
 function App() {
   const [db, setDb] = useState<Database>(createEmptyDatabase);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<View>("dashboard");
+  const [activeView, setActiveView] = useState<View>(() => readNavigation().view);
   const [notice, setNotice] = useState<NoticeState | null>(null);
   const [loading, setLoading] = useState(true);
   const [auditHistoryLoaded, setAuditHistoryLoaded] = useState(false);
@@ -2588,11 +2572,11 @@ function App() {
     () => getWorkspaceSlugFromLocation() || getStoredCompanySlug(),
   );
   const [authIntent, setAuthIntent] = useState<"landing" | "setup" | "signin">(
-    "landing",
+    () => getStoredToken() || window.location.hash.startsWith("#/") ? "signin" : "landing",
   );
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [continuityMenuOpen, setContinuityMenuOpen] = useState(false);
-  const [continuityFilter, setContinuityFilter] = useState<ContinuityFilter>("active");
+  const [continuityFilter, setContinuityFilter] = useState<ContinuityFilter>(() => readNavigation().filter);
   const sidebarRef = useRef<HTMLElement>(null);
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const [mobileNavigation, setMobileNavigation] = useState(() =>
@@ -2883,8 +2867,13 @@ function App() {
           );
         }
       } catch (error) {
+        if (getStoredToken()) {
+          const route = readNavigation();
+          writeNavigation(route.view, route.filter, true);
+        }
         clearStoredToken();
         setSessionUserId(null);
+        setAuthIntent("signin");
         setConnectionError(
           error instanceof Error
             ? error.message
@@ -2948,7 +2937,6 @@ function App() {
     setLedgerHistoryLoaded(false);
     setLedgerHistoryLoading(false);
     setLedgerHistoryCursor("");
-    setActiveView("dashboard");
     setSidebarOpen(false);
     setSidebarCollapsed(true);
     setBranchMenuOpen(false);
@@ -3089,7 +3077,7 @@ function App() {
           result.db.branches.find((branch) => branch.active)?.id ??
           "main",
       );
-      setActiveView("dashboard");
+
     } finally {
       setSigningIn(false);
     }
@@ -3099,7 +3087,7 @@ function App() {
     const result = await resolveCompany(value);
     storeCompanySlug(result.slug);
     setCompanySlug(result.slug);
-    window.history.replaceState(null, "", `/${result.slug}${new URLSearchParams(window.location.search).get('rai_connect') === '1' ? window.location.search : ''}`);
+    window.history.replaceState(null, "", `/${result.slug}${new URLSearchParams(window.location.search).get('rai_connect') === '1' ? window.location.search : ''}${window.location.hash}`);
     const boot = await bootstrap();
     setHasUsers(boot.hasUsers);
     setTenantExists(boot.tenantExists);
@@ -3119,12 +3107,14 @@ function App() {
     );
   }
 
-  function navigate(view: View) {
+  function navigate(view: View, historyMode: "push" | "replace" | "none" = "push", filter: ContinuityFilter = continuityFilter) {
     const nextView =
       (view === "users" || view === "audit") && !canAdmin
         ? "dashboard"
         : view;
+    if (historyMode !== "none") writeNavigation(nextView, filter, historyMode === "replace");
     setActiveView(nextView);
+    setContinuityFilter(filter);
     if (nextView === "continuity") setContinuityMenuOpen(true);
     setBranchMenuOpen(false);
     if (nextView === "audit" && canAdmin) {
@@ -3140,6 +3130,30 @@ function App() {
       setSidebarOpen(false);
       setSidebarCollapsed(true);
     }
+  }
+
+  const restoreNavigation = useEffectEvent((replace: boolean) => {
+    const route = readNavigation();
+    navigate(route.view, replace ? "replace" : "none", route.filter);
+    if ((route.view === "users" || route.view === "audit") && !canAdmin) {
+      writeNavigation("dashboard", route.filter, true);
+    }
+  });
+  useEffect(() => {
+    if (!sessionUserId || loading) return;
+    const restoreTimer = window.setTimeout(() => restoreNavigation(true), 0);
+    const restore = () => restoreNavigation(false);
+    window.addEventListener("popstate", restore);
+    window.addEventListener("hashchange", restore);
+    return () => {
+      window.clearTimeout(restoreTimer);
+      window.removeEventListener("popstate", restore);
+      window.removeEventListener("hashchange", restore);
+    };
+  }, [sessionUserId, loading, canAdmin]);
+
+  function selectContinuityFilter(filter: ContinuityFilter) {
+    navigate("continuity", "push", filter);
   }
 
   function dismissNotification(notificationId: string) {
@@ -3466,8 +3480,9 @@ function App() {
                     onClick={() => {
                       setContinuityMenuOpen((open) => !open);
                       if (activeView !== "continuity") {
-                        setActiveView("continuity");
-                        void hydrateSalesHistory();
+                        navigate("continuity");
+                        setSidebarOpen(true);
+                        setSidebarCollapsed(false);
                       }
                     }}
                   >
@@ -3484,8 +3499,7 @@ function App() {
                           type="button"
                           aria-current={activeView === "continuity" && continuityFilter === filter.value ? "page" : undefined}
                           onClick={() => {
-                            setContinuityFilter(filter.value);
-                            navigate("continuity");
+                            selectContinuityFilter(filter.value);
                           }}
                         >
                           {filter.label}
@@ -3735,7 +3749,7 @@ function App() {
               canAdmin={canAdmin}
               activeBranch={activeBranch}
               assignedBranch={assignedBranch}
-              setActiveView={setActiveView}
+              setActiveView={navigate}
             />
           )}
           {activeView === "medicines" && (
@@ -3819,7 +3833,7 @@ function App() {
               flash={flash}
               processInPos={processContinuityRequest}
               statusFilter={continuityFilter}
-              setStatusFilter={setContinuityFilter}
+              setStatusFilter={selectContinuityFilter}
             />
           )}
           {activeView === "issue" && activeBranch && (
@@ -3875,7 +3889,7 @@ function App() {
               <AuditTrail auditLogs={db.auditLogs} users={db.users} />
             )
           )}
-          {activeView === "users" && (
+          {activeView === "users" && canAdmin && (
             <UserManagement
               db={db}
               currentUser={currentUser}
@@ -3908,7 +3922,7 @@ function App() {
           activeBranchId={activeBranch?.id}
           branchCanSwitch={db.branches.filter((branch) => branch.active).length > 1}
           currentRoleLabel={roleLabels[currentUser.role]}
-          setActiveView={setActiveView}
+          setActiveView={navigate}
           indexKey={safeStorageKey(db, currentUser, "quest-index")}
           dismissedKey={safeStorageKey(db, currentUser, "quest-dismissed")}
           positionKey={safeStorageKey(db, currentUser, "quest-position")}
