@@ -69,7 +69,9 @@ try {
         .getByRole("button", { name: "Show testimonial from " + name })
         .click();
       assert.match(
-        await page.locator(".rl-review-person").innerText(),
+        await page
+          .locator('.rl-review-slide[aria-hidden="false"] .rl-review-person')
+          .innerText(),
         new RegExp(name),
       );
     }

@@ -765,30 +765,89 @@ const testimonialImages = [
 
 function Reviews() {
   const [activeIndex, setActiveIndex] = useState(0);
-  const active = testimonials[activeIndex];
+  const [paused, setPaused] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [hidden, setHidden] = useState(() => document.hidden);
+  const [reducedMotion, setReducedMotion] = useState(
+    () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
+  useEffect(() => {
+    const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const syncMotion = () => setReducedMotion(preference.matches);
+    const syncVisibility = () => setHidden(document.hidden);
+    preference.addEventListener("change", syncMotion);
+    document.addEventListener("visibilitychange", syncVisibility);
+    return () => {
+      preference.removeEventListener("change", syncMotion);
+      document.removeEventListener("visibilitychange", syncVisibility);
+    };
+  }, []);
+  useEffect(() => {
+    if (paused || hovered || focused || hidden || reducedMotion) return;
+    const timer = window.setInterval(
+      () => setActiveIndex((index) => (index + 1) % testimonials.length),
+      8000,
+    );
+    return () => window.clearInterval(timer);
+  }, [paused, hovered, focused, hidden, reducedMotion, activeIndex]);
   return (
-    <section className="rl-reviews">
-      <div
-        className="rl-review-photo"
-        style={{ backgroundImage: `url(${testimonialImages[activeIndex]})` }}
-        aria-hidden="true"
-      />
+    <section
+      className="rl-reviews"
+      role="region"
+      aria-roledescription="carousel"
+      aria-label="Pharmacy reviews"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocusCapture={() => setFocused(true)}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget))
+          setFocused(false);
+      }}
+    >
+      {testimonialImages.map((image, index) => (
+        <div
+          key={image}
+          className={`rl-review-photo ${index === activeIndex ? "is-active" : ""}`}
+          style={{ backgroundImage: `url(${image})` }}
+          aria-hidden="true"
+        />
+      ))}
       <div className="rl-wrap">
         <div className="rl-review-panel">
           <p className="rl-eyebrow">FROM THE PHARMACY FLOOR</p>
           <h2>What our users say.</h2>
-          <blockquote>{active.quote}</blockquote>
-          <div className="rl-review-person">
-            <span className="rl-avatar">{active.initials}</span>
-            <div>
-              <strong>{active.name}</strong>
-              <p>{active.role}</p>
+          <div className="rl-review-viewport">
+            <div
+              className="rl-review-track"
+              style={{ transform: `translateX(-${activeIndex * 100}%)` }}
+            >
+              {testimonials.map((review, index) => (
+                <div
+                  className="rl-review-slide"
+                  key={review.name}
+                  role="group"
+                  aria-roledescription="slide"
+                  aria-label={`${index + 1} of ${testimonials.length}`}
+                  aria-hidden={index !== activeIndex}
+                >
+                  <blockquote>{review.quote}</blockquote>
+                  <div className="rl-review-person">
+                    <span className="rl-avatar">{review.initials}</span>
+                    <div>
+                      <strong>{review.name}</strong>
+                      <p>{review.role}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
           <div className="rl-review-controls" aria-label="Reviews">
             {testimonials.map((review, index) => (
               <button
                 key={review.name}
+                type="button"
                 aria-label={`Show testimonial from ${review.name}`}
                 aria-pressed={index === activeIndex}
                 onClick={() => setActiveIndex(index)}
@@ -796,6 +855,16 @@ function Reviews() {
                 {index + 1}
               </button>
             ))}
+            {!reducedMotion && (
+              <button
+                className="rl-review-pause"
+                type="button"
+                aria-pressed={paused}
+                onClick={() => setPaused((value) => !value)}
+              >
+                {paused ? "Resume slideshow" : "Pause slideshow"}
+              </button>
+            )}
           </div>
         </div>
       </div>
