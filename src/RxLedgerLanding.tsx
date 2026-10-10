@@ -767,6 +767,7 @@ function Reviews() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const [touchHeld, setTouchHeld] = useState(false);
   const [focused, setFocused] = useState(false);
   const [hidden, setHidden] = useState(() => document.hidden);
   const [reducedMotion, setReducedMotion] = useState(
@@ -784,22 +785,29 @@ function Reviews() {
     };
   }, []);
   useEffect(() => {
-    if (paused || hovered || focused || hidden || reducedMotion) return;
+    if (paused || hovered || touchHeld || focused || hidden || reducedMotion)
+      return;
     const timer = window.setInterval(
       () => setActiveIndex((index) => (index + 1) % testimonials.length),
       8000,
     );
     return () => window.clearInterval(timer);
-  }, [paused, hovered, focused, hidden, reducedMotion, activeIndex]);
+  }, [paused, hovered, touchHeld, focused, hidden, reducedMotion, activeIndex]);
   return (
     <section
       className="rl-reviews"
       role="region"
       aria-roledescription="carousel"
       aria-label="Pharmacy reviews"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      onFocusCapture={() => setFocused(true)}
+      onPointerEnter={(event) => {
+        if (event.pointerType === "mouse") setHovered(true);
+      }}
+      onPointerLeave={(event) => {
+        if (event.pointerType === "mouse") setHovered(false);
+      }}
+      onFocusCapture={(event) =>
+        setFocused(event.target.matches(":focus-visible"))
+      }
       onBlurCapture={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget))
           setFocused(false);
@@ -817,7 +825,27 @@ function Reviews() {
         <div className="rl-review-panel">
           <p className="rl-eyebrow">FROM THE PHARMACY FLOOR</p>
           <h2>What our users say.</h2>
-          <div className="rl-review-viewport">
+          <div
+            className="rl-review-viewport"
+            role="button"
+            tabIndex={0}
+            aria-label={
+              paused ? "Resume review slideshow" : "Pause review slideshow"
+            }
+            aria-pressed={paused}
+            onPointerDown={(event) => {
+              if (event.pointerType !== "mouse") setTouchHeld(true);
+            }}
+            onPointerUp={() => setTouchHeld(false)}
+            onPointerCancel={() => setTouchHeld(false)}
+            onClick={() => setPaused((value) => !value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                setPaused((value) => !value);
+              }
+            }}
+          >
             <div
               className="rl-review-track"
               style={{ transform: `translateX(-${activeIndex * 100}%)` }}
@@ -850,21 +878,14 @@ function Reviews() {
                 type="button"
                 aria-label={`Show testimonial from ${review.name}`}
                 aria-pressed={index === activeIndex}
-                onClick={() => setActiveIndex(index)}
+                onClick={() => {
+                  setActiveIndex(index);
+                  setPaused(true);
+                }}
               >
-                {index + 1}
+                <span className="rl-review-dot" aria-hidden="true" />
               </button>
             ))}
-            {!reducedMotion && (
-              <button
-                className="rl-review-pause"
-                type="button"
-                aria-pressed={paused}
-                onClick={() => setPaused((value) => !value)}
-              >
-                {paused ? "Resume slideshow" : "Pause slideshow"}
-              </button>
-            )}
           </div>
         </div>
       </div>

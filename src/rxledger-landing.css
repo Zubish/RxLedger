@@ -1382,40 +1382,32 @@
 .rl-review-controls {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 25px;
+  justify-content: center;
+  gap: 0;
+  margin-top: 20px;
 }
 .rl-review-controls button {
-  min-width: 44px;
-  min-height: 44px;
-  border: 1px solid var(--border);
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   border-radius: 50%;
-  color: var(--ink);
-  background: rgba(255, 255, 255, 0.72);
-  font-size: 12px;
-  transition:
-    background 180ms ease,
-    border-color 180ms ease;
 }
-.rl-review-controls button:hover {
-  background: rgba(255, 255, 255, 0.96);
-  border-color: var(--brand);
+.rl-review-dot {
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--brand);
+  border-radius: 50%;
+  background: transparent;
 }
-.rl-review-controls button[aria-pressed="true"] {
+.rl-review-controls button[aria-pressed="true"] .rl-review-dot {
   background: var(--brand);
-  color: white;
-  border-color: var(--brand);
 }
-.rl-review-controls .rl-review-pause {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  border-radius: 999px;
-  padding-inline: 15px;
-  margin-left: auto;
-  font-weight: 600;
+.rl-review-controls button:hover .rl-review-dot {
+  box-shadow: 0 0 0 3px rgb(129 35 63 / 10%);
 }
 .rl-review-viewport {
   overflow: hidden;
