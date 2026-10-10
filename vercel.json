@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/api/healthpass",
+      "destination": "/api/rai?route=healthpass"
+    },
+    {
       "source": "/api/platform-auth/:authRoute*",
       "destination": "/api/rai?route=platform-auth&authRoute=:authRoute*"
     },

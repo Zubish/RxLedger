@@ -1,3 +1,4 @@
+import type { HealthPassState } from "../src/healthpassContracts.js";
 /// <reference types="node" />
 import { reconcileAlertPreferences } from "../src/alertPolicy.js";
 import type { AlertPreference } from "../src/alertPolicy.js";
@@ -399,6 +400,7 @@ type MedicineLabelRule = {
 };
 
 type Database = {
+  healthpass?: HealthPassState;
   alertPreferences?: AlertPreference[];
   users: User[];
   medicines: Medicine[];
@@ -872,6 +874,10 @@ export async function saveRootState(root: RootState) {
   `;
 }
 
+// The symbol survives object spreads/read models but never serializes to JSON.
+const tenantBaseline = Symbol("tenantBaseline");
+type LoadedDatabase = Database & { [tenantBaseline]?: string };
+
 export async function loadTenantDatabase(slug: string) {
   const normalizedSlug = normalizeCompanySlug(slug);
   if (!normalizedSlug) return null;
@@ -884,7 +890,9 @@ export async function loadTenantDatabase(slug: string) {
     LIMIT 1
   `;
   if (rows[0]?.data) {
-    return normalizeDatabase(rows[0].data as Partial<Database>);
+    const db = normalizeDatabase(rows[0].data as Partial<Database>);
+    (db as LoadedDatabase)[tenantBaseline] = JSON.stringify(rows[0].data);
+    return db;
   }
 
   // Compatibility fallback for databases created before tenant_state existed.
@@ -893,7 +901,7 @@ export async function loadTenantDatabase(slug: string) {
   if (!tenant) return null;
   const db = normalizeDatabase(tenant.workspace);
   await saveTenantDatabase(normalizedSlug, db, true);
-  return db;
+  return loadTenantDatabase(normalizedSlug);
 }
 
 export async function loadTenantBootstrap(slug: string) {
@@ -1098,9 +1106,11 @@ export async function saveTenantDatabase(slug: string, db: Database, allowCreati
     UPDATE tenant_state
     SET data = ${JSON.stringify(clean)}::jsonb, updated_at = now()
     WHERE slug = ${normalizedSlug}
+      AND (${(db as LoadedDatabase)[tenantBaseline] ?? null}::jsonb IS NULL OR data = ${(db as LoadedDatabase)[tenantBaseline] ?? null}::jsonb)
     RETURNING slug
   `;
-  if (!saved.length) throw new Error("Authentication required: company portal no longer exists");
+  if (!saved.length) throw new Error((db as LoadedDatabase)[tenantBaseline] ? "Workspace changed concurrently or no longer exists. Reload and retry with the same operation ID." : "Authentication required: company portal no longer exists");
+  (db as LoadedDatabase)[tenantBaseline] = JSON.stringify(clean);
 }
 
 export async function tenantWorkspaceExists(slug: string) {

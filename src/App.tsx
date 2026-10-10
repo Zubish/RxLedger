@@ -1,3 +1,5 @@
+import { HealthPassQueue } from "./components/HealthPassQueue";
+import type { HealthPassState } from "./healthpassContracts";
 import { alertDisposition, eventAlertKey, inventoryAlerts } from "./alertPolicy";
 import type { AlertPreference } from "./alertPolicy";
 import { collectPage, stopCollection } from "./platform/collect";
@@ -563,6 +565,7 @@ type AppSettings = {
 };
 
 type Database = {
+  healthpass?: HealthPassState;
   alertPreferences?: AlertPreference[];
   users: User[];
   medicines: Medicine[];
@@ -3788,6 +3791,8 @@ function App() {
             />
           )}
           {activeView === "pos" && activeBranch && (
+            <>
+            <HealthPassQueue state={activeBranchDb.healthpass} branchId={activeBranch.id} role={currentUser.role} medicines={activeBranchDb.medicines} executeAction={executeAction} />
             <POSView
               key={`${currentUser.id}-${activeBranch.id}`}
               db={activeBranchDb}
@@ -3801,6 +3806,7 @@ function App() {
               continuityTarget={continuityProcessTarget}
               onContinuityTargetConsumed={() => setContinuityProcessTarget(null)}
             />
+            </>
           )}
           {activeView === "patients" && (
             <PatientsView
