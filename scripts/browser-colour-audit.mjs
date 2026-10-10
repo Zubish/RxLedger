@@ -13,8 +13,8 @@ const resultsPath = `${output}/${process.argv.includes('--supplement-only') ? 'c
 mkdirSync(output, { recursive: true });
 const browser = await chromium.launch({ executablePath: process.env.RXLEDGER_CHROMIUM_PATH || '/usr/bin/chromium', args: ['--no-sandbox'] });
 const results = [];
-const brand = 'rgb(130, 23, 44)';
-const deep = 'rgb(103, 17, 33)';
+const brand = 'rgb(129, 35, 63)';
+const deep = 'rgb(104, 26, 50)';
 const screens = ['Dashboard','Continuity','POS','Patients','Pharmacy','Mart','Receive','Reports','Suppliers','Notifications','Team Chat','Settings','Branches','Users','Issue Stock','Adjust/Returns','Audit','Guide'];
 async function colour(locator, property = 'color') {
   return locator.evaluate((el, key) => getComputedStyle(el)[key], property);
@@ -30,7 +30,7 @@ async function assertInteraction(page, selector, property, normal, hover = norma
   assert.equal(await colour(locator, property), hover, `${selector} hover ${property}`);
   await page.keyboard.press('Tab');
   await locator.focus();
-  assert.match(await colour(locator, 'outlineColor'), /130, 23, 44|232, 188, 199/, `${selector} focus outline`);
+  assert.match(await colour(locator, 'outlineColor'), /96, 136, 178|229, 197, 208/, `${selector} focus outline`);
 }
 try {
   for (const [device, width, height] of [['iphone12',390,844], ['tablet',768,1024], ['desktop',1440,1000]]) {
@@ -75,7 +75,7 @@ try {
       if (width > 900 && await page.locator('.sidebar-close-button').isVisible()) await page.locator('.sidebar-close-button').click();
       await page.waitForTimeout(220);
       await assertInteraction(page, '.primary-button:not(:disabled)', 'backgroundColor', brand, deep);
-      await assertInteraction(page, '.ghost-button:not(:disabled)', 'color', brand);
+      await assertInteraction(page, '.ghost-button:not(:disabled)', 'color', 'rgb(41, 62, 76)', 'rgb(56, 91, 128)');
       if (screen === 'POS') {
         await page.getByRole('button', { name: 'View sales history', exact: true }).click();
         await assertInteraction(page, '.pos-period-filter button', 'backgroundColor', brand);
@@ -110,10 +110,10 @@ try {
         await followup.screenshot({ path: `${output}/${device}-whatsapp-detail.png` });
         const history = page.locator('.patient-mobile-sections button').filter({ hasText: /^History$/ });
         if (await history.isVisible()) await history.click();
-        await assertInteraction(page, '.patient-history-visit', 'backgroundColor', 'rgb(255, 255, 255)', 'rgb(248, 237, 240)').catch(async error => {
+        await assertInteraction(page, '.patient-history-visit', 'backgroundColor', 'rgb(255, 255, 255)', 'rgb(246, 234, 240)').catch(async error => {
           // The fixture's first visit may already be selected, so its default is rose.
           if (await page.locator('.patient-history-visit').first().getAttribute('class').then(value => value.includes('active'))) {
-            assert.equal(await colour(page.locator('.patient-history-visit').first(), 'backgroundColor'), 'rgb(248, 237, 240)');
+            assert.equal(await colour(page.locator('.patient-history-visit').first(), 'backgroundColor'), 'rgb(246, 234, 240)');
           } else throw error;
         });
       }

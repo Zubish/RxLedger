@@ -1,3 +1,4 @@
+import { inventoryAlerts } from "../src/alertPolicy.ts";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -125,11 +126,7 @@ assertPresent(
   /function getLowStockMedicines[\s\S]*medicine\.reorderLevel > 0[\s\S]*\(totals\.get\(medicine\.id\) \?\? 0\) <= medicine\.reorderLevel/,
   "RxLedger low-stock helper should include zero-stock medicines when reorder level is set.",
 );
-assertPresent(
-  app,
-  /const outOfStock = lowStock\.filter\([\s\S]*\(stockTotals\.get\(medicine\.id\) \?\? 0\) <= 0/,
-  "RxLedger out-of-stock alerts should be derived from low-stock scope so zero-stock items are not missed.",
-);
+assert.deepEqual(inventoryAlerts({medicines:[{id:"m",brandName:"Medicine",active:true,reorderLevel:1,unit:"tablet"}],branches:[{id:"a",name:"Branch",active:true}],batches:[],stockSnapshot:[],settings:{nearExpiryDays:90}}).map(item=>item.kind), ["out"], "Zero-stock items without batches must still alert.");
 assertAbsent(
   api,
   /Authorization.+Bearer/,

@@ -1,3 +1,5 @@
+import { alertDisposition, inventoryAlerts } from "./alertPolicy";
+import type { AlertPreference } from "./alertPolicy";
 import { collectPage, stopCollection } from "./platform/collect";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import type {
@@ -92,7 +94,6 @@ import {
   WorkspaceLoadingScreen,
 } from "./components/Branding";
 import {
-  AlertItem,
   NotificationsView,
   NoticeOverlay,
   ReceivedStockModal,
@@ -562,6 +563,7 @@ type AppSettings = {
 };
 
 type Database = {
+  alertPreferences?: AlertPreference[];
   users: User[];
   medicines: Medicine[];
   products: Product[];
@@ -615,6 +617,8 @@ type AppNotification = {
   audience?: "branch" | "super-admin";
   requiredPermission?: "manage-branch";
   createdAt?: string;
+  kind?: string;
+  branchLabel?: string;
   receivedStock?: ReceivedStockNotification;
 };
 
@@ -2257,10 +2261,9 @@ function getQuestSteps(db: Database, currentUser: User): QuestStep[] {
 
 function buildNotifications(
   db: Database,
-  stockRows: StockRow[],
-  stockTotals: Map<string, number>,
   currentUser: User,
   activeBranch?: Branch,
+  now = Date.now(),
 ): AppNotification[] {
   const notifications: AppNotification[] = [];
   const unreadChat = db.chatMessages.filter((message) => isUnreadChatMessage(message, currentUser));
@@ -2307,22 +2310,6 @@ function buildNotifications(
   const matchedContinuityRequests = visibleContinuityRequests.filter(
     (request) => request.status === "matched",
   );
-  const expired = stockRows.filter(
-    (row) => row.quantity > 0 && row.status === "expired",
-  );
-  const nearExpiry = stockRows.filter(
-    (row) => row.quantity > 0 && row.status === "near-expiry",
-  );
-  const lowStock = getLowStockMedicines(
-    db,
-    stockRows,
-    stockTotals,
-    activeBranch,
-  );
-  const outOfStock = lowStock.filter(
-    (medicine) => (stockTotals.get(medicine.id) ?? 0) <= 0,
-  );
-
   if (unreadChat.length) {
     notifications.push({
       id: "chat-unread",
@@ -2442,56 +2429,13 @@ function buildNotifications(
     });
   });
 
-  expired.forEach((row) => {
-    notifications.push({
-      id: `expired-${row.batch.id}`,
-      tone: "danger",
-      title: `${medicineOptionLabel(row.medicine)} has expired stock`,
-      detail: `${getBranchName(db, row.batch.branchId)} / ${row.batch.batchNumber} has ${medicineStockLabel(row.medicine, row.quantity)} in ${row.batch.location}.`,
-      view: "reports",
-      branchId: row.batch.branchId,
-    });
-  });
-
-  nearExpiry.slice(0, 12).forEach((row) => {
-    notifications.push({
-      id: `near-${row.batch.id}`,
-      tone: "warning",
-      title: `${medicineOptionLabel(row.medicine)} expires in ${row.daysToExpiry} days`,
-      detail: `${getBranchName(db, row.batch.branchId)} / ${row.batch.batchNumber}, ${medicineStockLabel(row.medicine, row.quantity)} available.`,
-      view: "reports",
-      branchId: row.batch.branchId,
-    });
-  });
-
-  outOfStock.forEach((medicine) => {
-    notifications.push({
-      id: `out-${medicine.id}`,
-      tone: "danger",
-      title: `${medicineOptionLabel(medicine)} is out of stock`,
-      detail: `${activeBranch?.name ?? "Current branch"} / reorder level is ${medicineStockLabel(medicine, medicine.reorderLevel)}.`,
-      view: "medicines",
-      branchId: activeBranch?.id,
-    });
-  });
-
-  lowStock
-    .filter((medicine) => (stockTotals.get(medicine.id) ?? 0) > 0)
-    .forEach((medicine) => {
-      notifications.push({
-        id: `low-${medicine.id}`,
-        tone: "warning",
-        title: `${medicineOptionLabel(medicine)} is low on stock`,
-        detail: `${activeBranch?.name ?? "Current branch"} / available: ${medicineStockLabel(medicine, stockTotals.get(medicine.id) ?? 0)}. Reorder level: ${medicineStockLabel(medicine, medicine.reorderLevel)}.`,
-        view: "medicines",
-        branchId: activeBranch?.id,
-      });
-    });
+  notifications.push(...inventoryAlerts(db, now).filter(item=>!activeBranch || item.branchId===activeBranch.id));
 
   return notifications
     .filter((notification) =>
       isNotificationVisible(db, currentUser, notification, activeBranch),
     )
+    .map(item=>({...item,branchLabel:item.branchLabel || (item.branchId ? getBranchName(db,item.branchId) : "Workspace"),id:item.kind ? item.id : item.id+(item.createdAt ? "@"+item.createdAt : "")}))
     .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
 }
 
@@ -2810,15 +2754,15 @@ function App() {
     currentUser && activeBranch
       ? canWriteBranch(db, currentUser, activeBranch.id)
       : false;
+  const [alertNow, setAlertNow] = useState(() => Date.now());
   const rawNotifications = useMemo(
     () =>
       currentUser
         ? buildNotifications(
             canAdmin ? db : activeBranchDb,
-            notificationStockRows,
-            notificationStockTotals,
             currentUser,
             activeBranch,
+            alertNow,
           )
         : [],
     [
@@ -2827,29 +2771,31 @@ function App() {
       db,
       canAdmin,
       activeBranchDb,
-      notificationStockRows,
-      notificationStockTotals,
+      alertNow,
     ],
   );
-  const notificationDismissedKey = currentUser
-    ? safeStorageKey(db, currentUser, "dismissed-notifications")
-    : "";
-  const [dismissedNotificationsByKey, setDismissedNotificationsByKey] = useState<Record<string, string[]>>({});
-  const dismissedNotificationIds = useMemo(() => {
-    if (!notificationDismissedKey || typeof window === "undefined") return [];
-    const cached = dismissedNotificationsByKey[notificationDismissedKey];
-    if (cached) return cached;
-    try {
-      const parsed = JSON.parse(window.localStorage.getItem(notificationDismissedKey) || "[]");
-      return Array.isArray(parsed) ? parsed.map(String) : [];
-    } catch {
-      return [];
-    }
-  }, [dismissedNotificationsByKey, notificationDismissedKey]);
-  const notifications = useMemo(() => {
-    const dismissed = new Set(dismissedNotificationIds);
-    return rawNotifications.filter((notification) => !dismissed.has(notification.id));
-  }, [dismissedNotificationIds, rawNotifications]);
+  useEffect(() => {
+    const timer = window.setInterval(() => setAlertNow(Date.now()), 60000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const alertPreferences = db.alertPreferences?.filter(item => item.userId === currentUser?.id) || [];
+  const notifications = rawNotifications.filter(item =>
+    alertDisposition(item.id, alertPreferences, alertNow) === "active",
+  );
+  async function updateAlertPreferences(
+    items: AppNotification[],
+    mode: "snoozed" | "muted" | "restore",
+  ) {
+    return executeAction(
+      "setAlertPreferences",
+      {mode, alerts: items.map(item => ({key: item.id, branchId: item.branchId}))},
+      mode === "muted"
+        ? "Alerts moved to your muted list"
+        : mode === "snoozed"
+          ? "Alerts cleared. Unresolved issues return in 7 days."
+          : "Alerts restored",
+    );
+  }
   const [receivedStockNotification, setReceivedStockNotification] =
     useState<AppNotification | null>(null);
   const [continuityProcessTarget, setContinuityProcessTarget] =
@@ -3216,32 +3162,14 @@ function App() {
     navigate("continuity", "push", filter);
   }
 
-  function dismissNotification(notificationId: string) {
-    if (notificationDismissedKey && typeof window !== "undefined") {
-      setDismissedNotificationsByKey((currentByKey) => {
-        const current = currentByKey[notificationDismissedKey] ?? dismissedNotificationIds;
-        const next = Array.from(new Set([...current, notificationId])).slice(-80);
-        window.localStorage.setItem(notificationDismissedKey, JSON.stringify(next));
-        return { ...currentByKey, [notificationDismissedKey]: next };
-      });
-    }
-  }
-
   function openNotification(notification: AppNotification) {
     if (notification.receivedStock) {
       setReceivedStockNotification(notification);
       return;
     }
-    dismissNotification(notification.id);
     navigate(notification.view);
   }
-
-  function closeReceivedStockNotification() {
-    if (receivedStockNotification) {
-      dismissNotification(receivedStockNotification.id);
-    }
-    setReceivedStockNotification(null);
-  }
+  function closeReceivedStockNotification() { setReceivedStockNotification(null); }
 
   function processContinuityRequest(request: ContinuityRequest) {
     setContinuityProcessTarget({
@@ -3815,6 +3743,7 @@ function App() {
               activeBranch={activeBranch}
               assignedBranch={assignedBranch}
               setActiveView={navigate}
+              alertsPanel={<NotificationsView compact notifications={notifications} allNotifications={rawNotifications} preferences={alertPreferences} updatePreferences={updateAlertPreferences} openNotification={openNotification} now={alertNow}/>}
             />
           )}
           {activeView === "medicines" && (
@@ -3945,6 +3874,10 @@ function App() {
             <NotificationsView
               notifications={notifications}
               openNotification={openNotification}
+              preferences={alertPreferences}
+              allNotifications={rawNotifications}
+              updatePreferences={updateAlertPreferences}
+              now={alertNow}
             />
           )}
           {activeView === "audit" && canAdmin && (
@@ -4041,7 +3974,9 @@ function Dashboard({
   activeBranch,
   assignedBranch,
   setActiveView,
+  alertsPanel,
 }: {
+  alertsPanel: import("react").ReactNode;
   db: Database;
   currentUser: User;
   stockRows: StockRow[];
@@ -4241,91 +4176,7 @@ function Dashboard({
           </div>
         </section>
 
-        <section className="content-section dashboard-alerts">
-          <div className="section-heading">
-            <div>
-              <h2>Operational Alerts</h2>
-              <p>
-                {activeBranch
-                  ? `${activeBranch.name} alerts based on current branch scope.`
-                  : "Low stock, expiry risk, expired inventory, and access approvals."}
-              </p>
-            </div>
-            <button
-              className="ghost-button"
-              type="button"
-              onClick={() => setActiveView("reports")}
-            >
-              <FileText size={16} />
-              Reports
-            </button>
-          </div>
-          <div className="alert-list dashboard-scroll-list">
-            {pendingUsers > 0 && (
-              <AlertItem
-                tone="warning"
-                title={`${pendingUsers} staff access request${pendingUsers > 1 ? "s" : ""} pending`}
-                detail="An admin should approve users and assign the correct role before they can sign in."
-              />
-            )}
-            {expired.map((row) => (
-              <AlertItem
-                key={row.batch.id}
-                tone="danger"
-                title={
-                  <MedicineIdentity
-                    medicine={row.medicine}
-                    meta={medicineMeta(row.medicine)}
-                  />
-                }
-                detail={`Expired batch ${row.batch.batchNumber} has ${medicineStockLabel(row.medicine, row.quantity)} in ${row.batch.location}`}
-              />
-            ))}
-            {nearExpiry.slice(0, 5).map((row) => (
-              <AlertItem
-                key={row.batch.id}
-                tone="warning"
-                title={
-                  <MedicineIdentity
-                    medicine={row.medicine}
-                    meta={medicineMeta(row.medicine)}
-                  />
-                }
-                detail={`Batch ${row.batch.batchNumber} expires in ${row.daysToExpiry} days. ${medicineStockLabel(row.medicine, row.quantity)} available`}
-              />
-            ))}
-            {lowStock.map((medicine) => (
-              <AlertItem
-                key={medicine.id}
-                tone="info"
-                title={
-                  <MedicineIdentity
-                    medicine={medicine}
-                    meta={medicineMeta(medicine)}
-                  />
-                }
-                detail={`At or below reorder level. Available: ${medicineStockLabel(medicine, alertStockTotals.get(medicine.id) ?? 0)}. Reorder level: ${medicineStockLabel(medicine, medicine.reorderLevel)}`}
-              />
-            ))}
-            {!pendingUsers &&
-              !expired.length &&
-              !nearExpiry.length &&
-              !lowStock.length && (
-                <AlertItem
-                  tone="good"
-                  title="No active inventory alerts"
-                  detail="Stock levels, expiry windows, and access approvals are currently clear."
-                />
-              )}
-          </div>
-          <button
-            className="primary-button dashboard-alerts-action"
-            type="button"
-            onClick={() => setActiveView("notifications")}
-          >
-            <Bell size={16} /> View all alerts
-          </button>
-        </section>
+        {alertsPanel}
 
         <div className="dashboard-stock-section">
           <DashboardInventorySnapshot

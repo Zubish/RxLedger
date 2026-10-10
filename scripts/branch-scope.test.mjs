@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import test from "node:test";
 import { snapshotHeavyCollections, buildDatabasePatch } from "../src/databasePatch.ts";
 import { accessibleBranchIds, primaryAdminIdForDatabase, productQuantityInBranches, scopeDatabaseForUser } from "../server/branch-scope.ts";
+import { inventoryAlerts } from "../src/alertPolicy.ts";
 const user = { id: "local", role: "pharmacist", status: "active", branchIds: ["a", "expired"], managedBranchIds: [], branchAccessExpiresAt: { expired: "2000-01-01" } };
 const foreign = { ...user, id: "foreign", branchIds: ["b"] };
 const global = { ...user, id: "admin", role: "admin" };
@@ -112,6 +113,7 @@ let nextId = 0;
 const globalAccess = (actor, primary) => accessibleBranchIds(actor, primary) === null;
 const assignment = (actor, branch) => (accessibleBranchIds(actor) ?? []).includes(branch);
 mutationModule.require = (name) => {
+ if(name.endsWith("alertPolicy.ts")) return {inventoryAlerts};
  if (name.endsWith("branch-scope.js")) return { accessibleBranchIds, primaryAdminIdForDatabase, productQuantityInBranches, scopeDatabaseForUser };
  if (name.endsWith("databasePatch.js")) return { snapshotHeavyCollections, buildDatabasePatch };
  if (name.endsWith("_shared.js")) return {

@@ -1,4 +1,6 @@
 /// <reference types="node" />
+import { reconcileAlertPreferences } from "../src/alertPolicy.ts";
+import type { AlertPreference } from "../src/alertPolicy.ts";
 
 import { waitUntil } from "@vercel/functions";
 import { neon } from "@neondatabase/serverless";
@@ -397,6 +399,7 @@ type MedicineLabelRule = {
 };
 
 type Database = {
+  alertPreferences?: AlertPreference[];
   users: User[];
   medicines: Medicine[];
   products: Product[];
@@ -1530,6 +1533,7 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
         expiresAt: request.expiresAt ?? new Date(Date.now() - 1).toISOString(),
       };
     }),
+    alertPreferences: raw.alertPreferences ?? [],
     securityEvents: raw.securityEvents ?? empty.securityEvents,
     requisitions: (raw.requisitions ?? empty.requisitions).map((request) => ({
       ...request,
@@ -1665,11 +1669,11 @@ function buildLedgerSummary(db: Database): LedgerSummary {
 }
 
 export function withReadModels(db: Database): Database {
-  return {
+  return reconcileAlertPreferences<Database>({
     ...db,
     stockSnapshot: buildStockSnapshot(db),
     ledgerSummary: buildLedgerSummary(db),
-  };
+  });
 }
 
 export function sanitizeDatabase(db: Database) {

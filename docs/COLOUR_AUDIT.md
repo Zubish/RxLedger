@@ -1,15 +1,7 @@
-# Burgundy theme consistency
+# Application palette
 
-Burgundy is the primary navigation, action, selection, and focus accent throughout RxLedger. Deep burgundy handles hover/pressed contrast; white and neutral surfaces keep operational screens readable. Rose supports selected rows, subtle borders, and secondary surfaces.
+Burgundy (`#81233f`, deeper hover `#681a32`) is the primary action and selection colour. Teal (`#247974`) communicates positive context and progress. Slate (`#293e4c`, secondary text `#607481`) supplies structure, readable text and a calm navigation panel. Blue (`#6088b2`, pale `#eaf0f9`) supports information and keyboard focus. White and neutral surfaces keep operational screens readable.
 
-Green remains where it conveys stock health, successful operations, availability, or WhatsApp identity. Warning, expired-stock, and other safety colours retain their meaning. Print layout and readability are preserved; the decorative sales-history print header also uses burgundy.
+The shared screen theme covers the dashboard, Continuity, POS, patients, inventory, transfers, receiving, suppliers, Mart, reports, notifications, chat, branches, users, audit and settings. The platform-admin portal uses the same roles. Existing landing, trial, workspace-creation and sign-in designs retain their matching palette. Warning amber and danger red preserve their meanings. WhatsApp keeps its official icon and brand green; print styles are unaffected by the screen theme.
 
-The sweep fixes drawer hover, Continuity controls, patient history selection, POS prices, branch/account labels, report summaries, supplier links, secondary buttons, and decorative legacy green/cyan backgrounds. WhatsApp actions share an accessible dark green with a deeper hover shade. The existing sign-in/loading favicon shape uses burgundy and rose instead of purple and cyan.
-
-The accepted WhatsApp logo now appears on all WhatsApp calls to action, including patient Follow-up Messages, refills, and continuity requests.
-
-Run `npm run test:colours` against the local Vite server for computed-colour, hover/focus, overflow, and WhatsApp icon consistency checks at phone, tablet, and desktop sizes. The test uses controlled operational fixtures and captures screenshots and remaining semantic green usage under ignored `artifacts/ux-audit/`. The regular `npm run test:browser` shares the same fixtures.
-
-Browser checks use Chromium emulation, not native iOS Safari, and do not exercise a live authenticated database. Build, lint, and existing business/access tests provide additional verification.
-
-The completed sweep passed 51 screen/device colour, interaction, and overflow checks at 390px, 768px, and 1440px. Additional checks passed for sign-in and the sales-history modal at all three sizes. The browser asserts exactly one WhatsApp logo in Follow-up Messages and unchanged Smartphone icons in refill actions. Build and all seven test suites passed; lint reports no errors and the existing RaiConsent dependency warning.
+Run `npm run test:colours` against Vite for computed-colour, hover/focus, overflow and WhatsApp logo checks at 390, 768 and 1440px. Screenshots and computed semantic colours are stored under ignored `artifacts/ux-audit/`. `npm run test:alerts` checks the grouped notification controls and dialogs at an additional 320px width. Browser tests use Chromium emulation and isolated API fixtures, rather than native iOS Safari or live pharmacy mutations. Build, lint and business/access tests provide additional verification.

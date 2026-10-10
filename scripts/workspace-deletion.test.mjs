@@ -3,6 +3,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { createRequire, Module } from 'node:module';
 import { resolve } from 'node:path';
+import { reconcileAlertPreferences } from '../src/alertPolicy.ts';
 const require = createRequire(resolve('package.json'));
 const ts = require('typescript');
 const filename = resolve('server/_shared.ts');
@@ -21,7 +22,7 @@ const sql = async (strings, ...values) => {
  }
  return [];
 };
-module.require = name => name === '@neondatabase/serverless' ? {neon:()=>sql} : require(name);
+module.require = name => name.endsWith('alertPolicy.ts') ? {reconcileAlertPreferences} : name === '@neondatabase/serverless' ? {neon:()=>sql} : require(name);
 module._compile(ts.transpileModule(readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,filename);
 const previousUrl=process.env.DATABASE_URL;
 process.env.DATABASE_URL='postgresql://fixture.invalid/test';
@@ -41,4 +42,21 @@ test('deleted workspace cannot be recreated by ordinary writes; creation remains
  } finally {
   if(previousUrl===undefined) delete process.env.DATABASE_URL; else process.env.DATABASE_URL=previousUrl;
  }
+});
+
+test('read models resolve stock preferences from the ledger rather than stale snapshots',()=>{
+ const db=module.exports.createEmptyDatabase();
+ db.branches=[{id:'a',name:'Central',active:true}];
+ db.medicines=[{id:'m',brandName:'Medicine',genericName:'',active:true,reorderLevel:10,unit:'tablet'}];
+ db.batches=[{id:'batch',medicineId:'m',branchId:'a',expiryDate:'2028-01-01',batchNumber:'B',location:'Shelf'}];
+ db.ledger=[{batchId:'batch',quantity:5,createdAt:new Date().toISOString()}];
+ db.stockSnapshot=[{batchId:'batch',quantity:500}];
+ db.alertPreferences=[{userId:'u',branchId:'a',key:'low:a:m',mode:'muted',clearedAt:new Date().toISOString()}];
+ let rebuilt=module.exports.withReadModels(db);
+ assert.equal(rebuilt.stockSnapshot[0].quantity,5);
+ assert.equal(rebuilt.alertPreferences.length,1);
+ db.ledger.push({batchId:'batch',quantity:10,createdAt:new Date().toISOString()});
+ rebuilt=module.exports.withReadModels(db);
+ assert.equal(rebuilt.stockSnapshot[0].quantity,15);
+ assert.deepEqual(rebuilt.alertPreferences,[]);
 });

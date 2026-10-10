@@ -1,3 +1,4 @@
+import type { AlertPreference } from "./alertPolicy";
 export type Role = "admin" | "pharmacist" | "inventory" | "cashier" | "viewer";
 export type UserStatus = "pending" | "active" | "suspended";
 export type PatientInfoReliability =
@@ -430,6 +431,7 @@ export type AppSettings = {
 };
 
 export type Database = {
+  alertPreferences?: AlertPreference[];
   users: User[];
   medicines: Medicine[];
   products: Product[];

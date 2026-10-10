@@ -1,3 +1,4 @@
+import { inventoryAlerts } from "../src/alertPolicy.ts";
 import { accessibleBranchIds, productQuantityInBranches, scopeDatabaseForUser } from "../server/branch-scope.js";
 import {
   addAudit,
@@ -98,6 +99,81 @@ export default async function handler(
     const heavySnapshot = snapshotHeavyCollections(scopeDatabaseForUser(db, actor));
 
     switch (body.action) {
+      case "setAlertPreferences": {
+        const payload = body.payload || {};
+        const mode = payload.mode;
+        if (mode !== "snoozed" && mode !== "muted" && mode !== "restore")
+          throw new Error("Choose a valid alert action");
+        if (
+          !Array.isArray(payload.alerts) ||
+          !payload.alerts.length ||
+          payload.alerts.length > 1000
+        )
+          throw new Error("Choose between 1 and 1000 alerts");
+        const scoped = scopeDatabaseForUser(db, actor);
+        const inventoryKeys = new Map(
+          inventoryAlerts(scoped).map((item) => [item.id, item.branchId]),
+        );
+        const allowed = accessibleBranchIds(
+          actor,
+          db.settings.primaryAdminId ||
+            db.users.find(
+              (item) => item.role === "admin" && item.status === "active",
+            )?.id ||
+            "",
+        );
+        const targets = payload.alerts.map((raw) => {
+          const input = raw as { key?: unknown; branchId?: unknown };
+          if (typeof input.key !== "string" || input.key.length > 300 || !input.key)
+            throw new Error("Invalid alert identity");
+          const branchId =
+            typeof input.branchId === "string" ? input.branchId : undefined;
+          if (branchId && allowed !== null && !allowed.includes(branchId))
+            throw new Error("Alert branch is outside your access");
+          if (
+            /^(low|out|near|expired):/.test(input.key) &&
+            !inventoryKeys.has(input.key)
+          )
+            throw new Error("This stock alert is no longer active or permitted");
+          if (
+            !/^(low|out|near|expired):/.test(input.key) &&
+            !/^(chat-unread|pending-|incoming-requisition-|released-requisition-|branch-access-|continuity-matched|receipt-|received-|handled-requisition-)/.test(
+              input.key,
+            )
+          )
+            throw new Error("Invalid alert type");
+          if (input.key.startsWith("pending-") && allowed !== null)
+            throw new Error("Staff approvals require global access");
+          return {
+            key: input.key,
+            branchId: inventoryKeys.get(input.key) || branchId,
+          };
+        });
+        const keys = new Set(targets.map((item) => item.key));
+        const preferences = (db.alertPreferences || []).filter(
+          (item) => item.userId !== actor.id || !keys.has(item.key),
+        );
+        if (mode !== "restore")
+          preferences.push(
+            ...targets.map((item) => ({
+              ...item,
+              userId: actor.id,
+              mode: mode as "snoozed" | "muted",
+              clearedAt: nowIso(),
+            })),
+          );
+        db.alertPreferences = preferences;
+        addAudit(
+          db,
+          actor.id,
+          "Alert preferences updated",
+          "alerts",
+          actor.id,
+          undefined,
+          { mode, count: targets.length },
+        );
+        break;
+      }
       case "updateUser":
         updateUser(db, actor.id, body.payload);
         break;

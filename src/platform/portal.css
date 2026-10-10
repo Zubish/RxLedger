@@ -1,8 +1,8 @@
 .pa {
-  --pa-accent: #76243f;
-  --pa-line: #e8dce0;
-  color: #34232a;
-  background: #faf7f8;
+  --pa-accent: #81233f;
+  --pa-line: #dfe7e9;
+  color: #293e4c;
+  background: #f8faf9;
   min-height: 100dvh;
   font-family: Inter, system-ui, sans-serif;
 }
@@ -19,7 +19,7 @@
 }
 .pa p,
 .pa small {
-  color: #6e5b64;
+  color: #607481;
   line-height: 1.6;
 }
 .pa small {
@@ -53,13 +53,13 @@
 .pa select:focus-visible,
 .pa a:focus-visible,
 .pa summary:focus-visible {
-  outline: 3px solid #bc6482;
+  outline: 3px solid #6088b2;
   outline-offset: 3px;
 }
 .pa input,
 .pa select {
   width: 100%;
-  border: 1px solid #bda7b0;
+  border: 1px solid #dfe7e9;
   background: #fff;
   padding: 0.65rem;
 }
@@ -118,11 +118,11 @@
 .pa-nav button {
   justify-content: start;
   background: transparent;
-  color: #6e5b64;
+  color: #607481;
   border-color: transparent;
 }
 .pa-nav .pa-selected {
-  background: #f1e4e9;
+  background: #f6eaf0;
   color: var(--pa-accent);
   font-weight: 700;
 }
@@ -151,7 +151,7 @@
 .pa-stat h2 {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #6e5b64;
+  color: #607481;
 }
 .pa-stat > strong {
   font-size: 1.8rem;
@@ -214,7 +214,7 @@
   border: 0;
   border-bottom: 1px solid var(--pa-line);
   background: white;
-  color: #34232a;
+  color: #293e4c;
   width: 100%;
   border-radius: 0;
   justify-content: space-between;
@@ -254,11 +254,11 @@
 }
 .pa-rows span {
   font-size: 0.85rem;
-  color: #6e5b64;
+  color: #607481;
 }
 .pa-empty {
   padding: 1rem;
-  background: #faf7f8;
+  background: #f8faf9;
   border-radius: 9px;
 }
 .pa-error {
@@ -322,7 +322,7 @@
     position: sticky;
     top: 0;
     z-index: 5;
-    background: #faf7f8;
+    background: #f8faf9;
     padding: 0.5rem;
     border-bottom: 1px solid var(--pa-line);
     display: grid;
@@ -403,4 +403,15 @@
     width: 100%;
     text-align: center;
   }
+}
+
+.pa-eyebrow {
+  color: #247974;
+}
+.pa-stat:nth-child(even) {
+  border-top: 3px solid #6088b2;
+}
+.pa-empty {
+  background: #eaf0f9;
+  color: #385b80;
 }
