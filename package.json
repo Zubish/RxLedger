@@ -12,10 +12,11 @@
     "test:mobile": "node scripts/browser-mobile-hierarchy.mjs",
     "test:navigation": "node scripts/browser-navigation.mjs",
     "test:colours": "node scripts/browser-colour-audit.mjs",
-    "test": "node --test scripts/rxledger-rules.test.mjs scripts/rai-access.test.mjs scripts/rai-delegation.test.mjs scripts/rai-connection.test.mjs scripts/rai-router.test.mjs scripts/dashboard-snapshot.test.mjs scripts/branch-scope.test.mjs scripts/workspace-deletion.test.mjs scripts/platform-auth.test.mjs scripts/alert-policy.test.mjs scripts/server-artifact.test.mjs",
+    "test": "node --test scripts/rxledger-rules.test.mjs scripts/rai-access.test.mjs scripts/rai-delegation.test.mjs scripts/rai-connection.test.mjs scripts/rai-router.test.mjs scripts/dashboard-snapshot.test.mjs scripts/branch-scope.test.mjs scripts/workspace-deletion.test.mjs scripts/platform-auth.test.mjs scripts/alert-policy.test.mjs scripts/server-artifact.test.mjs scripts/healthpass.test.mjs scripts/tenant-concurrency.test.mjs",
     "preview": "vite preview",
     "test:alerts": "node scripts/browser-alerts.mjs",
-    "test:platform": "node scripts/browser-platform.mjs"
+    "test:platform": "node scripts/browser-platform.mjs",
+    "test:healthpass": "node --test scripts/healthpass.test.mjs scripts/tenant-concurrency.test.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

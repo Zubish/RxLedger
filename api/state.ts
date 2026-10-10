@@ -1,3 +1,4 @@
+import { filterAuthorizedHealthPassContext } from "../server/healthpass/live-authorization.js";
 import { accessibleBranchIds, primaryAdminIdForDatabase, scopeDatabaseForUser } from "../server/branch-scope.js";
 import {
   canAdmin,
@@ -154,7 +155,7 @@ export default async function handler(
       res.status(200).json(response);
       return;
     }
-    const clean = scopeDatabaseForUser(sanitizeDatabase(db), user);
+    const clean = await filterAuthorizedHealthPassContext(scopeDatabaseForUser(sanitizeDatabase(db), user));
     clean.auditLogs = [];
     clean.sales = [];
     clean.ledger = [];

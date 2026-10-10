@@ -148,6 +148,7 @@ const actionModule = new Module(resolve("api/action.ts"));
 let stored,
   saves = 0;
 actionModule.require = (name) => {
+  if (name.includes("/healthpass/")) return { filterAuthorizedHealthPassContext: async db => db };
   if (name.endsWith("alertPolicy.js")) return { inventoryAlerts };
   if (name.endsWith("branch-scope.js")) return scope;
   if (name.endsWith("databasePatch.js")) return patches;

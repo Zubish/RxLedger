@@ -1,3 +1,4 @@
+import type { HealthPassState } from "./healthpassContracts.js";
 import type { AlertPreference } from "./alertPolicy";
 export type Role = "admin" | "pharmacist" | "inventory" | "cashier" | "viewer";
 export type UserStatus = "pending" | "active" | "suspended";
@@ -431,6 +432,7 @@ export type AppSettings = {
 };
 
 export type Database = {
+  healthpass?: HealthPassState;
   alertPreferences?: AlertPreference[];
   users: User[];
   medicines: Medicine[];

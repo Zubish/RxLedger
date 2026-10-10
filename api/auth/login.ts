@@ -1,3 +1,4 @@
+import { filterAuthorizedHealthPassContext } from "../../server/healthpass/live-authorization.js";
 import { scopeDatabaseForUser } from "../../server/branch-scope.js";
 import {
   addSecurityEvent,
@@ -104,7 +105,7 @@ export default async function handler(
     await saveTenantDatabase(companySlug, dbWithReadModels);
     const session = await createSession(user.id);
     setSessionCookie(res, session);
-    const clean = scopeDatabaseForUser(sanitizeDatabase(dbWithReadModels), user);
+    const clean = await filterAuthorizedHealthPassContext(scopeDatabaseForUser(sanitizeDatabase(dbWithReadModels), user));
     clean.auditLogs = [];
     clean.sales = [];
     clean.ledger = [];

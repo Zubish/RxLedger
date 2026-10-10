@@ -1,3 +1,5 @@
+import { prepareDispense, completeDispense, reviewPrescription } from "../server/healthpass/workflow.js";
+import { assertLiveAuthorization, filterAuthorizedHealthPassContext } from "../server/healthpass/live-authorization.js";
 import { inventoryAlerts } from "../src/alertPolicy.js";
 import { accessibleBranchIds, productQuantityInBranches, scopeDatabaseForUser } from "../server/branch-scope.js";
 import {
@@ -228,7 +230,11 @@ export default async function handler(
       case "issueStock":
         issueStock(db, actor.id, actor.role, body.payload);
         break;
+      case "reviewHealthPassPrescription":
+        reviewPrescription(db, actor, body.payload || {});
+        break;
       case "recordSale":
+        if (body.payload?.healthpass) await authorizeHealthPassAction(db, actor, body.payload);
         recordSale(db, actor.id, actor.role, body.payload);
         break;
       case "savePosDraft":
@@ -261,7 +267,7 @@ export default async function handler(
     const dbWithReadModels = withReadModels(db);
     await saveTenantDatabase(companySlug, dbWithReadModels);
     saveMs = Date.now() - saveStartedAt;
-    const clean = scopeDatabaseForUser(sanitizeDatabase(dbWithReadModels), actor);
+    const clean = await filterAuthorizedHealthPassContext(scopeDatabaseForUser(sanitizeDatabase(dbWithReadModels), actor));
     const databasePatch = buildDatabasePatch(heavySnapshot, clean);
     const response = {
       db: stripHeavyCollections(clean),
@@ -2401,6 +2407,18 @@ function fulfillContinuityRequestsFromSale(
   }
 }
 
+export function prepareHealthPassAction(db: Database, actor: User, payload: Record<string, unknown>) {
+  const branchId = optionalString(payload.branchId) || db.branches.find(branch => branch.active)?.id || "main";
+  if (!db.branches.some(branch => branch.id === branchId && branch.active) || !canSellInBranch(db, actor, branchId) || !canCompleteSaleInBranch(db, actor, branchId)) throw new Error("Pharmacy prescription access denied");
+  const requestedDraftId = optionalString(payload.draftId);
+  const draft = requestedDraftId ? db.posDrafts.find(item => item.id === requestedDraftId && item.branchId === branchId && item.expiresAt > nowIso()) : activeDraft(db, actor.id, branchId);
+  return prepareDispense(db, actor, branchId, payload.healthpass, normalizeDraftItems(payload.items ?? draft?.items));
+}
+
+export async function authorizeHealthPassAction(db: Database, actor: User, payload: Record<string, unknown>) {
+  if (!prepareHealthPassAction(db, actor, payload).duplicate) await assertLiveAuthorization(db, payload.healthpass);
+}
+
 function recordSale(
   db: Database,
   actorId: string,
@@ -2430,6 +2448,9 @@ function recordSale(
     : activeDraft(db, actorId, branchId);
   const inputs = normalizeDraftItems(payload?.items ?? draft?.items);
   if (!inputs.length) throw new Error("Add at least one item to the POS cart");
+
+  const healthpassDispense = payload?.healthpass ? prepareDispense(db, actor, branchId, payload.healthpass, inputs) : undefined;
+  if (healthpassDispense?.duplicate) return;
 
   const saleItems: Sale["items"] = [];
   const ledgerEntries = [];
@@ -2597,6 +2618,11 @@ function recordSale(
     bookingCode: draft?.bookingCode,
     items: saleItems,
   };
+  if (healthpassDispense) {
+    sale.customerName = healthpassDispense.record.prescription.patient.name;
+    sale.customerPhone = healthpassDispense.record.prescription.patient.contactPhone || "";
+    completeDispense(db, healthpassDispense, sale);
+  }
   db.ledger.unshift(...ledgerEntries);
   db.sales.unshift(sale);
   fulfillContinuityRequestsFromSale(db, actorId, sale);
