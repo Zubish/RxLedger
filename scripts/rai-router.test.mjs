@@ -24,7 +24,7 @@ test('unknown and ambiguous routes never call either handler', () => {
 
 test('deployment keeps legacy URLs and stays within the Hobby function limit', () => {
   const config = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
-  assert.deepEqual(config.rewrites[0], { source: '/api/rai/:route(analytics-snapshot|connection)', destination: '/api/rai?route=:route' });
+  assert.deepEqual(config.rewrites.find(item => item.source.startsWith("/api/rai/")), { source: '/api/rai/:route(analytics-snapshot|connection)', destination: '/api/rai?route=:route' });
   const entries = readdirSync(new URL('../api/', import.meta.url), { recursive: true }).filter(name => name.endsWith('.ts'));
   assert.equal(entries.length, 12);
   assert.ok(!entries.some(name => name.includes('_shared') || name.includes('delegation')));

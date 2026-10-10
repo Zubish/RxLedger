@@ -1,0 +1,24 @@
+name: Platform availability
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check application and record observation
+        shell: bash
+        run: |
+          node --input-type=module <<'JS'
+          const started=Date.now();let ok=false;
+          try {const response=await fetch('https://rxledger.vercel.app/api/bootstrap',{signal:AbortSignal.timeout(15000)});const data=await response.json();ok=response.ok&&typeof data.hasUsers==='boolean';}catch{}
+          const identity=await fetch(process.env.ACTIONS_ID_TOKEN_REQUEST_URL+'&audience=rxledger-platform',{headers:{Authorization:'Bearer '+process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN}}).then(r=>r.json());
+          const result=await fetch('https://rxledger.vercel.app/api/platform?mode=probe',{method:'POST',headers:{Authorization:'Bearer '+identity.value,'Content-Type':'application/json'},body:JSON.stringify({ok,duration:Date.now()-started}),signal:AbortSignal.timeout(15000)});
+          if(!result.ok)throw new Error('Probe collection failed: '+result.status);
+          console.log(ok?'Application probe passed':'Application probe failed');
+          JS

@@ -1,3 +1,4 @@
+import { collectPage, stopCollection } from "./platform/collect";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import type {
   FormEvent,
@@ -720,7 +721,7 @@ function id(prefix: string) {
 function getWorkspaceSlugFromLocation() {
   if (typeof window === "undefined") return "";
   const [segment = ""] = window.location.pathname.split("/").filter(Boolean);
-  if (!segment || segment === "api") return "";
+  if (!segment || segment === "api" || segment === "platform-admin") return "";
   return slugifyCompany(segment);
 }
 
@@ -3190,6 +3191,12 @@ function App() {
       window.removeEventListener("hashchange", restore);
     };
   }, [sessionUserId, loading, canAdmin]);
+
+  useEffect(() => {
+    if (!sessionUserId || loading) { stopCollection(); return; }
+    const timer = window.setTimeout(() => collectPage(companySlug, activeView), 100);
+    return () => window.clearTimeout(timer);
+  }, [sessionUserId, loading, companySlug, activeView]);
 
   function selectContinuityFilter(filter: ContinuityFilter) {
     navigate("continuity", "push", filter);

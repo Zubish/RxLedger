@@ -40,7 +40,7 @@ export default async function handler(
     const password = typeof body.password === "string" ? body.password : "";
     const branchName = "Main Branch";
     const companySlug = normalizeCompanySlug(pharmacyName);
-    if (!pharmacyName || !companySlug || !email || !password) {
+    if (!pharmacyName || !companySlug || companySlug === "platform-admin" || !email || !password) {
       fail(res, 400, "Pharmacy name, email, and password are required");
       return;
     }

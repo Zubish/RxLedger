@@ -1,5 +1,6 @@
 /// <reference types="node" />
 
+import { waitUntil } from "@vercel/functions";
 import { neon } from "@neondatabase/serverless";
 import {
   createHash,
@@ -478,7 +479,7 @@ type Database = {
 type HandlerResponse = {
   status: (code: number) => HandlerResponse;
   json: (body: unknown) => void;
-  setHeader: (name: string, value: string) => void;
+  setHeader: (name: string, value: string | string[]) => void;
   end: () => void;
 };
 
@@ -1952,11 +1953,26 @@ export function jsonByteLength(value: unknown) {
   return Buffer.byteLength(JSON.stringify(value), "utf8");
 }
 
+const apiMeasurements = new WeakMap<HandlerRequest, Record<string, string | number | boolean>>();
+export function trackApi(req: HandlerRequest, res: HandlerResponse, route: string) {
+  const started = Date.now();
+  let status = 200;
+  const originalStatus = res.status.bind(res);
+  const originalJson = res.json.bind(res);
+  res.status = code => { status = code; return originalStatus(code); };
+  res.json = body => {
+    const metrics = { ...apiMeasurements.get(req), status, ok: status < 400, totalMs: Date.now() - started, responseBytes: Number(apiMeasurements.get(req)?.responseBytes) || jsonByteLength(body) };
+    waitUntil(import("./platform/telemetry.js").then(({recordApi}) => recordApi(req, route, metrics)).catch(() => console.warn("platform-collection-failed")));
+    originalJson(body);
+  };
+}
+
 export function logApiPerformance(
   req: HandlerRequest,
   route: string,
   metrics: Record<string, string | number | boolean>,
 ) {
+  apiMeasurements.set(req, metrics);
   const rawRequestId = req.headers["x-vercel-id"];
   const requestId = Array.isArray(rawRequestId)
     ? rawRequestId[0] || "local"

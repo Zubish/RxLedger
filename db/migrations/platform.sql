@@ -1,0 +1,18 @@
+CREATE TABLE IF NOT EXISTS platform_config (id integer PRIMARY KEY CHECK(id=1), auth_secret text NOT NULL, started_at timestamptz NOT NULL DEFAULT now(), owner_email text);
+INSERT INTO platform_config(id,auth_secret) VALUES(1,gen_random_uuid()::text || gen_random_uuid()::text) ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS platform_invites (token_hash text PRIMARY KEY, expires_at timestamptz NOT NULL, consumed_at timestamptz);
+CREATE TABLE IF NOT EXISTS platform_owners (user_id text PRIMARY KEY REFERENCES platform_auth_user(id) ON DELETE CASCADE, enabled boolean NOT NULL DEFAULT true);
+CREATE TABLE IF NOT EXISTS platform_mfa_sessions (session_id text PRIMARY KEY REFERENCES platform_auth_session(id) ON DELETE CASCADE, verified_at timestamptz NOT NULL DEFAULT now(), expires_at timestamptz NOT NULL);
+CREATE TABLE IF NOT EXISTS platform_workspace_meta (slug text PRIMARY KEY REFERENCES tenant_state(slug) ON DELETE CASCADE, kind text NOT NULL CHECK(kind IN ('pharmacy','demo','internal')));
+INSERT INTO platform_workspace_meta(slug,kind) SELECT slug,'demo' FROM tenant_state WHERE slug='totalenergies-pharmacy' ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS platform_events (id text PRIMARY KEY, at timestamptz NOT NULL DEFAULT now(), workspace text REFERENCES tenant_state(slug) ON DELETE CASCADE, kind text NOT NULL DEFAULT 'pharmacy', event text NOT NULL, page text NOT NULL DEFAULT '', route text NOT NULL DEFAULT '', action text NOT NULL DEFAULT '', device text NOT NULL DEFAULT '', release text NOT NULL DEFAULT '', status integer, duration double precision, bytes bigint, vital text, value double precision, error_group text);
+CREATE INDEX IF NOT EXISTS platform_events_at ON platform_events(at);
+CREATE INDEX IF NOT EXISTS platform_events_workspace_at ON platform_events(workspace,at);
+CREATE TABLE IF NOT EXISTS platform_audit (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), at timestamptz NOT NULL DEFAULT now(), actor text, event text NOT NULL);
+CREATE TABLE IF NOT EXISTS platform_daily (day date NOT NULL, workspace text NOT NULL REFERENCES tenant_state(slug) ON DELETE CASCADE, kind text NOT NULL, page text NOT NULL, visits bigint NOT NULL, operations bigint NOT NULL, PRIMARY KEY(day,workspace,kind,page));
+CREATE TABLE IF NOT EXISTS platform_maintenance (day date PRIMARY KEY);
+ALTER TABLE platform_events ADD COLUMN IF NOT EXISTS load_ms double precision;
+ALTER TABLE platform_events ADD COLUMN IF NOT EXISTS auth_ms double precision;
+ALTER TABLE platform_events ADD COLUMN IF NOT EXISTS save_ms double precision;
+ALTER TABLE platform_workspace_meta ADD COLUMN IF NOT EXISTS activated_at timestamptz;
+ALTER TABLE platform_workspace_meta ADD COLUMN IF NOT EXISTS last_activity timestamptz;

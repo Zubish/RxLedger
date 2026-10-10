@@ -1,6 +1,18 @@
 {
   "rewrites": [
     {
+      "source": "/api/platform-auth/:authRoute*",
+      "destination": "/api/rai?route=platform-auth&authRoute=:authRoute*"
+    },
+    {
+      "source": "/api/platform",
+      "destination": "/api/rai?route=platform"
+    },
+    {
+      "source": "/api/telemetry",
+      "destination": "/api/rai?route=telemetry"
+    },
+    {
       "source": "/api/rai/:route(analytics-snapshot|connection)",
       "destination": "/api/rai?route=:route"
     },

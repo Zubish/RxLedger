@@ -10,6 +10,7 @@ import {
   loadTenantLedgerPage,
   loadTenantSalesPage,
   logApiPerformance,
+  trackApi,
   requireMethod,
   sanitizeDatabase,
   setServerTiming,
@@ -22,6 +23,7 @@ export default async function handler(
   },
   res: HandlerResponse,
 ) {
+  trackApi(req, res, "/api/state");
   if (!requireMethod(req, res, ["GET"])) return;
   const startedAt = Date.now();
   let loadMs = 0;

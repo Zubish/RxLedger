@@ -26,3 +26,5 @@ dist-ssr
 .vercel
 artifacts/ux-audit/
 artifacts/mobile-hierarchy/
+
+artifacts/platform-admin/

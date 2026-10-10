@@ -19,6 +19,7 @@ import {
   jsonByteLength,
   loadTenantDatabase,
   logApiPerformance,
+  trackApi,
   nowIso,
   requireMethod,
   sanitizeDatabase,
@@ -65,6 +66,7 @@ export default async function handler(
   req: HandlerRequest,
   res: HandlerResponse,
 ) {
+  trackApi(req, res, "/api/action");
   if (!requireMethod(req, res, ["POST"])) return;
   const startedAt = Date.now();
   let actionName = "unknown";
@@ -201,6 +203,8 @@ export default async function handler(
     logApiPerformance(req, "/api/action", {
       ok: true,
       action: actionName,
+      status: 200,
+      operationId: companySlug + ":" + actionName + ":" + (db.auditLogs[0]?.id || ""),
       loadMs,
       authMs,
       saveMs,
@@ -211,6 +215,7 @@ export default async function handler(
   } catch (error) {
     logApiPerformance(req, "/api/action", {
       ok: false,
+      status: 400,
       action: actionName,
       loadMs,
       authMs,

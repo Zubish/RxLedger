@@ -1,4 +1,5 @@
-export const pageIds = ['dashboard', 'medicines', 'products', 'suppliers', 'receive', 'pos', 'patients', 'continuity', 'issue', 'adjust', 'reports', 'chat', 'notifications', 'audit', 'users', 'branches', 'settings'] as const;
+import { pageIds } from "./platform/contracts";
+export { pageIds };
 export type NavigationView = typeof pageIds[number];
 export const continuityStatuses = ['active', 'open', 'matched', 'contacted', 'transferred', 'fulfilled', 'cancelled', 'all'] as const;
 export type NavigationFilter = typeof continuityStatuses[number];
