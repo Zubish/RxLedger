@@ -6,6 +6,14 @@ export type AlertPreference = {
   mode: "snoozed" | "muted";
   clearedAt: string;
 };
+/** Repeated timestamps across branches must not combine separate event groups. */
+export function eventAlertKey(
+  id: string,
+  branchId?: string,
+  createdAt?: string,
+) {
+  return [id, branchId, createdAt].filter(Boolean).join("@");
+}
 export const ALERT_REMINDER_MS = 7 * 24 * 60 * 60 * 1000;
 export function alertDisposition(
   key: string,

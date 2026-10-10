@@ -398,7 +398,7 @@ export function NotificationsView<T extends Notice>({
             in 7 days unless you move them to the muted list.
           </p>
           <p>
-            Restocking resolves stock alerts automatically. New issues will
+            Restocking resolves shortage alerts automatically. New issues will
             still appear immediately.
           </p>
           {actionError && (

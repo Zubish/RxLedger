@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  eventAlertKey,
   ALERT_REMINDER_MS,
   alertDisposition,
   inventoryAlerts,
@@ -227,4 +228,18 @@ test("API persists per-user preferences, derives branch, restores only own items
     ["admin"],
   );
   assert.equal((await action([{ key: "invalid:key" }], "muted")).status, 400);
+});
+
+test("matching event timestamps in separate branches never share suppression", () => {
+  const a = eventAlertKey(
+    "continuity-matched",
+    "a",
+    new Date(now).toISOString(),
+  );
+  const b = eventAlertKey(
+    "continuity-matched",
+    "b",
+    new Date(now).toISOString(),
+  );
+  assert.equal(alertDisposition(b, [pref(a, "muted")], now), "active");
 });

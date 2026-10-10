@@ -1,4 +1,4 @@
-import { alertDisposition, inventoryAlerts } from "./alertPolicy";
+import { alertDisposition, eventAlertKey, inventoryAlerts } from "./alertPolicy";
 import type { AlertPreference } from "./alertPolicy";
 import { collectPage, stopCollection } from "./platform/collect";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
@@ -2435,7 +2435,7 @@ function buildNotifications(
     .filter((notification) =>
       isNotificationVisible(db, currentUser, notification, activeBranch),
     )
-    .map(item=>({...item,branchLabel:item.branchLabel || (item.branchId ? getBranchName(db,item.branchId) : "Workspace"),id:item.kind ? item.id : item.id+(item.createdAt ? "@"+item.createdAt : "")}))
+    .map(item=>({...item,branchLabel:item.branchLabel || (item.branchId ? getBranchName(db,item.branchId) : "Workspace"),id:item.kind ? item.id : eventAlertKey(item.id, item.branchId, item.createdAt)}))
     .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
 }
 

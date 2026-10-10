@@ -18,7 +18,9 @@ const browser = await chromium.launch({
 });
 mkdirSync("artifacts/platform-admin", { recursive: true });
 try {
-  for (const width of [320, 390, 768, 1440]) {
+  for (const width of process.argv.includes("--phone-only")
+    ? [390]
+    : [320, 390, 768, 1440]) {
     let db = structuredClone(fixture);
     for (const row of db.stockSnapshot)
       if (["m3a", "m4a"].includes(row.batchId)) row.quantity = 5;
