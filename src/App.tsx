@@ -2551,6 +2551,13 @@ function inferNoticeTone(message: string): NoticeTone {
   return "info";
 }
 
+function readPublicAuthIntent(): "landing" | "setup" | "signin" {
+  const params = new URLSearchParams(window.location.search);
+  if (params.has("onboarding")) return "setup";
+  if (getStoredToken() || window.location.hash.startsWith("#/") || params.get("account") === "signin") return "signin";
+  return "landing";
+}
+
 function App() {
   const [db, setDb] = useState<Database>(createEmptyDatabase);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
@@ -2573,9 +2580,16 @@ function App() {
   const [companySlug, setCompanySlug] = useState(
     () => getWorkspaceSlugFromLocation() || getStoredCompanySlug(),
   );
-  const [authIntent, setAuthIntent] = useState<"landing" | "setup" | "signin">(
-    () => getStoredToken() || window.location.hash.startsWith("#/") ? "signin" : "landing",
-  );
+  const [authIntent, setAuthIntent] = useState<"landing" | "setup" | "signin">(readPublicAuthIntent);
+  useEffect(() => {
+    const syncEntry = () => {
+      if (!getStoredToken() && !getWorkspaceSlugFromLocation()) {
+        setAuthIntent(readPublicAuthIntent());
+      }
+    };
+    window.addEventListener("popstate", syncEntry);
+    return () => window.removeEventListener("popstate", syncEntry);
+  }, []);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [continuityMenuOpen, setContinuityMenuOpen] = useState(false);
   const [continuityFilter, setContinuityFilter] = useState<ContinuityFilter>(() => readNavigation().filter);
@@ -3454,7 +3468,12 @@ function App() {
         completePasswordReset={completePasswordReset}
         selectWorkspace={selectWorkspace}
         backToLanding={
-          !isWorkspaceRoute ? () => setAuthIntent("landing") : undefined
+          !isWorkspaceRoute
+            ? () => {
+                history.pushState(null, "", "/");
+                setAuthIntent("landing");
+              }
+            : undefined
         }
       />
     );

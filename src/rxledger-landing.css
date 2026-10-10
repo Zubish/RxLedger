@@ -1209,3 +1209,260 @@
     animation: none !important;
   }
 }
+
+/* Burgundy identifies primary actions; teal, blue and slate support context. */
+.rxledger-landing.rl-calm {
+  --brand: #81233f;
+  --brand-dark: #681a32;
+  --brand-soft: #f6eaf0;
+  --teal: #247974;
+  --accent-2: #6088b2;
+}
+.rl-calm .rl-eyebrow,
+.rl-calm .rl-feature-note,
+.rl-calm .rl-benefits svg,
+.rl-calm .rl-trust svg,
+.rl-calm .rl-context-note svg {
+  color: var(--teal);
+}
+.rl-calm .rl-icon {
+  color: var(--teal);
+}
+.rl-calm .rl-icon.blue {
+  color: #6088b2;
+}
+.rl-calm .rl-steps li > span {
+  color: var(--teal);
+}
+.rl-calm .rl-team-panel .rl-eyebrow {
+  color: #a8d5cd;
+}
+.rl-dashboard-stage {
+  padding-inline: 0;
+}
+.rl-dashboard-stage > div {
+  border-radius: 12px;
+  background: #fff;
+}
+.rl-dashboard-stage .landing-status-danger {
+  color: white;
+}
+.rl-dashboard-stage table {
+  min-width: 0;
+  width: 100%;
+}
+.rl-dashboard-stage .shadow-2xl {
+  box-shadow: 0 16px 42px rgb(41 62 76 / 8%);
+}
+.rl-dashboard-stage .text-success {
+  color: #247974;
+}
+.rl-dashboard-stage .text-warn {
+  color: #916319;
+}
+.rl-dashboard-stage .text-danger {
+  color: var(--brand);
+}
+.rl-entry .rl-intro {
+  max-width: none;
+}
+.rl-entry main > h1 {
+  font-size: clamp(2.4rem, 4vw, 3.5rem);
+}
+.rl-trial-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 30px;
+  padding: 36px;
+  margin-block: 40px 60px;
+  border: 1px solid #cfdedb;
+  border-radius: 14px;
+  background: #eaf2ef;
+}
+.rl-trial-option h2 {
+  font-size: 2rem;
+}
+.rl-trial-option p:not(.rl-eyebrow) {
+  margin-top: 15px;
+  color: var(--ink-soft);
+}
+.rl-trial-option .rl-button {
+  flex-shrink: 0;
+}
+.rl-entry .rl-body-copy {
+  max-width: none;
+}
+.rl-reviews {
+  position: relative;
+  isolation: isolate;
+  padding: 70px 0;
+  margin-bottom: 70px;
+  background: #eaf2ef;
+  min-height: 530px;
+}
+.rl-review-photo {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-position: center;
+  background-size: cover;
+}
+.rl-reviews::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(234, 242, 239, 0.8),
+    rgba(234, 242, 239, 0.25)
+  );
+}
+.rl-reviews > .rl-wrap {
+  position: relative;
+  z-index: 1;
+}
+.rl-review-panel {
+  background: rgba(252, 251, 248, 0.97);
+  border: 1px solid var(--border);
+  padding: 38px;
+  border-radius: 16px;
+  max-width: 750px;
+  box-shadow: 0 14px 42px rgb(41 62 76 / 12%);
+}
+.rl-review-panel h2 {
+  font-size: 2rem;
+}
+.rl-review-panel blockquote {
+  font-family: Georgia, serif;
+  font-size: 24px;
+  line-height: 1.55;
+  margin: 25px 0;
+  min-height: 150px;
+}
+.rl-review-panel .text-brand-soft {
+  color: var(--brand);
+  font-weight: 700;
+}
+.rl-review-person {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.rl-review-person strong {
+  font-size: 13px;
+}
+.rl-review-person p {
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+.rl-review-controls {
+  display: flex;
+  gap: 10px;
+  margin-top: 25px;
+}
+.rl-review-controls button {
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--ink);
+  background: white;
+  font-size: 12px;
+}
+.rl-review-controls button[aria-pressed="true"] {
+  background: var(--brand);
+  color: white;
+  border-color: var(--brand);
+}
+@media (max-width: 760px) {
+  .rl-trial-option {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 25px;
+    margin-block: 30px 45px;
+  }
+  .rl-trial-option h2 {
+    font-size: 1.8rem;
+  }
+  .rl-dashboard-stage table th,
+  .rl-dashboard-stage table td {
+    padding: 8px 5px;
+    font-size: 9px;
+  }
+  .rl-dashboard-stage table td span {
+    white-space: normal;
+    font-size: 8px;
+  }
+  .rl-dashboard-stage table th:nth-child(2),
+  .rl-dashboard-stage table td:nth-child(2) {
+    display: none;
+  }
+  .rl-dashboard-stage .grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+  }
+  .rl-dashboard-stage .grid > div {
+    padding: 7px;
+  }
+  .rl-dashboard-stage .grid > div > div:first-child {
+    display: block;
+  }
+  .rl-dashboard-stage .grid .font-mono {
+    font-size: 8px;
+    letter-spacing: 0;
+  }
+  .rl-dashboard-stage .grid .font-display {
+    font-size: 12px;
+  }
+  .rl-dashboard-stage .grid svg {
+    display: none;
+  }
+  .rl-dashboard-stage .grid > div > div:first-child > span:last-child {
+    margin-top: 5px;
+  }
+  .rl-dashboard-stage .mt-3.flex {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .rl-dashboard-stage .mt-3.flex > span {
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+  .rl-reviews {
+    padding: 40px 0;
+    margin-bottom: 50px;
+  }
+  .rl-review-panel {
+    padding: 25px;
+  }
+  .rl-review-panel blockquote {
+    font-size: 20px;
+    min-height: 0;
+  }
+  .rl-review-person p {
+    font-size: 10px;
+  }
+  .rl-review-photo {
+    background-position: 65% center;
+  }
+}
+
+/* Keep the keyboard shortcut off-screen until intentionally focused. */
+.rl-calm .rl-skip {
+  clip-path: inset(50%);
+  height: 1px;
+  width: 1px;
+  overflow: hidden;
+}
+.rl-calm .rl-skip:focus-visible {
+  clip-path: none;
+  height: auto;
+  width: auto;
+  overflow: visible;
+  transform: none;
+}
+.rl-calm .rl-button-light {
+  color: var(--brand);
+}

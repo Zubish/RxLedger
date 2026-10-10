@@ -9,6 +9,7 @@ import {
   UserPlus,
 } from "lucide-react";
 
+import { subscriptionPlans } from "../subscriptionPlans";
 import { checkCompanySlug } from "../api";
 import { slugifyCompany } from "../company";
 import type { AppSettings, RegisterInput, SetupInput } from "../types";
@@ -125,9 +126,13 @@ export function AuthScreen({
           : workspaceSelected
             ? `Sign in to ${companyName}`
             : "Sign in to RxLedger";
+  const onboarding = new URLSearchParams(location.search).get("onboarding");
+  const chosenPlan = subscriptionPlans.find((plan) => plan.id === onboarding);
   const authCopy =
     activeMode === "setup"
-      ? "Start your pharmacy workspace with just your email and password."
+      ? onboarding === "trial"
+        ? "Experience RxLedger by starting your free trial."
+        : "Create your pharmacy workspace with your email and password."
       : activeMode === "register"
         ? workspaceSelected
           ? "Submit your staff details for admin review."
@@ -141,7 +146,7 @@ export function AuthScreen({
             : "Find your company workspace before entering your staff credentials.";
 
   return (
-    <main className="login-screen">
+    <main className="login-screen public-auth">
       <section className="login-panel auth-panel">
         {activeMode === "setup" || !workspaceSelected ? (
           <RxLedgerLogo size="large" />
@@ -207,10 +212,24 @@ export function AuthScreen({
         )}
 
         {activeMode === "setup" && (
-          <SetupForm
-            createFirstAdmin={createFirstAdmin}
-            setError={setError}
-          />
+          <div className="auth-onboarding-note">
+            <ShieldCheck size={19} />
+            <div>
+              <strong>
+                {chosenPlan
+                  ? `Selected plan: ${chosenPlan.name}`
+                  : "30-day free trial"}
+              </strong>
+              <p>
+                {chosenPlan
+                  ? "Your workspace begins with the free trial. Activate your chosen plan from workspace settings."
+                  : "Smart Pharmacy features for 30 days. No card required."}
+              </p>
+            </div>
+          </div>
+        )}
+        {activeMode === "setup" && (
+          <SetupForm createFirstAdmin={createFirstAdmin} setError={setError} />
         )}
         {activeMode !== "setup" && (
           <WorkspaceFinder
@@ -755,8 +774,8 @@ function PasswordResetForm({
           />
           {!emailConfigured && (
             <div className="form-note full">
-              Email is not active yet, so no real reset code was delivered.
-              This screen is ready for testing once Resend keys are added.
+              Email is not active yet, so no real reset code was delivered. This
+              screen is ready for testing once Resend keys are added.
             </div>
           )}
         </>

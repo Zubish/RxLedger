@@ -5918,3 +5918,112 @@ textarea:focus {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* Public account screens share the landing palette without changing workspace UI. */
+.login-screen.public-auth {
+  --rx-brand: #81233f;
+  --rx-brand-dark: #681a32;
+  --rx-text: #293e4c;
+  --rx-muted: #607481;
+  --rx-border: #dfe7e9;
+  background:
+    radial-gradient(ellipse at 15% 15%, #eaf2ef 0, transparent 45%),
+    radial-gradient(ellipse at 85% 80%, #eaf0f9 0, transparent 40%), #fcfbf8;
+  color: #293e4c;
+  padding: 48px 24px;
+}
+.public-auth .login-panel.auth-panel {
+  width: min(580px, 100%);
+  border: 1px solid #dfe7e9;
+  border-radius: 16px;
+  box-shadow: 0 16px 44px rgb(41 62 76 / 7%);
+  padding: 36px;
+  gap: 22px;
+  background: #fff;
+}
+.public-auth .login-panel h1 {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 32px;
+  letter-spacing: -0.035em;
+  color: #293e4c;
+  line-height: 1.2;
+}
+.public-auth .login-panel p {
+  color: #607481;
+  line-height: 1.75;
+}
+.public-auth .eyebrow {
+  color: #247974;
+}
+.public-auth .primary-button {
+  background: #81233f;
+  border-color: #81233f;
+  box-shadow: none;
+  min-height: 48px;
+}
+.public-auth .primary-button:hover {
+  background: #681a32;
+  border-color: #681a32;
+  box-shadow: none;
+  transform: none;
+}
+.public-auth .tabs button.active {
+  background: #f6eaf0;
+  color: #81233f;
+  border-color: #e5c5d0;
+}
+.public-auth .workspace-finder {
+  background: #eef5f3;
+  border-color: #d5e3df;
+  border-radius: 10px;
+}
+.public-auth .workspace-confirmation {
+  background: #eaf0f9;
+  border-color: #dce5f0;
+}
+.public-auth input:focus,
+.public-auth select:focus {
+  border-color: #6088b2;
+  box-shadow: 0 0 0 3px rgb(96 136 178 / 14%);
+  outline: none;
+}
+.public-auth .ghost-button:hover {
+  border-color: #d3bbc4;
+  background: #fbf6f8;
+  box-shadow: none;
+  transform: none;
+}
+.public-auth .auth-onboarding-note {
+  display: flex;
+  gap: 12px;
+  padding: 17px;
+  border: 1px solid #d6e6e1;
+  background: #eef5f3;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #247974;
+}
+.public-auth .auth-onboarding-note svg {
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+.public-auth .auth-onboarding-note p {
+  font-size: 12px;
+  margin-top: 5px;
+}
+.public-auth button:focus-visible {
+  outline: 3px solid #6088b2;
+  outline-offset: 3px;
+}
+@media (max-width: 600px) {
+  .login-screen.public-auth {
+    padding: 28px 16px;
+    align-items: start;
+  }
+  .public-auth .login-panel.auth-panel {
+    padding: 24px 20px;
+  }
+  .public-auth .login-panel h1 {
+    font-size: 28px;
+  }
+}
