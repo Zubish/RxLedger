@@ -49,3 +49,11 @@ export async function maintainPlatformTelemetry() {
     throw error;
   }
 }
+
+let nextMaintenance=0;
+/** Keep retention working during app activity if the external scheduler is unavailable. */
+export function maintainDuringActivity(){
+ if(Date.now()<nextMaintenance)return Promise.resolve();
+ nextMaintenance=Date.now()+3600000;
+ return maintainPlatformTelemetry().catch(error=>{nextMaintenance=0;throw error;});
+}

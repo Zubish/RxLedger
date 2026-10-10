@@ -22,7 +22,7 @@ The owner sees actual measurement start, selected rolling interval, UTC timestam
 
 `.github/workflows/platform-availability.yml` probes `/api/bootstrap` approximately every five minutes. GitHub scheduling may be delayed. Ingestion validates GitHub OIDC issuer, audience, repository, branch and exact workflow identity. No repository secret is required. Missing scheduled observations are unknown; incomplete coverage has no uptime percentage.
 
-The authenticated probe job also runs idempotent daily maintenance: raw events 30 days, daily workspace activity 12 months, minimal platform audit 12 months, and expired auth records. Per-workspace daily rows cascade when the workspace is deleted. Daily summaries do not contain pharmacy content. Current report windows are 24 hours, 7 days and 30 days. Longer cohort/retention and release-comparison views can be added after adequate observations exist; the current portal does not invent historical trends.
+The authenticated probe job runs idempotent daily maintenance, with an hourly opportunity during instrumented app activity and owner reporting if the scheduler is unavailable: raw events 30 days, daily workspace activity 12 months, minimal platform audit 12 months, and expired auth records. Per-workspace daily rows cascade when the workspace is deleted. Daily summaries do not contain pharmacy content. Current report windows are 24 hours, 7 days and 30 days. Longer cohort/retention and release-comparison views can be added after adequate observations exist; the current portal does not invent historical trends.
 
 ## Verification
 
@@ -33,3 +33,7 @@ The authenticated probe job also runs idempotent daily maintenance: raw events 3
 - `npm run build` and `npm run lint`.
 
 Keep the twelve-entry Vercel function budget. Platform, auth and telemetry URLs are rewritten to the existing guarded API dispatcher, while each handler independently enforces its own authorization. RAI consent and pharmacy permissions are unchanged.
+
+## Current external monitoring limitation
+
+GitHub Actions currently refuses runners because the connected GitHub account is locked due to a billing issue (confirmed in run 38036931958). Scheduled external probes cannot run until the account owner resolves this in GitHub billing. The portal reports incomplete monitoring and does not claim uptime. Normal-activity retention cleanup remains available; if both scheduling and app activity stop, physical pruning waits until the next successful maintenance invocation.

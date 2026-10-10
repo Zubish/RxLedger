@@ -1,3 +1,4 @@
+import {maintainDuringActivity} from "./maintenance.js";
 import { randomUUID } from "node:crypto";
 import { getSql, getCompanySlugFromRequest } from "../_shared.js";
 import type { HandlerRequest } from "../_shared.js";
@@ -47,4 +48,6 @@ export async function recordApi(
       [workspace, action],
     );
   }
+  await maintainDuringActivity();
+
 }

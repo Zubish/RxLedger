@@ -1,4 +1,5 @@
-import { maintainPlatformTelemetry } from "./maintenance.js";
+import { maintainPlatformTelemetry, maintainDuringActivity } from "./maintenance.js";
+import {waitUntil} from "@vercel/functions";
 import { createHash } from "node:crypto";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import {
@@ -137,6 +138,7 @@ export default async function handler(
     }
     const owner = await requireOwner(req);
     if (mode === "report" && req.method === "GET") {
+      waitUntil(maintainDuringActivity().catch(()=>console.warn("platform-maintenance-failed")));
       res
         .status(200)
         .json(await platformReport(new URLSearchParams(req.query)));
