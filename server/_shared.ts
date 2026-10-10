@@ -1,6 +1,6 @@
 /// <reference types="node" />
-import { reconcileAlertPreferences } from "../src/alertPolicy.ts";
-import type { AlertPreference } from "../src/alertPolicy.ts";
+import { reconcileAlertPreferences } from "../src/alertPolicy.js";
+import type { AlertPreference } from "../src/alertPolicy.js";
 
 import { waitUntil } from "@vercel/functions";
 import { neon } from "@neondatabase/serverless";

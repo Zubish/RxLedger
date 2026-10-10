@@ -22,7 +22,7 @@ const sql = async (strings, ...values) => {
  }
  return [];
 };
-module.require = name => name.endsWith('alertPolicy.ts') ? {reconcileAlertPreferences} : name === '@neondatabase/serverless' ? {neon:()=>sql} : require(name);
+module.require = name => name.endsWith('alertPolicy.js') ? {reconcileAlertPreferences} : name === '@neondatabase/serverless' ? {neon:()=>sql} : require(name);
 module._compile(ts.transpileModule(readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,filename);
 const previousUrl=process.env.DATABASE_URL;
 process.env.DATABASE_URL='postgresql://fixture.invalid/test';

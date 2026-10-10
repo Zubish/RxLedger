@@ -1,4 +1,4 @@
-import { inventoryAlerts } from "../src/alertPolicy.ts";
+import { inventoryAlerts } from "../src/alertPolicy.js";
 import { accessibleBranchIds, productQuantityInBranches, scopeDatabaseForUser } from "../server/branch-scope.js";
 import {
   addAudit,
