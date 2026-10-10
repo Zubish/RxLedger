@@ -10,7 +10,7 @@ export async function maintainPlatformTelemetry() {
   if (!claimed.length) return;
   try {
     await sql.query(
-      "INSERT INTO platform_daily(day,workspace,kind,page,visits,operations) SELECT at::date,workspace,kind,page,count(*) FILTER(WHERE event='page_visit'),count(*) FILTER(WHERE event='operation') FROM platform_events WHERE workspace IS NOT NULL AND at<current_date AND at>=now()-interval '30 days' AND event IN ('page_visit','operation') GROUP BY at::date,workspace,kind,page ON CONFLICT(day,workspace,kind,page) DO UPDATE SET visits=excluded.visits,operations=excluded.operations",
+      "INSERT INTO platform_daily(day,workspace,kind,page,visits,operations) SELECT at::date,workspace,kind,page,count(*) FILTER(WHERE event='page_visit'),count(*) FILTER(WHERE event='operation') FROM platform_events WHERE workspace IS NOT NULL AND at<current_date AND at>=now()-interval '12 months' AND event IN ('page_visit','operation') GROUP BY at::date,workspace,kind,page ON CONFLICT(day,workspace,kind,page) DO UPDATE SET visits=excluded.visits,operations=excluded.operations",
       [],
     );
     await sql.query(
