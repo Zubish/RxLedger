@@ -18,7 +18,7 @@ function send(event: Record<string, unknown>) {
     keepalive: true,
     headers: {
       "Content-Type": "application/json",
-      "x-company-slug": context.slug,
+      "x-rxledger-company": context.slug,
     },
     body: JSON.stringify({
       id: crypto.randomUUID().replaceAll("-", ""),

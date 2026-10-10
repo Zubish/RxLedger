@@ -201,3 +201,9 @@ test("auth proxy denies public signup, MFA reset, trusted devices and cross-orig
   }
   assert.deepEqual(calls, []);
 });
+
+test('collector sends the established workspace header and stops after logout', async()=>{
+ const previous={window:globalThis.window,document:globalThis.document,fetch:globalThis.fetch};const requests=[];const listeners=[];const callbacks=[];
+ globalThis.window={innerWidth:390,addEventListener:(_name,callback)=>listeners.push(callback)};globalThis.document={visibilityState:'visible'};globalThis.fetch=async(url,options)=>{requests.push({url,options});return {};};
+ try{const collector=load('src/platform/collect.ts',{'web-vitals':{onCLS:fn=>callbacks.push(fn),onINP:fn=>callbacks.push(fn),onLCP:fn=>callbacks.push(fn)}});collector.collectPage('totalenergies-pharmacy','patients');assert.equal(requests[0].options.headers['x-rxledger-company'],'totalenergies-pharmacy');const event=JSON.parse(requests[0].options.body);assert.ok(validateBrowserEvent(event));assert.equal(event.page,'patients');callbacks[0]({id:'v6-123456789-123456789',name:'CLS',value:0.01});callbacks[0]({id:'v6-123456789-123456789',name:'CLS',value:0.02});assert.equal(JSON.parse(requests[1].options.body).id,JSON.parse(requests[2].options.body).id);collector.stopCollection();for(const callback of listeners)callback();assert.equal(requests.length,3);}finally{for(const [key,value] of Object.entries(previous))if(value===undefined)delete globalThis[key];else globalThis[key]=value;}
+});

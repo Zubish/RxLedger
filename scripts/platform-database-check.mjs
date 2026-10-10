@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { createRequire, Module } from "node:module";
 import { resolve } from "node:path";
 import { randomBytes, createHash } from "node:crypto";
-import { neon, Pool, neonConfig } from "@neondatabase/serverless";
+import { neon, neonConfig } from "@neondatabase/serverless";
 import WebSocket from "ws";
 import { HttpsProxyAgent } from "https-proxy-agent";
 neonConfig.webSocketConstructor = class extends WebSocket {
@@ -26,7 +26,7 @@ const sql = neon(connection);
 const shared = {
   getSql: () => sql,
   getConnectionString: () => connection,
-  getCompanySlugFromRequest: (req) => req.headers["x-company-slug"],
+  getCompanySlugFromRequest: (req) => req.headers["x-rxledger-company"],
 };
 function load(file, deps = {}) {
   const filename = resolve(file);
@@ -42,7 +42,7 @@ function load(file, deps = {}) {
   );
   return mod.exports;
 }
-const options = load("server/platform/auth-options.ts", { pg: { Pool } });
+const options = load("server/platform/auth-options.ts", { ws: {default:neonConfig.webSocketConstructor} });
 const auth = load("server/platform/auth.ts", {
   "./auth-options.js": options,
   "../_shared.js": shared,

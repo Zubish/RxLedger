@@ -1,4 +1,6 @@
-import { Pool } from "pg";
+import { Pool, neonConfig } from "@neondatabase/serverless";
+import WebSocket from "ws";
+neonConfig.webSocketConstructor = WebSocket;
 import { twoFactor } from "better-auth/plugins/two-factor";
 import type { BetterAuthOptions } from "better-auth";
 
