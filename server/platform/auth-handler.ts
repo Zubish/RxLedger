@@ -9,6 +9,7 @@ import { getSql } from "../_shared.js";
 import type { HandlerRequest, HandlerResponse } from "../_shared.js";
 const allowed = [
   "sign-in/email",
+  "sign-in/username",
   "sign-out",
   "get-session",
   "two-factor/enable",
@@ -46,16 +47,26 @@ export default async function handler(
     }
     const auth = await getPlatformAuth();
     const headers = requestHeaders(req);
+    let targetRoute=route;
+    let body=req.body;
+    if(route === "sign-in/username") {
+      if(req.method !== "POST") {res.status(405).json({error:"Method not allowed"});return;}
+      const credentials=req.body as {username?:unknown;password?:unknown};
+      const username=typeof credentials?.username === 'string'?credentials.username.trim().slice(0,80):'';
+      const rows=await getSql().query('SELECT u.email FROM platform_owners o JOIN platform_auth_user u ON u.id=o.user_id WHERE lower(o.username)=lower($1) AND o.enabled=true',[username]);
+      targetRoute="sign-in/email";
+      body={email:rows[0]?.email || "unknown-owner@rxledger.invalid",password:typeof credentials?.password === "string"?credentials.password:""};
+    }
     const response = await auth.handler(
       new Request(
         (process.env.RXLEDGER_APP_ORIGIN || "https://rxledger.vercel.app") +
           "/api/platform-auth/" +
-          route,
+          targetRoute,
         {
           method: req.method,
           headers,
           body:
-            req.method === "GET" ? undefined : JSON.stringify(req.body || {}),
+            req.method === "GET" ? undefined : JSON.stringify(body || {}),
         },
       ),
     );

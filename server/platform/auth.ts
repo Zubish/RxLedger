@@ -48,12 +48,13 @@ export async function ownerStatus(req: HandlerRequest) {
   const session = await auth.api.getSession({ headers: requestHeaders(req) });
   if (!session) return null;
   const rows = await getSql().query(
-    "SELECT o.user_id, m.session_id FROM platform_owners o LEFT JOIN platform_mfa_sessions m ON m.session_id=$2 AND m.expires_at>now() WHERE o.user_id=$1 AND o.enabled=true",
+    "SELECT o.user_id, o.require_mfa, m.session_id FROM platform_owners o LEFT JOIN platform_mfa_sessions m ON m.session_id=$2 AND m.expires_at>now() WHERE o.user_id=$1 AND o.enabled=true",
     [session.user.id, session.session.id],
   );
   if (!rows.length) return null;
   return {
     session,
+    accessGranted: rows[0].require_mfa === false || (Boolean(rows[0].session_id) && Boolean(session.user.twoFactorEnabled)),
     mfaVerified:
       Boolean(rows[0].session_id) &&
       Boolean(
@@ -64,7 +65,7 @@ export async function ownerStatus(req: HandlerRequest) {
 
 export async function requireOwner(req: HandlerRequest) {
   const owner = await ownerStatus(req);
-  if (!owner || !owner.mfaVerified) throw new Error("PLATFORM_UNAUTHORIZED");
+  if (!owner || !owner.accessGranted) throw new Error("PLATFORM_UNAUTHORIZED");
   return owner;
 }
 

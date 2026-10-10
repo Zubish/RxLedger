@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire, Module } from "node:module";
 import { resolve } from "node:path";
-import { randomBytes, createHash } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { neon, neonConfig } from "@neondatabase/serverless";
 import WebSocket from "ws";
 import { HttpsProxyAgent } from "https-proxy-agent";
@@ -61,8 +61,6 @@ const authHandler = load("server/platform/auth-handler.ts", {
 }).default;
 let cookie = "";
 let userId;
-const invite = randomBytes(32).toString("hex");
-const hash = createHash("sha256").update(invite).digest("hex");
 const password = randomBytes(24).toString("hex");
 const eventIds = Array.from({ length: 6 }, () =>
   randomBytes(16).toString("hex"),
@@ -134,26 +132,20 @@ try {
         " timestamptz",
       [],
     );
-  await sql.query(
-    "INSERT INTO platform_invites(token_hash,expires_at) VALUES($1,now()+interval '1 hour')",
-    [hash],
-  );
-  const enrolled = await invoke(
-    handler,
-    { mode: "enroll" },
-    {
-      token: invite,
-      email: "integration-owner@example.test",
-      name: "Integration owner",
-      password,
-    },
-  );
-  assert.equal(enrolled.code, 200, JSON.stringify(enrolled.json));
+  const library = await auth.getPlatformAuth();
+  await library.api.signUpEmail({body: {
+    email: "integration-owner@example.test",
+    name: "Integration owner",
+    password,
+  }});
   const found = await sql.query(
     "SELECT id FROM platform_auth_user WHERE email=$1",
     ["integration-owner@example.test"],
   );
   userId = found[0].id;
+  await sql.query("INSERT INTO platform_owners(user_id) VALUES($1)", [userId]);
+  const signedIn = await invoke(authHandler, {authRoute: "sign-in/email"}, {email: "integration-owner@example.test", password});
+  assert.equal(signedIn.code, 200, JSON.stringify(signedIn.json));
   assert.equal((await invoke(handler, { mode: "report" })).code, 401);
   const setup = await invoke(
     authHandler,
@@ -225,13 +217,12 @@ try {
   await invoke(authHandler, { authRoute: "sign-out" }, {});
   assert.equal((await invoke(handler, { mode: "report" })).code, 401);
   console.log(
-    "Isolated database integration passed: enrollment, MFA enforcement, SQL aggregates, percentiles, DEMO exclusion and deduplication",
+    "Isolated database integration passed: provisioned identity, MFA enforcement, SQL aggregates, percentiles, DEMO exclusion and deduplication",
   );
 } finally {
   await sql.query("DELETE FROM platform_events WHERE id=ANY($1::text[])", [
     eventIds,
   ]);
-  await sql.query("DELETE FROM platform_invites WHERE token_hash=$1", [hash]);
   if (userId)
     await sql.query("DELETE FROM platform_auth_user WHERE id=$1", [userId]);
   const instance = await auth.getPlatformAuth();

@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import QRCode from "qrcode";
 import {
   Activity,
   Building2,
@@ -63,19 +62,8 @@ export default function Portal() {
   const [report, setReport] = useState<PlatformReport | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [code, setCode] = useState("");
-  const [totp, setTotp] = useState("");
-  const [qr, setQr] = useState("");
-  const [backups, setBackups] = useState<string[]>([]);
-  const [backupMode, setBackupMode] = useState(false);
-  const [challenge, setChallenge] = useState(false);
-  const [invite, setInvite] = useState(
-    () =>
-      new URLSearchParams(location.hash.replace(/^#\/?/, "")).get("invite") ||
-      "",
-  );
   const refreshStatus = async () => {
     try {
       setStatus(await request("/api/platform?mode=status"));
@@ -149,46 +137,9 @@ export default function Portal() {
     }
   }
   async function signIn() {
-    await action(async () => {
-      if (invite) {
-        await request("/api/platform?mode=enroll", {
-          token: invite,
-          email,
-          password,
-        });
-        history.replaceState(null, "", location.pathname + "#/overview");
-        setInvite("");
-      } else {
-        const result = await request("/api/platform-auth/sign-in/email", {
-          email,
-          password,
-        });
-        setChallenge(Boolean(result.twoFactorRedirect));
-      }
-      await refreshStatus();
-    });
-  }
-  async function enableMfa() {
-    await action(async () => {
-      const result = await request("/api/platform-auth/two-factor/enable", {
-        password,
-      });
-      setTotp(result.totpURI);
-      setQr(await QRCode.toDataURL(result.totpURI));
-      setBackups(result.backupCodes || []);
+    await action(async()=>{
+      await request("/api/platform-auth/sign-in/username",{username,password});
       setPassword("");
-    });
-  }
-  async function verify() {
-    await action(async () => {
-      await request(
-        "/api/platform-auth/two-factor/" +
-          (backupMode ? "verify-backup-code" : "verify-totp"),
-        { code },
-      );
-      setCode("");
-      setChallenge(false);
-      setBackups([]);
       await refreshStatus();
     });
   }
@@ -247,147 +198,9 @@ export default function Portal() {
       {error}
     </p>
   );
-  if (!status || !status.authenticated) {
-    const mfaChallenge = challenge || status?.mfaEnrolled;
-    const mfa = status?.mfaRequired || mfaChallenge;
-    return (
-      <main className="pa pa-access">
-        <section className="pa-card">
-          <ShieldCheck size={32} />
-          <p className="pa-eyebrow">RXLEDGER · PLATFORM OWNER</p>
-          <h1>
-            {mfa
-              ? "Verify your identity"
-              : invite
-                ? "Set up owner access"
-                : "Owner sign in"}
-          </h1>
-          <p>
-            Separate access for platform reporting. Pharmacy and DEMO accounts
-            do not grant access.
-          </p>
-          {alert}
-          {!status && !error ? (
-            <p role="status">Checking access…</p>
-          ) : mfa ? (
-            <>
-              {!mfaChallenge && !totp && (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void enableMfa();
-                  }}
-                >
-                  <label>
-                    Confirm your password
-                    <input
-                      type="password"
-                      autoComplete="current-password"
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                    />
-                  </label>
-                  <button disabled={busy}>Set up authenticator</button>
-                </form>
-              )}
-              {totp && (
-                <>
-                  <p>Scan this QR code with your authenticator app.</p>
-                  <img
-                    width="200"
-                    height="200"
-                    src={qr}
-                    alt="Authenticator setup QR code"
-                  />
-                  <details>
-                    <summary>Manual setup key</summary>
-                    <code className="pa-secret">
-                      {new URL(totp).searchParams.get("secret")}
-                    </code>
-                  </details>
-                  <details>
-                    <summary>Save recovery codes before continuing</summary>
-                    <p>
-                      Keep these codes securely. Each code can be used once.
-                    </p>
-                    <pre>{backups.join("\n")}</pre>
-                  </details>
-                </>
-              )}
-              {(mfaChallenge || totp) && (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void verify();
-                  }}
-                >
-                  <label>
-                    {backupMode ? "Recovery code" : "Authenticator code"}
-                    <input
-                      autoComplete="one-time-code"
-                      inputMode={backupMode ? "text" : "numeric"}
-                      required
-                      value={code}
-                      onChange={(e) => setCode(e.target.value)}
-                    />
-                  </label>
-                  <button disabled={busy}>Verify and continue</button>
-                  <button
-                    className="pa-secondary"
-                    type="button"
-                    onClick={() => setBackupMode(!backupMode)}
-                  >
-                    {backupMode ? "Use authenticator" : "Use recovery code"}
-                  </button>
-                </form>
-              )}
-            </>
-          ) : (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void signIn();
-              }}
-            >
-              <label>
-                Email
-                <input
-                  type="email"
-                  autoComplete="username"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </label>
-              <label>
-                Password
-                <input
-                  type="password"
-                  autoComplete={invite ? "new-password" : "current-password"}
-                  required
-                  minLength={invite ? 12 : undefined}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </label>
-              <button disabled={busy}>
-                {busy
-                  ? "Please wait…"
-                  : invite
-                    ? "Create owner identity"
-                    : "Sign in"}
-              </button>
-              {invite && (
-                <p>You will be required to set up two-factor authentication.</p>
-              )}
-            </form>
-          )}
-        </section>
-        <a href="/">Return to RxLedger</a>
-      </main>
-    );
-  }
+  if(!status || !status.authenticated) return (
+    <main className="pa pa-access"><section className="pa-card"><ShieldCheck size={32}/><p className="pa-eyebrow">RXLEDGER · PLATFORM OWNER</p><h1>Owner sign in</h1><p>Sign in to your admin dashboard.</p>{alert}{!status&&!error?<p role="status">Checking access…</p>:<form onSubmit={e=>{e.preventDefault();void signIn();}}><label>Username<input autoComplete="username" required value={username} onChange={e=>setUsername(e.target.value)}/></label><label>Password<input type="password" autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)}/></label><button disabled={busy}>{busy?'Signing in…':'Sign in'}</button></form>}</section><a href="/">Return to RxLedger</a></main>
+  );
   return (
     <div className="pa">
       <header className="pa-header">

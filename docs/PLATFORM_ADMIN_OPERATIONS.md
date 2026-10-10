@@ -2,11 +2,11 @@
 
 The approved first release is read-only at `/platform-admin`. Its authentication, cookies, MFA and owner membership are independent of pharmacy authentication. Do not promote a pharmacy account to platform owner or use shared DEMO credentials.
 
-## Initial owner setup
+## Owner login
 
-Provision a 32-byte random single-use invitation. Store only its SHA-256 hash in `platform_invites`, with a short expiry, and deliver the link privately with the token in the URL fragment. Optionally pin `platform_config.owner_email` before provisioning. The initial setup endpoint rejects enrollment once any platform owner exists. Never commit invitations, passwords or database credentials.
+The owner signs in with the provisioned username `Zubish` and their password at `/platform-admin`. Passwords are hashed by Better Auth and stored only in the separate server-side credential table. Public registration and invitation enrollment are closed. Never commit passwords or database credentials.
 
-The owner chooses an email and password of at least 12 characters, enrolls an authenticator, saves recovery codes, and verifies a code before accessing reports. Public signup and password-only authenticator resets are disabled. Sessions expire after 30 minutes; a separate session-bound MFA proof is required by every report and export endpoint.
+At the owner's explicit request, this account signs in directly without an authenticator setup. Enabled platform membership is required by every report and export endpoint. Other owners default to requiring a session-bound MFA proof unless explicitly provisioned otherwise. Sessions expire after 30 minutes.
 
 ## Storage and collection
 

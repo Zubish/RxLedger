@@ -16,3 +16,6 @@ ALTER TABLE platform_events ADD COLUMN IF NOT EXISTS auth_ms double precision;
 ALTER TABLE platform_events ADD COLUMN IF NOT EXISTS save_ms double precision;
 ALTER TABLE platform_workspace_meta ADD COLUMN IF NOT EXISTS activated_at timestamptz;
 ALTER TABLE platform_workspace_meta ADD COLUMN IF NOT EXISTS last_activity timestamptz;
+ALTER TABLE platform_owners ADD COLUMN IF NOT EXISTS username text;
+ALTER TABLE platform_owners ADD COLUMN IF NOT EXISTS require_mfa boolean NOT NULL DEFAULT true;
+CREATE UNIQUE INDEX IF NOT EXISTS platform_owner_username ON platform_owners(lower(username));

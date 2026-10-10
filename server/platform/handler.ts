@@ -1,10 +1,8 @@
 import { maintainPlatformTelemetry, maintainDuringActivity } from "./maintenance.js";
 import {waitUntil} from "@vercel/functions";
-import { createHash } from "node:crypto";
+
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import {
-  getPlatformAuth,
-  requestHeaders,
   ownerStatus,
   requireOwner,
   trustedMutation,
@@ -60,8 +58,8 @@ export default async function handler(
     if (mode === "status") {
       const owner = await ownerStatus(req);
       res.status(200).json({
-        authenticated: Boolean(owner?.mfaVerified),
-        mfaRequired: Boolean(owner && !owner.mfaVerified),
+        authenticated: Boolean(owner?.accessGranted),
+        mfaRequired: Boolean(owner && !owner.accessGranted),
         mfaEnrolled: Boolean(owner?.session.user.twoFactorEnabled),
         user: owner
           ? { name: owner.session.user.name, email: owner.session.user.email }
@@ -69,73 +67,7 @@ export default async function handler(
       });
       return;
     }
-    if (mode === "enroll") {
-      if (req.method !== "POST" || !trustedMutation(req)) {
-        res.status(403).json({ error: "Invalid request" });
-        return;
-      }
-      const body = req.body as {
-        token?: string;
-        email?: string;
-        password?: string;
-        name?: string;
-      };
-      if (
-        !body.token ||
-        !/^[a-f0-9]{64}$/.test(body.token) ||
-        !body.email ||
-        !body.password ||
-        body.password.length < 12
-      ) {
-        res.status(400).json({
-          error:
-            "A valid invitation, email and password of at least 12 characters are required",
-        });
-        return;
-      }
-      const tokenHash = createHash("sha256").update(body.token).digest("hex");
-      const claimed = await sql.query(
-        "UPDATE platform_invites SET consumed_at=now() WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>now() AND NOT EXISTS(SELECT 1 FROM platform_owners) AND EXISTS(SELECT 1 FROM platform_config WHERE owner_email IS NULL OR lower(owner_email)=lower($2)) RETURNING token_hash",
-        [tokenHash, body.email],
-      );
-      if (!claimed.length) {
-        res.status(403).json({ error: "Invitation expired or already used" });
-        return;
-      }
-      try {
-        const auth = await getPlatformAuth();
-        const result = await auth.api.signUpEmail({
-          body: {
-            email: body.email,
-            password: body.password,
-            name: body.name?.slice(0, 80) || "Platform owner",
-          },
-          headers: requestHeaders(req),
-          asResponse: true,
-        });
-        if (!result.ok) {
-          await sql.query(
-            "UPDATE platform_invites SET consumed_at=NULL WHERE token_hash=$1",
-            [tokenHash],
-          );
-          res.status(result.status).json(await result.json());
-          return;
-        }
-        const data = (await result.json()) as { user: { id: string } };
-        await sql.query("INSERT INTO platform_owners(user_id) VALUES($1)", [
-          data.user.id,
-        ]);
-        res.setHeader("Set-Cookie", result.headers.getSetCookie());
-        res.status(200).json({ ok: true, mfaRequired: true });
-        return;
-      } catch (error) {
-        await sql.query(
-          "UPDATE platform_invites SET consumed_at=NULL WHERE token_hash=$1",
-          [tokenHash],
-        );
-        throw error;
-      }
-    }
+    if (mode === "enroll") { res.status(404).json({error:"Owner registration is closed"});return; }
     const owner = await requireOwner(req);
     if (mode === "report" && req.method === "GET") {
       waitUntil(maintainDuringActivity().catch(()=>console.warn("platform-maintenance-failed")));
@@ -159,7 +91,7 @@ export default async function handler(
     if(denied) await sql.query("INSERT INTO platform_audit(event) SELECT 'access-denied' WHERE (SELECT count(*) FROM platform_audit WHERE event='access-denied' AND at>now()-interval '1 minute')<60",[]).catch(()=>{});
     res.status(denied ? 401 : 503).json({
       error: denied
-        ? "Owner authentication and two-factor verification are required"
+        ? "Owner authentication is required"
         : "Platform reporting is temporarily unavailable",
     });
   }

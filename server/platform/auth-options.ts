@@ -16,7 +16,7 @@ export function platformAuthOptions(secret: string, connectionString: string) {
       connectionTimeoutMillis: 10000,
       idleTimeoutMillis: 10000,
     }),
-    emailAndPassword: { enabled: true, minPasswordLength: 12 },
+    emailAndPassword: { enabled: true, minPasswordLength: 8 },
     user: { modelName: "platform_auth_user" },
     account: { modelName: "platform_auth_account" },
     session: {

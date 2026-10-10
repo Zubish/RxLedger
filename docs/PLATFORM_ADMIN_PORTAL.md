@@ -155,3 +155,7 @@ Default reporting: last 7 days, with 24-hour and 30-day options. Use UTC storage
 - Confirm the read-only first release versus including workspace management immediately.
 
 Build order after specification review: platform access and directory; collection and verified aggregates; technical health; responsive portal and full authorization/browser checks. Management and alerting follow in separately reviewed phases.
+
+## Owner login amendment
+
+The owner subsequently requested a provisioned username/password login with no additional setup. The `Zubish` account uses Better Auth password hashing and separate platform membership, with MFA optional for this explicitly provisioned owner. This supersedes the mandatory MFA and invitation setup requirements above for that account. Public enrollment remains closed.
