@@ -42,7 +42,7 @@ function load(file, deps = {}) {
   );
   return mod.exports;
 }
-const options = load("server/platform/auth-options.ts", { ws: {default:neonConfig.webSocketConstructor} });
+const options = load("server/platform/auth-options.ts", { ws: neonConfig.webSocketConstructor });
 const auth = load("server/platform/auth.ts", {
   "./auth-options.js": options,
   "../_shared.js": shared,

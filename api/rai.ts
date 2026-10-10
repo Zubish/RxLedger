@@ -17,7 +17,7 @@ export default function handler(
       (entry): entry is [string, string] => typeof entry[1] === "string",
     ),
   );
-  const routed = { ...req, query };
+  const routed = { method: req.method, headers: req.headers, body: req.body, query };
   if (query.route === "platform") return platform(routed, res);
   if (query.route === "platform-auth") return platformAuth(routed, res);
   if (query.route === "telemetry") return telemetry(routed, res);
