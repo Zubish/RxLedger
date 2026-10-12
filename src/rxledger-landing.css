@@ -272,15 +272,11 @@
   letter-spacing: -0.035em;
   font-size: 20px;
 }
-.rl-mark {
-  background: var(--brand);
-  color: white;
-  display: grid;
-  place-items: center;
+.rl-logo .rxledger-logo {
   width: 35px;
   height: 35px;
-  border-radius: 9px;
 }
+
 .rl-desktop-nav {
   display: flex;
   gap: 28px;

@@ -29,7 +29,7 @@ export function RxLedgerLogo({
     <span
       className={size === "large" ? "rxledger-logo large" : "rxledger-logo"}
     >
-      <img src="/favicon.svg" alt="RxLedger logo" />
+      <img src="/rxledger-logo.svg" alt="RxLedger logo" />
     </span>
   );
 }

@@ -21,6 +21,7 @@ import {
   trialPolicy,
   planChangePolicy,
 } from "./subscriptionPlans";
+import { RxLedgerLogo } from "./components/Branding";
 import "./rxledger-landing.css";
 
 type LandingProps = { onCreateWorkspace: () => void; onSignIn: () => void };
@@ -137,9 +138,7 @@ export default function RxLedgerLanding({
       <header className="rl-header">
         <div className="rl-wrap rl-header-inner">
           <a className="rl-logo" href="/" aria-label="RxLedger home">
-            <span className="rl-mark">
-              <Boxes size={21} aria-hidden="true" />
-            </span>
+            <RxLedgerLogo />
             RxLedger
           </a>
           <nav className="rl-desktop-nav" aria-label="Main navigation">
@@ -486,9 +485,7 @@ export default function RxLedgerLanding({
           <div className="rl-footer-top">
             <div>
               <a className="rl-logo" href="/">
-                <span className="rl-mark">
-                  <Boxes size={20} />
-                </span>
+                <RxLedgerLogo />
                 RxLedger
               </a>
               <p>Pharmacy operations. A little more clarity.</p>
@@ -908,6 +905,7 @@ function GetStarted({
       <header className="rl-header">
         <div className="rl-wrap rl-header-inner">
           <a className="rl-logo" href="/">
+            <RxLedgerLogo />
             RxLedger
           </a>
           <button className="rl-text-link" onClick={onBack}>
