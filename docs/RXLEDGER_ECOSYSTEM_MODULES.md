@@ -152,6 +152,10 @@ Possible scope:
 
 Implementation status: future module, after Core and Patient Continuity are stable.
 
+## Infrastructure Planning Reference
+
+Read the [Infrastructure And Partnership Lessons](APP_BLUEPRINT.md#infrastructure-and-partnership-lessons-2026-10-13) before expanding Connect, Care Network or Analytics. It defines workflow validation, medicine mapping, availability freshness, connectivity, phased partnerships and pilot evidence. HealthPass remains a separate care-history/controlled-sharing layer; its integration is planned. Preserve the existing one-pharmacy network MVP and Enterprise/add-on boundaries.
+
 ## Build Order
 
 Recommended order:

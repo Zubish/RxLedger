@@ -45,6 +45,65 @@ RxLedger should grow as separate, deliberate modules:
 
 Core, Patient Continuity, and Continuity Centre can keep improving inside the app today. Connect, Care Network, advanced clinical AI, and network workflows should remain separate Enterprise/add-on layers until their data, audit, and pricing rules are clear.
 
+## Infrastructure And Partnership Lessons (2026-10-13)
+
+Source: the user-provided full transcript of [the healthcare infrastructure interview](https://youtu.be/ChcXqdcHDTY). These are planning decisions aligned with the existing vision, not newly implemented capabilities. The interview date and company/name spellings have not been independently verified. Its market figures are historical speaker claims, not current evidence for marketing or investment materials.
+
+### Validate The Pharmacy Workflow
+
+- Preserve the direction: pharmacy operations plus patient memory plus care coordination. Improve Core and continuity before adding network complexity.
+- Interview and observe practising pharmacy teams even when the founder has pharmacy and software-engineering experience (1:16–1:28, 2:51–3:12). Test receiving, sale completion, unavailable prescriptions, refills, branch permissions and interrupted connectivity on real counter devices.
+- Include pharmacies outside major urban centres and document differences in staffing, devices, connectivity and workflow; national expansion is a hypothesis to validate, not a launch promise (7:51–8:15).
+- Record task completion time, errors, support needs and adoption alongside qualitative feedback. Use a baseline and agreed observation period before claiming improvement.
+
+### Trustworthy Availability Before Network Discovery
+
+Manual availability/price calls became difficult to scale (1:46–2:29); the interview links visibility to inventory/POS capture (5:01–5:24).
+
+- Receiving, sales, returns, write-offs, adjustments and unit conversion must preserve trustworthy branch stock and their audit trail.
+- Future network availability must carry source branch, last-updated time and a freshness policy. Distinguish recorded stock from pharmacy-confirmed availability; stale or disconnected data must show unknown/reconfirmation required.
+- External partners receive authorised `Full`, `Partial` or `Unavailable` status, not exact stock counts or unrestricted commercial records. Confirm or reserve before promising supply; reservations must expire and be released safely.
+- Preserve the existing Care Network MVP: one approved pharmacy fulfils the whole prescription. The multiple-pharmacy problem (4:49–4:57) motivates later split fulfilment, but does not override the current MVP boundary.
+- Refill reminders and Continuity requests are not automatic orders, delivery services or proof of adherence. A stock match does not complete a sale or establish that the patient received medicine.
+
+### Medicine Standardisation And Interoperability
+
+The transcript's PCM/paracetamol example (6:09–6:36) makes standardisation a prerequisite for Connect.
+
+- Define a versioned medicine identity/mapping contract covering ingredient(s), strength and units, dosage form, release characteristics, route where relevant, brand/generic identity and pack/dispensing units.
+- Preserve source names, identifiers and mapping provenance. Ambiguous mappings require pharmacist review; do not overwrite local catalogues or merge products from a text-name match alone.
+- Separate equivalent naming from therapeutic alternatives. Substitution requires appropriate professional review and applicable prescriber/HMO approval; software must not silently change therapy.
+- Connect should use documented, versioned contracts, stable identifiers, authenticated partner scope, idempotent requests, acknowledgements, error handling and auditability. Evaluate applicable standards such as FHIR rather than inventing an isolated exchange format or claiming compliance without validation.
+- HealthPass remains the care-history and controlled-sharing layer; RxLedger remains pharmacy operations and dispensing. Agree consent/authorisation, identity matching, source-of-truth and feedback contracts before connecting them. Rai remains a separate planned support layer.
+
+### Connectivity And Operational Resilience
+
+Poor connectivity affects sales and availability transparency (9:47–10:12). POS-device compatibility does not itself prove offline capability.
+
+- First measure behaviour on slow links, interruptions and reconnects: clear pending/failed/saved states, bounded payloads and recovery without lost or duplicate transactions.
+- Offline writes remain a future design requiring secure local storage, permitted cached data, session/permission expiry, idempotent replay, reconciliation, conflict handling and explicit server confirmation. Never represent an unsynchronised sale or stock estimate as confirmed network availability.
+- Test phone/tablet/POS-browser ergonomics and reconnect failure paths before publishing offline or device-support promises. Preserve server-authorised branch access throughout.
+
+### Phased Collaboration And Partnership
+
+At 4:02–4:15 the speaker proposes public–private shared infrastructure as a possibility; she does not establish that such a partnership already exists. At 11:09–11:50 she identifies funding, private–private/public–private collaboration and technology as complementary needs.
+
+- Begin with an opt-in private pharmacy/provider pilot. Consider government participation after evidence of reliable operations and patient continuity; government endorsement is not a prerequisite or an existing affiliation.
+- A future public pilot must name the responsible programme owner, participating facilities/pharmacies, professional approval roles, financing/reimbursement where relevant, service responsibilities and measurable outcomes.
+- Preserve HMO authority for approved routing/notification in insured workflows. A non-HMO public programme needs an explicitly defined equivalent authority, not an assumed bypass of approvals.
+- Partnership access is limited by purpose, tenant/branch scope and agreed data-sharing permissions. Public reporting should use appropriately aggregated data and suppress small groups where identification is possible; participation does not grant access to patient histories or exact commercial inventory.
+- Review applicable Nigerian professional, medicines and data-protection requirements for each actual workflow. Batch/supplier records support traceability; inventory software alone cannot certify medicine authenticity (10:19–11:02).
+- Affordability needs financing or negotiated partner arrangements (12:27–13:10). Do not promise insurance, subsidies, fixed prices or delivery without the responsible partner and sustainable economics. Preserve Enterprise/add-on pricing boundaries for integration and network support.
+
+### Evidence And Build Gates
+
+1. Stabilise Core and continuity with observed pharmacy testing, including weak connectivity.
+2. Define medicine mapping, availability freshness and exchange contracts before Connect.
+3. Pilot one-pharmacy routing with reservation, audited dispensing and feedback; resolve reconciliation and permission failures before expansion.
+4. Expand into HMO/public partnerships, split fulfilment and aggregate analytics only after ownership, economics and outcomes are established.
+
+Pilot measures should specify a denominator, baseline and time window: sale/receiving completion time and error rate; stock discrepancy and stockout duration; eligible unavailable requests fulfilled; refill follow-ups completed; reservation failures; expiry loss; and performance/recovery on small devices and weak links. Follow-up completion is not proof of medication adherence. Public-health or cost-saving claims require appropriate evidence.
+
 ## Technical Map
 
 - Frontend: Vite + React + TypeScript in `src/`.
