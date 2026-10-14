@@ -22,6 +22,9 @@ test("emitted server modules load with real relative dependencies and initialize
       "src/databasePatch.ts",
       "server/branch-scope.ts",
       "server/_shared.ts",
+      "server/healthpass/auth.ts",
+      "server/healthpass/workflow.ts",
+      "server/healthpass/live-authorization.ts",
       "api/action.ts",
       "api/bootstrap.ts",
     ]) {

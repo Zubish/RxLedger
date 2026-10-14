@@ -209,7 +209,7 @@ test('collector sends the established workspace header and stops after logout', 
 });
 
 test('deployment dispatcher preserves prototype-backed Vercel request headers',()=>{
- const calls=[];const handler=load('api/rai.ts',{'../server/rai/analytics-snapshot.js':()=>{},'../server/rai/connection.js':()=>{},'../server/rai/router.js':{createRaiRouter:()=>()=>{}},'../server/platform/handler.js':req=>calls.push(req),'../server/platform/auth-handler.js':req=>calls.push(req),'../server/platform/telemetry-handler.js':req=>calls.push(req)}).default;
+ const calls=[];const handler=load('api/rai.ts',{'../server/healthpass/handler.js':{default:()=>{},rawBody:async()=>''},'../server/rai/analytics-snapshot.js':()=>{},'../server/rai/connection.js':()=>{},'../server/rai/router.js':{createRaiRouter:()=>()=>{}},'../server/platform/handler.js':req=>calls.push(req),'../server/platform/auth-handler.js':req=>calls.push(req),'../server/platform/telemetry-handler.js':req=>calls.push(req)}).default;
  const headers={origin:'https://rxledger.vercel.app',cookie:'synthetic'};for(const route of ['platform','platform-auth','telemetry']){const req=Object.create({get headers(){return headers;}});req.method='POST';req.body={};req.query={route};handler(req,{});assert.equal(calls.at(-1).headers,headers);assert.equal(calls.at(-1).method,'POST');assert.equal(calls.at(-1).body,req.body);}
 });
 

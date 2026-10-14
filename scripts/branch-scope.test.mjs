@@ -113,6 +113,7 @@ let nextId = 0;
 const globalAccess = (actor, primary) => accessibleBranchIds(actor, primary) === null;
 const assignment = (actor, branch) => (accessibleBranchIds(actor) ?? []).includes(branch);
 mutationModule.require = (name) => {
+  if (name.includes("/healthpass/")) return { filterAuthorizedHealthPassContext: async db => db };
  if(name.endsWith("alertPolicy.js")) return {inventoryAlerts};
  if (name.endsWith("branch-scope.js")) return { accessibleBranchIds, primaryAdminIdForDatabase, productQuantityInBranches, scopeDatabaseForUser };
  if (name.endsWith("databasePatch.js")) return { snapshotHeavyCollections, buildDatabasePatch };

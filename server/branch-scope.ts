@@ -36,7 +36,8 @@ export function scopeDatabaseForUser(db: Database, user: User): Database {
     const quantityByBranch = Object.fromEntries(Object.entries(quantityByProduct.get(product.id) ?? {}).map(([id, quantity]) => [id, Math.max(0, quantity)]));
     return { ...product, quantityByBranch, quantity: ids === null ? product.quantity : Object.values(quantityByBranch).reduce((sum, quantity) => sum + quantity, 0) };
   });
-  if (ids === null) return { ...db, products, alertPreferences: db.alertPreferences?.filter(item=>item.userId===user.id) };
+  const healthpass = db.healthpass ? { ...db.healthpass, prescriptions: db.healthpass.prescriptions.filter(row => (user.role === "pharmacist" || user.role === "cashier") && (ids === null || ids.includes(row.prescription.pharmacy.branchId))), inbox: [], operations: [], outbox: [] } : undefined;
+  if (ids === null) return { ...db, healthpass, products, alertPreferences: db.alertPreferences?.filter(item=>item.userId===user.id) };
   const allowed = new Set(ids);
   const branches = db.branches.filter(branch => allowed.has(branch.id));
   const batches = db.batches.filter(batch => allowed.has(batch.branchId));
@@ -52,7 +53,7 @@ export function scopeDatabaseForUser(db: Database, user: User): Database {
     lastChatSeenAtByBranch: staff.id === user.id ? Object.fromEntries(Object.entries(staff.lastChatSeenAtByBranch ?? {}).filter(([id]) => allowed.has(id))) : undefined,
     knownDevices: staff.id === user.id ? staff.knownDevices : undefined,
   }));
-  return { ...db, branches, batches, users,
+  return { ...db, healthpass, branches, batches, users,
     alertPreferences: db.alertPreferences?.filter(item=>item.userId===user.id && (!item.branchId || allowed.has(item.branchId))),
     products,
     sales: db.sales.filter(sale => allowed.has(sale.branchId)),
