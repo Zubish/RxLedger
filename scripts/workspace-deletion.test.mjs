@@ -3,6 +3,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { createRequire, Module } from 'node:module';
 import { resolve } from 'node:path';
+import { tenantWorkspaceSlug } from '../src/workspaceIdentity.ts';
 import { reconcileAlertPreferences } from '../src/alertPolicy.ts';
 const require = createRequire(resolve('package.json'));
 const ts = require('typescript');
@@ -22,7 +23,7 @@ const sql = async (strings, ...values) => {
  }
  return [];
 };
-module.require = name => name.endsWith('alertPolicy.js') ? {reconcileAlertPreferences} : name === '@neondatabase/serverless' ? {neon:()=>sql} : require(name);
+module.require = name => name.endsWith('workspaceIdentity.js') ? {tenantWorkspaceSlug} : name.endsWith('alertPolicy.js') ? {reconcileAlertPreferences} : name === '@neondatabase/serverless' ? {neon:()=>sql} : require(name);
 module._compile(ts.transpileModule(readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,filename);
 const previousUrl=process.env.DATABASE_URL;
 process.env.DATABASE_URL='postgresql://fixture.invalid/test';

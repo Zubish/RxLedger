@@ -19,6 +19,7 @@ test("emitted server modules load with real relative dependencies and initialize
     symlinkSync(resolve("node_modules"), join(root, "node_modules"), "dir");
     for (const file of [
       "src/alertPolicy.ts",
+      "src/workspaceIdentity.ts",
       "src/databasePatch.ts",
       "server/branch-scope.ts",
       "server/_shared.ts",
@@ -39,6 +40,10 @@ test("emitted server modules load with real relative dependencies and initialize
     const shared = require(join(root, "server/_shared.js"));
     const normalized = shared.normalizeDatabase(shared.createEmptyDatabase());
     assert.deepEqual(normalized.alertPreferences, []);
+    assert.equal(shared.getCompanySlugFromRequest({ headers: { "x-rxledger-company": "demo" } }), "totalenergies-pharmacy");
+    const identity = require(join(root, "src/workspaceIdentity.js"));
+    assert.equal(identity.publicWorkspaceSlug("totalenergies-pharmacy"), "demo");
+    assert.equal(identity.tenantWorkspaceSlug("zionett-pharmacy"), "zionett-pharmacy");
     assert.equal(
       typeof require(join(root, "api/action.js")).default,
       "function",

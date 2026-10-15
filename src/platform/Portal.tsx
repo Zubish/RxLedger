@@ -1,3 +1,4 @@
+import { publicWorkspaceSlug, tenantWorkspaceSlug } from "../workspaceIdentity";
 import { useEffect, useState } from "react";
 import {
   Activity,
@@ -87,7 +88,7 @@ export default function Portal() {
   const query = nav.params.toString();
   const detail =
     report?.workspacePage.rows.find(
-      (row) => row.slug === nav.params.get("workspace"),
+      (row) => row.slug === tenantWorkspaceSlug(nav.params.get("workspace") || ""),
     ) || null;
   useEffect(() => {
     if (!status?.authenticated) return;
@@ -158,7 +159,7 @@ export default function Portal() {
         ],
         ...(report?.workspacePage.rows || []).map((r) => [
           r.name,
-          r.slug,
+          publicWorkspaceSlug(r.slug),
           r.kind,
           r.branches,
           r.activeStaff,
@@ -466,13 +467,13 @@ export default function Portal() {
                           className="pa-workspace"
                           key={row.slug}
                           onClick={() =>
-                            navigate("workspaces", { workspace: row.slug })
+                            navigate("workspaces", { workspace: publicWorkspaceSlug(row.slug) })
                           }
                         >
                           <span>
                             <strong>{row.name}</strong>
                             <small>
-                              {row.slug} · {row.kind.toUpperCase()}
+                              {publicWorkspaceSlug(row.slug)} · {row.kind.toUpperCase()}
                             </small>
                           </span>
                           <span>
@@ -564,7 +565,7 @@ export default function Portal() {
                         </dd>
                       </dl>
                       <a
-                        href={"/" + detail.slug}
+                        href={"/" + publicWorkspaceSlug(detail.slug)}
                         target="_blank"
                         rel="noreferrer"
                       >

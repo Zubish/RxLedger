@@ -1,3 +1,4 @@
+import { publicWorkspaceSlug, tenantWorkspaceSlug } from "./workspaceIdentity";
 import { alertDisposition, eventAlertKey, inventoryAlerts } from "./alertPolicy";
 import type { AlertPreference } from "./alertPolicy";
 import { collectPage, stopCollection } from "./platform/collect";
@@ -726,7 +727,7 @@ function getWorkspaceSlugFromLocation() {
   if (typeof window === "undefined") return "";
   const [segment = ""] = window.location.pathname.split("/").filter(Boolean);
   if (!segment || segment === "api" || segment === "platform-admin") return "";
-  return slugifyCompany(segment);
+  return tenantWorkspaceSlug(slugifyCompany(segment));
 }
 
 function daysUntil(date: string) {
@@ -774,7 +775,7 @@ function setStoredValue(key: string, value: string) {
 }
 
 function getWorkspaceUrl(settings: AppSettings) {
-  const slug = settings.companySlug || slugifyCompany(settings.accountName);
+  const slug = publicWorkspaceSlug(settings.companySlug || slugifyCompany(settings.accountName));
   if (typeof window === "undefined") return slug ? `/${slug}` : "";
   return slug ? `${window.location.origin}/${slug}` : window.location.origin;
 }
@@ -2503,6 +2504,13 @@ function readPublicAuthIntent(): "landing" | "setup" | "signin" {
 }
 
 function App() {
+  useEffect(() => {
+    const [segment = ""] = window.location.pathname.split("/").filter(Boolean);
+    const publicSlug = publicWorkspaceSlug(segment);
+    if (publicSlug !== segment) {
+      window.history.replaceState(window.history.state, "", `/${publicSlug}${window.location.search}${window.location.hash}`);
+    }
+  }, []);
   const [db, setDb] = useState<Database>(createEmptyDatabase);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const workspaceGeneration = useRef(0);
@@ -3007,7 +3015,7 @@ function App() {
         window.history.replaceState(
           null,
           "",
-          `/${result.db.settings.companySlug}`,
+          `/${publicWorkspaceSlug(result.db.settings.companySlug)}`,
         );
       }
       setActiveBranchId(
@@ -3087,7 +3095,7 @@ function App() {
     const result = await resolveCompany(value);
     storeCompanySlug(result.slug);
     setCompanySlug(result.slug);
-    window.history.replaceState(null, "", `/${result.slug}${new URLSearchParams(window.location.search).get('rai_connect') === '1' ? window.location.search : ''}${window.location.hash}`);
+    window.history.replaceState(null, "", `/${publicWorkspaceSlug(result.slug)}${new URLSearchParams(window.location.search).get('rai_connect') === '1' ? window.location.search : ''}${window.location.hash}`);
     const boot = await bootstrap();
     setHasUsers(boot.hasUsers);
     setTenantExists(boot.tenantExists);

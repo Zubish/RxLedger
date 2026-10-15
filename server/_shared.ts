@@ -1,4 +1,5 @@
 /// <reference types="node" />
+import { tenantWorkspaceSlug } from "../src/workspaceIdentity.js";
 import { reconcileAlertPreferences } from "../src/alertPolicy.js";
 import type { AlertPreference } from "../src/alertPolicy.js";
 
@@ -711,7 +712,7 @@ export function generateCompanyCode(name: string) {
 export function getCompanySlugFromRequest(req: HandlerRequest) {
   const header = req.headers["x-rxledger-company"];
   const raw = Array.isArray(header) ? header[0] : header;
-  return normalizeCompanySlug(raw || "");
+  return tenantWorkspaceSlug(normalizeCompanySlug(raw || ""));
 }
 
 export function daysUntil(date: string) {
@@ -1142,7 +1143,7 @@ export async function getDefaultTenantSlug() {
 
 export async function resolveTenantSlug(value: string) {
   const lookup = value.trim().toLowerCase();
-  const slug = normalizeCompanySlug(value);
+  const slug = tenantWorkspaceSlug(normalizeCompanySlug(value));
   if (!lookup && !slug) return null;
   await ensureSchema();
   const sql = getSql();

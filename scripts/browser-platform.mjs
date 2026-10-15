@@ -103,9 +103,9 @@ try {
       .getByRole("navigation")
       .getByRole("button", { name: "Workspaces", exact: true })
       .click();
-    await page.getByRole("button", { name: /DEMO.*totalenergies/ }).click();
+    await page.getByRole("button", { name: /DEMO.*demo/ }).click();
     await page.getByRole("heading", { name: "DEMO", exact: true }).waitFor();
-    assert.match(page.url(), /workspace=totalenergies-pharmacy/);
+    assert.match(page.url(), /workspace=demo/);
     await page.reload();
     await page.getByRole("heading", { name: "DEMO", exact: true }).waitFor();
     await page.goBack();
