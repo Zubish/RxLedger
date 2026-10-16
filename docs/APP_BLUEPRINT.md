@@ -242,7 +242,8 @@ Before adding a new `max-height` or `overflow`, prefer these variables and check
 - Apply item-specific overrides before category markup, then global markup. Calculate against cost per least sellable unit after receiving-container conversion.
 - Rounding supports no rounding, presets 1/5/10/50/100 NGN and a custom increment of at least NGN 0.01. Round to the nearest increment, not always upward; retain currency precision and never calculate an automatic selling price below unit cost.
 - Frontend previews and server persistence must agree. Catalogue medicine/retail edits and receiving must use the same hierarchy, including an edited item's unsaved category/SKU.
-- When manual prices are allowed, show a warning below the final rounded target with expected and entered prices. Preserve below-cost blocking and the permanent-admin/reason requirement for automatic-pricing overrides.
+- Receiving must resolve the displayed default medicine before converting container cost; default selection, explicit selection, warning, automatic price and review must all use that same medicine and its pack size. Show cost and suggested/automatic selling price per named least sellable unit even when automatic pricing is off.
+- When manual prices are allowed, show a warning below the final rounded target with expected and entered prices per named least sellable unit. Preserve below-cost blocking and the permanent-admin/reason requirement for automatic-pricing overrides.
 - Settings changes apply to subsequent pricing operations; do not silently rewrite existing stock prices or historical transactions. Automatic pricing remains controlled by the existing workspace switch.
 
 ## Patient Workflow Rules

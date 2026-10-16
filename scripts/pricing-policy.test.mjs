@@ -6,9 +6,9 @@ import ts from 'typescript';
 function pricing(file) {
  const source=readFileSync(file,'utf8');
  const ast=ts.createSourceFile(file,source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
- const names=['normalizeMarkupMap','pricingPolicy','roundSellingPrice','productSpecificKeys','markupForItem','calculatedSellingPrice'];
+ const names=['normalizeMarkupMap','pricingPolicy','roundSellingPrice','productSpecificKeys','markupForItem','calculatedSellingPrice','medicineUnitsPerContainer','medicineUnitCostFromContainerCost'];
  const code=ast.statements.filter(n=>ts.isFunctionDeclaration(n)&&names.includes(n.name?.text)).map(n=>n.getText(ast)).join('\n');
- return vm.runInNewContext(ts.transpile(code+'\n({pricingPolicy,roundSellingPrice,calculatedSellingPrice})',{target:ts.ScriptTarget.ES2022}));
+ return vm.runInNewContext(ts.transpile(code+'\n({pricingPolicy,roundSellingPrice,calculatedSellingPrice,...(typeof medicineUnitCostFromContainerCost === "undefined" ? {} : {medicineUnitCostFromContainerCost})})',{target:ts.ScriptTarget.ES2022}));
 }
 for(const file of ['src/App.tsx','api/action.ts']) {
  const p=pricing(file);
@@ -28,3 +28,11 @@ for(const file of ['src/App.tsx','api/action.ts']) {
   db.settings.globalMarkupPercent=0;assert.equal(value('medicine','m',1010),1010);
  });
 }
+
+test('a 28-tablet container costing 2800 uses 100 cost per tablet before markup',()=>{
+ const p=pricing('src/App.tsx');
+ const cost=p.medicineUnitCostFromContainerCost({packSize:28,costPrice:0},2800);
+ assert.equal(cost,100);
+ const db={settings:{globalMarkupPercent:30,pricingRoundingRule:0},medicines:[],products:[]};
+ assert.equal(p.calculatedSellingPrice(db,'medicine','missing',cost).price,130);
+});

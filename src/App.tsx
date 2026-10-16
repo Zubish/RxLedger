@@ -968,9 +968,9 @@ function calculatedSellingPrice(
   };
 }
 
-function MarkupWarning({ actual, target }: { actual: number; target: number }) {
+function MarkupWarning({ actual, target, unit = "unit" }: { actual: number; target: number; unit?: string }) {
   if (!Number.isFinite(actual) || actual >= target || target <= 0) return null;
-  return <small className="markup-warning" role="status">Below configured markup. Expected price: {money.format(target)}. Entered price: {money.format(actual)}.</small>;
+  return <small className="markup-warning" role="status">Below configured markup. Expected: {money.format(target)} per {unit}. Entered: {money.format(actual)} per {unit}.</small>;
 }
 
 function discountLimitPercent(db: Database, user: User) {
@@ -4855,7 +4855,7 @@ function Medicines({
       return;
     }
     const targetPrice = calculatedSellingPrice(db, "medicine", medicine.id, costPrice).price;
-    if (sellingPrice < targetPrice && !window.confirm(`Below configured markup. Expected price: ${money.format(targetPrice)}. Entered price: ${money.format(sellingPrice)}. Continue with this price?`)) return;
+    if (sellingPrice < targetPrice && !window.confirm(`Below configured markup. Expected: ${money.format(targetPrice)} per ${medicineSellableUnit(medicine)}. Entered: ${money.format(sellingPrice)} per ${medicineSellableUnit(medicine)}. Continue with this price?`)) return;
     const overrideReason = autoPricingOn
       ? window
           .prompt(
@@ -5003,7 +5003,7 @@ function Medicines({
                         }
                         aria-label={`Selling price per least sellable unit for ${medicine.brandName}`}
                       />
-                      <MarkupWarning actual={medicine.sellingPrice || getMedicineSellingPrice(stockRows, medicine.id) || 0} target={calculatedSellingPrice(db, "medicine", medicine.id, medicine.costPrice).price} />
+                      <MarkupWarning actual={medicine.sellingPrice || getMedicineSellingPrice(stockRows, medicine.id) || 0} target={calculatedSellingPrice(db, "medicine", medicine.id, medicine.costPrice).price} unit={medicineSellableUnit(medicine)} />
                     </td>
                     <td>
                       {money.format(stockCostTotals.get(medicine.id) ?? 0)}
@@ -5248,7 +5248,7 @@ function Medicines({
                       }
                       disabled={!canWrite || !canManagePrices || autoPricingOn}
                     />
-                    {!autoPricingOn && <MarkupWarning actual={Number(draft.sellingPrice) || 0} target={draftPrice(draft)} />}
+                    {!autoPricingOn && <MarkupWarning actual={Number(draft.sellingPrice) || 0} target={draftPrice(draft)} unit={draft.sellableUnit || "unit"} />}
                   </label>
                   <label>
                     Category
@@ -6120,7 +6120,11 @@ function ReceiveStock({
   }
 
   function applyAutoPrice(line: ReceiveLine) {
-    if (!policy.enabled || !line.itemId) return line;
+    const itemId = line.itemId || (line.itemType === "medicine"
+      ? db.medicines.find(item => item.active)?.id
+      : db.products.find(item => item.active)?.id) || "";
+    line = { ...line, itemId };
+    if (!policy.enabled || !itemId) return line;
     const unitCost = lineUnitCost(line);
     return {
       ...line,
@@ -6285,7 +6289,7 @@ function ReceiveStock({
           ? "Selling price is below cost"
           : "",
         sellingPrice < priceCalc.price
-          ? `Below configured markup. Expected price: ${money.format(priceCalc.price)}. Entered price: ${money.format(sellingPrice)}.`
+          ? `Below configured markup. Expected: ${money.format(priceCalc.price)} per ${line.itemType === "medicine" ? medicineSellableUnit(item as Medicine) : (item as Product)?.unit || "unit"}. Entered: ${money.format(sellingPrice)} per ${line.itemType === "medicine" ? medicineSellableUnit(item as Medicine) : (item as Product)?.unit || "unit"}.`
           : "",
         priceCalc.markupPercent > policy.unusualMarkupPercent
           ? `Markup is above ${policy.unusualMarkupPercent}%`
@@ -6604,7 +6608,7 @@ function ReceiveStock({
                   </label>
                   <label>
                     {line.itemType === "medicine"
-                      ? "Cost per container"
+                      ? `Cost per ${medicineContainerPackage(selectedMedicine)}`
                       : "Unit cost"}
                     <input
                       type="number"
@@ -6620,8 +6624,8 @@ function ReceiveStock({
                   </label>
                   <label>
                     {line.itemType === "medicine"
-                      ? "Selling price / least unit"
-                      : "Selling price"}
+                      ? `Selling price per ${medicineSellableUnit(selectedMedicine)}`
+                      : "Selling price per unit"}
                     <input
                       type="number"
                       min="0"
@@ -6633,7 +6637,7 @@ function ReceiveStock({
                       }
                       disabled={!canWrite || policy.enabled}
                     />
-                    {!policy.enabled && <MarkupWarning actual={Number(line.sellingPrice) || 0} target={calculatedSellingPrice(db, line.itemType, selectedItemId, lineUnitCost(line)).price} />}
+                    {!policy.enabled && <MarkupWarning actual={Number(line.sellingPrice) || 0} target={calculatedSellingPrice(db, line.itemType, selectedItemId, lineUnitCost({ ...line, itemId: selectedItemId })).price} unit={selectedMedicine ? medicineSellableUnit(selectedMedicine) : db.products.find(item => item.id === selectedItemId)?.unit || "unit"} />}
                   </label>
                   <label>
                     Stock location
@@ -6663,8 +6667,7 @@ function ReceiveStock({
                         <strong>{money.format(lineSummary.unitCost)}</strong>
                         <span>cost per {lineSummary.leastUnit}</span>
                       </div>
-                      {policy.enabled && (
-                        <div>
+                      <div>
                           <strong>
                             {money.format(
                               calculatedSellingPrice(
@@ -6675,9 +6678,8 @@ function ReceiveStock({
                               ).price,
                             )}
                           </strong>
-                          <span>auto selling price</span>
+                          <span>{policy.enabled ? "Auto" : "Suggested"} selling price per {lineSummary.leastUnit}</span>
                         </div>
-                      )}
                     </div>
                   )}
                 </div>
@@ -6834,7 +6836,7 @@ function ReceiveStock({
                       <td>
                         {number.format(line.postedQuantity)} {line.unitLabel}
                       </td>
-                      <td>{money.format(line.leastUnitCost)}</td>
+                      <td>{money.format(line.leastUnitCost)} per {line.unitLabel}</td>
                       <td>
                         {line.markupPercent}%{" "}
                         <span className="table-subtext">
@@ -6842,7 +6844,7 @@ function ReceiveStock({
                         </span>
                       </td>
                       <td>
-                        <strong>{money.format(line.sellingPrice)}</strong>
+                        <strong>{money.format(line.sellingPrice)} per {line.unitLabel}</strong>
                       </td>
                       <td>
                         {line.warnings.length ? (
@@ -7363,7 +7365,7 @@ function ProductsView({
               }
               disabled={!canWrite || autoPricingOn}
             />
-            {!autoPricingOn && <MarkupWarning actual={Number(form.sellingPrice) || 0} target={productTarget} />}
+            {!autoPricingOn && <MarkupWarning actual={Number(form.sellingPrice) || 0} target={productTarget} unit={form.unit || "unit"} />}
           </label>
           <label>
             Supplier

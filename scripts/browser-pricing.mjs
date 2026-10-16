@@ -9,7 +9,7 @@ try {
  for(const width of [390,1440]){
   const db=structuredClone(fixture);db.settings.globalMarkupPercent=30;db.settings.pricingRoundingRule=25;
   db.settings.autoPricingEnabled=false;
-  for(const m of db.medicines){m.costPrice=1000;m.sellingPrice=1200;m.packSize=1;m.unit='Pack';m.sellableUnit='Tablet';}
+  for(const m of db.medicines){m.costPrice=1000;m.sellingPrice=1200;m.packSize=28;m.unit='Pack';m.sellableUnit='Tablet';}
   let saved;
   const context=await browser.newContext({viewport:{width,height:1000}});
   await context.addInitScript(()=>localStorage.setItem('rxledger-session-active','true'));
@@ -34,23 +34,21 @@ try {
   assert.equal(await page.getByLabel('Custom rounding increment (NGN)').count(),0);
   await page.goto(base+'/audit#/receive');await page.locator('.line-card').first().waitFor();
   const line=page.locator('.line-card').first();
-  db.settings.pricingRoundingRule=25;
+  db.settings.pricingRoundingRule=0;
   await page.reload();await page.locator('.line-card').first().waitFor();
-  await line.locator('select').nth(1).selectOption('m0');
-  await line.getByLabel('Cost per container',{exact:true}).fill('1020');
-  await line.getByLabel(/^Selling price \/ least unit/).fill('1200');
-  assert.match(await line.locator('.markup-warning').innerText(),/1,325/);
-  await line.getByLabel(/^Selling price \/ least unit/).fill('1325');
+  await line.getByLabel('Cost per Pack',{exact:true}).fill('2800');
+  await line.getByLabel(/^Selling price per Tablet/).fill('120');
+  assert.match(await line.locator('.markup-warning').innerText(),/130.*per Tablet/);
+  await line.getByLabel(/^Selling price per Tablet/).fill('130');
   assert.equal(await line.locator('.markup-warning').count(),0);
-  db.settings.autoPricingEnabled=true;
+  db.settings.autoPricingEnabled=true;db.settings.pricingRoundingRule=25;
   await page.reload();await page.locator('.line-card').first().waitFor();
-  await line.locator('select').nth(1).selectOption('m0');
-  await line.getByLabel('Cost per container',{exact:true}).fill('1020');
-  assert.equal(await line.getByLabel(/^Selling price \/ least unit/).inputValue(),'1325');
-  assert.equal(await line.getByLabel(/^Selling price \/ least unit/).isDisabled(),true);
+  await line.getByLabel('Cost per Pack',{exact:true}).fill('2800');
+  assert.equal(await line.getByLabel(/^Selling price per Tablet/).inputValue(),'125');
+  assert.equal(await line.getByLabel(/^Selling price per Tablet/).isDisabled(),true);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await page.screenshot({path:`artifacts/pricing/receive-${width}.png`,fullPage:true});
-  console.log('Pricing settings save/reload and presets passed',width);
+  console.log('Settings persistence, default medicine pack conversion, per-tablet warning and automatic pricing passed',width);
   await context.close();
  }
 } finally {await browser.close();}
