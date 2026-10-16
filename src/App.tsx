@@ -11466,13 +11466,14 @@ function SettingsView({
   }
 
   return (
-    <section className="content-section narrow">
+    <section className="content-section settings-page">
       <div className="section-heading">
         <div>
           <h2>Account Settings</h2>
           <p>Company account identity, workspace access, and operational thresholds.</p>
         </div>
       </div>
+      <div className="settings-overview-grid">
       <section className="user-profile-card">
         <div className="user-profile-header">
           <User2 size={20} />
@@ -11524,7 +11525,10 @@ function SettingsView({
           </div>
         </div>
       </section>
-      <form className="form-grid" onSubmit={submit}>
+      </div>
+      <form className="settings-form" onSubmit={submit}>
+        <section className="settings-group form-grid" aria-labelledby="settings-identity-heading">
+          <h3 className="full" id="settings-identity-heading">Company identity</h3>
         <div className="workspace-logo-editor full">
           <BrandMark settings={form} />
           <div>
@@ -11603,6 +11607,9 @@ function SettingsView({
             disabled={!canAdmin}
           />
         </label>
+        </section>
+        <section className="settings-group form-grid" aria-labelledby="settings-operations-heading">
+          <div className="full"><h3 id="settings-operations-heading">Operational thresholds</h3><p>Set when stock warnings and approval checks apply.</p></div>
         <label>
           Near-expiry days
           <input
@@ -11630,7 +11637,8 @@ function SettingsView({
             disabled={!canAdmin}
           />
         </label>
-        <div className="counseling-settings full">
+        </section>
+        <div className="counseling-settings">
           <div className="pricing-settings-head">
             <div>
               <span className="eyebrow">Labelling</span>
@@ -11702,7 +11710,7 @@ function SettingsView({
             </label>
           </div>
         </div>
-        <div className="pricing-settings full">
+        <div className="pricing-settings">
           <div className="pricing-settings-head">
             <div>
               <span className="eyebrow">Price control</span>

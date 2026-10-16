@@ -6027,3 +6027,28 @@ textarea:focus {
     font-size: 28px;
   }
 }
+
+/* Settings use the workspace width, with a readable single-column fallback. */
+.settings-page { width: 100%; }
+.settings-overview-grid,
+.settings-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
+.settings-overview-grid > *,
+.settings-form > * { min-width: 0; }
+.settings-group { padding: 18px; border: 1px solid var(--rx-border); border-radius: 8px; background: var(--rx-surface, #fff); align-content: start; }
+.settings-group h3 { margin: 0; }
+.settings-group p { color: var(--rx-muted); font-size: 13px; line-height: 1.5; margin: 8px 0 0; }
+.settings-page .copy-value-card strong { overflow-wrap: anywhere; }
+.settings-page .workspace-logo-editor { flex-wrap: wrap; }
+.settings-page .pricing-rule-editors { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1200px) {
+  .settings-overview-grid,
+  .settings-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settings-form > .full { grid-column: 1 / -1; }
+  .settings-page .user-profile-grid,
+  .settings-page .workspace-access-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (min-width: 1600px) {
+  .settings-page .user-profile-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .settings-page .workspace-access-grid,
+  .settings-page .pricing-rule-editors { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
