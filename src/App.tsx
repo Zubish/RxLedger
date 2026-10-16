@@ -262,7 +262,7 @@ type LedgerType =
   | "write-off"
   | "supplier-return"
   | "customer-return";
-type PricingRoundingRule = 0 | 1 | 5 | 10 | 50 | 100;
+type PricingRoundingRule = number;
 
 type LedgerEntry = {
   id: string;
@@ -863,11 +863,9 @@ function normalizeMarkupMap(value: unknown) {
 }
 
 function pricingPolicy(settings: AppSettings) {
-  const roundingRule = pricingRoundingRules.includes(
-    settings.pricingRoundingRule ?? 10,
-  )
-    ? (settings.pricingRoundingRule ?? 10)
-    : 10;
+  const configuredRounding = Number(settings.pricingRoundingRule ?? 10);
+  const roundingRule = Number.isFinite(configuredRounding) && configuredRounding >= 0
+    ? configuredRounding : 10;
   return {
     enabled: Boolean(settings.autoPricingEnabled),
     globalMarkupPercent: Math.max(0, Number(settings.globalMarkupPercent) || 0),
@@ -900,7 +898,7 @@ function pricingPolicy(settings: AppSettings) {
 function roundSellingPrice(value: number, rule: PricingRoundingRule) {
   const price = Math.max(0, Number(value) || 0);
   if (!rule) return Math.round(price * 100) / 100;
-  return Math.ceil(price / rule) * rule;
+  return Math.round((Math.round(price / rule) * rule) * 100) / 100;
 }
 
 function productSpecificKeys(
@@ -963,11 +961,16 @@ function calculatedSellingPrice(
   const markup = markupForItem(db, itemType, itemId);
   const raw = Math.max(0, unitCost) * (1 + markup.percent / 100);
   return {
-    price: roundSellingPrice(raw, policy.roundingRule),
+    price: Math.max(Math.round(Math.max(0, unitCost) * 100) / 100, roundSellingPrice(raw, policy.roundingRule)),
     rawPrice: raw,
     markupPercent: markup.percent,
     source: markup.source,
   };
+}
+
+function MarkupWarning({ actual, target }: { actual: number; target: number }) {
+  if (!Number.isFinite(actual) || actual >= target || target <= 0) return null;
+  return <small className="markup-warning" role="status">Below configured markup. Expected price: {money.format(target)}. Entered price: {money.format(actual)}.</small>;
 }
 
 function discountLimitPercent(db: Database, user: User) {
@@ -4625,6 +4628,11 @@ function Medicines({
     setDrafts([createBlank()]);
   }
 
+  function draftPrice(draft: MedicineDraft) {
+    const preview = { ...draft, id: draft.id || draft.rowId } as unknown as Medicine;
+    return calculatedSellingPrice({ ...db, medicines: [...db.medicines.filter(item => item.id !== preview.id), preview] }, "medicine", preview.id, Number(draft.costPrice) || 0).price;
+  }
+
   function draftToMedicine(draft: MedicineDraft): Medicine {
     return {
       id: draft.id || id("med"),
@@ -4637,7 +4645,7 @@ function Medicines({
       packSize: Math.max(1, Number(draft.packSize) || 1),
       sellableUnit: draft.sellableUnit.trim() || draft.unit.trim() || "Unit",
       costPrice: Math.max(0, Number(draft.costPrice) || 0),
-      sellingPrice: Math.max(0, Number(draft.sellingPrice) || 0),
+      sellingPrice: autoPricingOn ? draftPrice(draft) : Math.max(0, Number(draft.sellingPrice) || 0),
       category: draft.category.trim(),
       manufacturer: draft.manufacturer.trim(),
       nafdacNumber: draft.nafdacNumber.trim(),
@@ -4846,6 +4854,8 @@ function Medicines({
       flash("Selling price must be equal to or greater than cost price");
       return;
     }
+    const targetPrice = calculatedSellingPrice(db, "medicine", medicine.id, costPrice).price;
+    if (sellingPrice < targetPrice && !window.confirm(`Below configured markup. Expected price: ${money.format(targetPrice)}. Entered price: ${money.format(sellingPrice)}. Continue with this price?`)) return;
     const overrideReason = autoPricingOn
       ? window
           .prompt(
@@ -4993,6 +5003,7 @@ function Medicines({
                         }
                         aria-label={`Selling price per least sellable unit for ${medicine.brandName}`}
                       />
+                      <MarkupWarning actual={medicine.sellingPrice || getMedicineSellingPrice(stockRows, medicine.id) || 0} target={calculatedSellingPrice(db, "medicine", medicine.id, medicine.costPrice).price} />
                     </td>
                     <td>
                       {money.format(stockCostTotals.get(medicine.id) ?? 0)}
@@ -5229,7 +5240,7 @@ function Medicines({
                     <input
                       type="number"
                       min="0"
-                      value={numberInputValue(draft.sellingPrice)}
+                      value={numberInputValue(autoPricingOn ? draftPrice(draft) : draft.sellingPrice)}
                       onChange={(event) =>
                         updateDraft(draft.rowId, {
                           sellingPrice: Number(event.target.value),
@@ -5237,6 +5248,7 @@ function Medicines({
                       }
                       disabled={!canWrite || !canManagePrices || autoPricingOn}
                     />
+                    {!autoPricingOn && <MarkupWarning actual={Number(draft.sellingPrice) || 0} target={draftPrice(draft)} />}
                   </label>
                   <label>
                     Category
@@ -6272,6 +6284,9 @@ function ReceiveStock({
         sellingPrice > 0 && sellingPrice < unitCost
           ? "Selling price is below cost"
           : "",
+        sellingPrice < priceCalc.price
+          ? `Below configured markup. Expected price: ${money.format(priceCalc.price)}. Entered price: ${money.format(sellingPrice)}.`
+          : "",
         priceCalc.markupPercent > policy.unusualMarkupPercent
           ? `Markup is above ${policy.unusualMarkupPercent}%`
           : "",
@@ -6618,6 +6633,7 @@ function ReceiveStock({
                       }
                       disabled={!canWrite || policy.enabled}
                     />
+                    {!policy.enabled && <MarkupWarning actual={Number(line.sellingPrice) || 0} target={calculatedSellingPrice(db, line.itemType, selectedItemId, lineUnitCost(line)).price} />}
                   </label>
                   <label>
                     Stock location
@@ -7139,6 +7155,9 @@ function ProductsView({
     setForm(createBlank());
   }
 
+  const productPreview = { ...form, id: form.id || "pricing-preview" } as unknown as Product;
+  const productTarget = calculatedSellingPrice({ ...db, products: [...db.products.filter(item => item.id !== productPreview.id), productPreview] }, "product", productPreview.id, Number(form.costPrice) || 0).price;
+
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!canWrite) return;
@@ -7151,12 +7170,7 @@ function ProductsView({
       unit: form.unit.trim() || "Unit",
       costPrice: Math.max(0, Number(form.costPrice) || 0),
       sellingPrice: autoPricingOn
-        ? calculatedSellingPrice(
-            db,
-            "product",
-            form.id,
-            Math.max(0, Number(form.costPrice) || 0),
-          ).price
+        ? productTarget
         : Math.max(0, Number(form.sellingPrice) || 0),
       quantity: Math.max(0, Number(form.quantity) || 0),
       barcodes: form.barcodes
@@ -7341,12 +7355,7 @@ function ProductsView({
               min="0"
               value={numberInputValue(
                 autoPricingOn
-                  ? calculatedSellingPrice(
-                      db,
-                      "product",
-                      form.id,
-                      Number(form.costPrice) || 0,
-                    ).price
+                  ? productTarget
                   : form.sellingPrice,
               )}
               onChange={(event) =>
@@ -7354,6 +7363,7 @@ function ProductsView({
               }
               disabled={!canWrite || autoPricingOn}
             />
+            {!autoPricingOn && <MarkupWarning actual={Number(form.sellingPrice) || 0} target={productTarget} />}
           </label>
           <label>
             Supplier
@@ -11386,6 +11396,7 @@ function SettingsView({
   flash: (message: string) => void;
 }) {
   const [form, setForm] = useState(db.settings);
+  const [customRounding, setCustomRounding] = useState(() => !pricingRoundingRules.includes(db.settings.pricingRoundingRule ?? 10));
   const [categoryMarkupText, setCategoryMarkupText] = useState(() =>
     markupMapToText(db.settings.categoryMarkupPercentages),
   );
@@ -11752,24 +11763,29 @@ function SettingsView({
             <label>
               Round prices
               <select
-                value={form.pricingRoundingRule ?? 10}
-                onChange={(event) =>
-                  setForm({
-                    ...form,
-                    pricingRoundingRule: Number(
-                      event.target.value,
-                    ) as PricingRoundingRule,
-                  })
-                }
+                value={customRounding ? "custom" : form.pricingRoundingRule ?? 10}
+                onChange={(event) => {
+                  const custom = event.target.value === "custom";
+                  setCustomRounding(custom);
+                  if (!custom) setForm({ ...form, pricingRoundingRule: Number(event.target.value) });
+                  else setForm({ ...form, pricingRoundingRule: 25 });
+                }}
                 disabled={!canAdmin}
               >
                 {pricingRoundingRules.map((rule) => (
-                  <option key={rule} value={rule}>
-                    {rule ? `Nearest ${money.format(rule)}` : "No rounding"}
-                  </option>
+                  <option key={rule} value={rule}>{rule ? `Nearest ${money.format(rule)}` : "No rounding"}</option>
                 ))}
+                <option value="custom">Custom increment</option>
               </select>
+              <small>Markup is applied first, then rounded to the nearest increment.</small>
             </label>
+            {customRounding && <label>
+              Custom rounding increment (NGN)
+              <input type="number" min="0.01" step="0.01" required
+                value={numberInputValue(form.pricingRoundingRule)}
+                onChange={(event) => setForm({ ...form, pricingRoundingRule: Number(event.target.value) })}
+                disabled={!canAdmin} />
+            </label>}
             <label>
               Cashier discount limit %
               <input

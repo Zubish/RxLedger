@@ -61,7 +61,6 @@ type SubscriptionPlanId = NonNullable<
 type PricingRoundingRule = NonNullable<
   Database["settings"]["pricingRoundingRule"]
 >;
-const pricingRoundingRules: PricingRoundingRule[] = [0, 1, 5, 10, 50, 100];
 
 export default async function handler(
   req: HandlerRequest,
@@ -459,11 +458,9 @@ function normalizeMedicineLabelRules(
 }
 
 function pricingPolicy(settings: Database["settings"]) {
-  const roundingRule = pricingRoundingRules.includes(
-    settings.pricingRoundingRule ?? 10,
-  )
-    ? (settings.pricingRoundingRule ?? 10)
-    : 10;
+  const configuredRounding = Number(settings.pricingRoundingRule ?? 10);
+  const roundingRule = Number.isFinite(configuredRounding) && configuredRounding >= 0
+    ? configuredRounding : 10;
   return {
     enabled: Boolean(settings.autoPricingEnabled),
     globalMarkupPercent: Math.max(0, Number(settings.globalMarkupPercent) || 0),
@@ -488,7 +485,7 @@ function pricingPolicy(settings: Database["settings"]) {
 function roundSellingPrice(value: number, rule: PricingRoundingRule) {
   const price = Math.max(0, Number(value) || 0);
   if (!rule) return Math.round(price * 100) / 100;
-  return Math.ceil(price / rule) * rule;
+  return Math.round((Math.round(price / rule) * rule) * 100) / 100;
 }
 
 function productSpecificKeys(
@@ -543,10 +540,10 @@ function calculatedSellingPrice(
 ) {
   const policy = pricingPolicy(db.settings);
   const markupPercent = markupForItem(db, itemType, itemId);
-  return roundSellingPrice(
+  return Math.max(Math.round(Math.max(0, unitCost) * 100) / 100, roundSellingPrice(
     Math.max(0, unitCost) * (1 + markupPercent / 100),
     policy.roundingRule,
-  );
+  ));
 }
 
 function discountLimitPercent(db: Database, actor: User) {
@@ -939,6 +936,10 @@ function saveMedicineRecord(
 ) {
   const before = db.medicines.find((medicine) => medicine.id === record.id);
   const canSetPrices = canManageMedicinePrices(db, actor, actorRole, branchId);
+  if (canSetPrices && pricingPolicy(db.settings).enabled) {
+    const pricingDb = { ...db, medicines: [...db.medicines.filter(item => item.id !== record.id), record] };
+    record.sellingPrice = calculatedSellingPrice(pricingDb, "medicine", record.id, record.costPrice);
+  }
   if (!canSetPrices) {
     record.costPrice = before?.costPrice ?? 0;
     record.sellingPrice = before?.sellingPrice ?? 0;
@@ -1033,11 +1034,10 @@ function upsertProduct(
   const input = (payload?.record ?? {}) as Partial<Product>;
   const costPrice = Number(input.costPrice) || 0;
   const provisionalId = input.id || id("prd");
+  const pricingDb = { ...db, products: [...db.products.filter(item => item.id !== provisionalId),
+    { ...input, id: provisionalId, sku: input.sku || "", name: input.name || "", category: input.category || "General retail" } as Product] };
   const sellingPrice = pricingPolicy(db.settings).enabled
-    ? roundSellingPrice(
-        costPrice * (1 + pricingPolicy(db.settings).globalMarkupPercent / 100),
-        pricingPolicy(db.settings).roundingRule,
-      )
+    ? calculatedSellingPrice(pricingDb, "product", provisionalId, costPrice)
     : Number(input.sellingPrice) || 0;
   if (sellingPrice > 0 && sellingPrice < costPrice)
     throw new Error(
@@ -2739,6 +2739,11 @@ function updateSettings(
       `${blockers.join(" ")} No historical stock, sales, patient, branch, or audit data will be deleted; archive or deactivate extra usage before downgrading.`,
     );
   }
+  const roundingIncrement = Number(payload?.pricingRoundingRule ?? db.settings.pricingRoundingRule ?? 10);
+  if (!Number.isFinite(roundingIncrement) || roundingIncrement < 0 ||
+      (roundingIncrement > 0 && roundingIncrement < 0.01)) {
+    throw new Error("Rounding increment must be zero or at least NGN 0.01");
+  }
   db.settings = {
     pharmacyName:
       optionalString(payload?.pharmacyName) || db.settings.pharmacyName,
@@ -2761,11 +2766,7 @@ function updateSettings(
       Number(payload?.approvalThreshold) || db.settings.approvalThreshold,
     autoPricingEnabled: Boolean(payload?.autoPricingEnabled),
     globalMarkupPercent: Math.max(0, Number(payload?.globalMarkupPercent) || 0),
-    pricingRoundingRule: pricingRoundingRules.includes(
-      Number(payload?.pricingRoundingRule) as PricingRoundingRule,
-    )
-      ? (Number(payload?.pricingRoundingRule) as PricingRoundingRule)
-      : 10,
+    pricingRoundingRule: roundingIncrement,
     categoryMarkupPercentages: normalizeMarkupMap(
       payload?.categoryMarkupPercentages,
     ),

@@ -34,7 +34,7 @@ export type SubscriptionPlanId =
   | "single-branch"
   | "smart-pharmacy"
   | "enterprise";
-export type PricingRoundingRule = 0 | 1 | 5 | 10 | 50 | 100;
+export type PricingRoundingRule = number;
 
 export type User = {
   id: string;

@@ -44,7 +44,7 @@ type LedgerType =
   | "supplier-return"
   | "customer-return";
 type SubscriptionPlanId = "single-branch" | "smart-pharmacy" | "enterprise";
-type PricingRoundingRule = 0 | 1 | 5 | 10 | 50 | 100;
+type PricingRoundingRule = number;
 
 type User = {
   id: string;

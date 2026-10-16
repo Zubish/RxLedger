@@ -6052,3 +6052,5 @@ textarea:focus {
   .settings-page .workspace-access-grid,
   .settings-page .pricing-rule-editors { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+.markup-warning { display: block; color: #854d0e; background: #fffbeb; border-left: 3px solid #d97706; padding: 8px 10px; line-height: 1.5; font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }

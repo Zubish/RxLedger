@@ -237,6 +237,14 @@ Before adding a new `max-height` or `overflow`, prefer these variables and check
 - Expansion features must not become free upgrades by accident. HMO routing, EMR/HMO integrations, pharmacy network matching, claim feedback, custom APIs, and care-network coordination should be priced as Enterprise features or paid add-ons, because they create new revenue value and support obligations beyond normal pharmacy operations.
 - Existing plans should keep receiving quality, security, usability, and workflow improvements inside their promised scope. New cross-organization workflows should require a plan upgrade, add-on, or custom contract.
 
+## Automatic Pricing And Markup Warnings
+
+- Apply item-specific overrides before category markup, then global markup. Calculate against cost per least sellable unit after receiving-container conversion.
+- Rounding supports no rounding, presets 1/5/10/50/100 NGN and a custom increment of at least NGN 0.01. Round to the nearest increment, not always upward; retain currency precision and never calculate an automatic selling price below unit cost.
+- Frontend previews and server persistence must agree. Catalogue medicine/retail edits and receiving must use the same hierarchy, including an edited item's unsaved category/SKU.
+- When manual prices are allowed, show a warning below the final rounded target with expected and entered prices. Preserve below-cost blocking and the permanent-admin/reason requirement for automatic-pricing overrides.
+- Settings changes apply to subsequent pricing operations; do not silently rewrite existing stock prices or historical transactions. Automatic pricing remains controlled by the existing workspace switch.
+
 ## Patient Workflow Rules
 
 - Patients are derived from POS sales data, not a separate manual CRM table yet.
