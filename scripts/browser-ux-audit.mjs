@@ -20,7 +20,7 @@ for (const [device,width,height] of [['iphone12',390,844],['small-phone',320,740
  const page=await context.newPage(); const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.log('PAGE ERROR',device,e.message)});
  await page.goto('http://localhost:5173/audit'); await page.waitForSelector('.topbar');
  if(process.argv.includes('--interactions-only')) {
-  const trigger=width<=900?page.locator('.mobile-menu-button'):page.locator('.drawer-handle');
+  const trigger=page.locator('.sidebar-trigger');
   await trigger.click();
   if(width<=900) {
    assert.equal(await page.locator('.sidebar').getAttribute('aria-modal'),'true');
@@ -55,7 +55,7 @@ for (const [device,width,height] of [['iphone12',390,844],['small-phone',320,740
  for (const [view,label] of [['dashboard','Dashboard'],['continuity','Continuity'],['pos','POS'],['patients','Patients'],['medicines','Pharmacy'],['products','Mart'],['receive','Receive'],['reports','Reports'],['suppliers','Suppliers'],['notifications','Notifications'],['chat','Team Chat'],['settings','Settings'],['branches','Branches'],['users','Users'],['issue','Issue Stock'],['adjust','Adjust/Returns']]) {
   if(currentUser.role !== 'admin' && ['users','branches'].includes(view)) continue;
   const trigger=page.locator('.mobile-menu-button');
-  if(!await page.locator('.sidebar').evaluate(el=>!el.inert)) { const menu=await trigger.isVisible()?trigger:page.locator('.drawer-handle'); await menu.click(); }
+  if(!await page.locator('.sidebar').evaluate(el=>!el.inert)) { const menu=await trigger.isVisible()?trigger:page.locator('.sidebar-trigger'); await menu.click(); }
   await page.locator('.sidebar .nav-item').filter({has:page.locator('span').filter({hasText:new RegExp(`^${label}$`)})}).click();
   if(view==='continuity') {
    await page.locator('.sidebar .nav-submenu button').filter({hasText:'Stock available'}).click();

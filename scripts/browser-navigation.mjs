@@ -35,7 +35,7 @@ try {
     await (await mobile.isVisible()?mobile:page.locator('.drawer-handle')).click();
    }
    await page.locator('.sidebar .nav-item').filter({has:page.locator('span').filter({hasText:new RegExp(`^${label}$`)})}).click();
-   if(await page.locator('.sidebar').evaluate(el=>!el.inert)) await page.locator('.sidebar-close-button').click();
+   if(!await page.locator('.sidebar').evaluate(el=>el.inert) && await page.locator('.sidebar-close-button').isVisible()) await page.locator('.sidebar-close-button').click();
    await page.waitForFunction(label=>document.querySelector('.topbar h1')?.textContent===label,label);
   }
   if(process.argv.includes('--login-only')) {

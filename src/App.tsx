@@ -5,8 +5,6 @@ import { collectPage, stopCollection } from "./platform/collect";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import type {
   FormEvent,
-  KeyboardEvent,
-  PointerEvent as ReactPointerEvent,
 } from "react";
 import { readSheet } from "read-excel-file/browser";
 import {
@@ -20,8 +18,6 @@ import {
   Calculator,
   CheckCircle2,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   ClipboardList,
   FileText,
   HeartPulse,
@@ -30,7 +26,7 @@ import {
   Lock,
   LogOut,
   MapPin,
-  Menu,
+  PanelLeft,
   MessageSquare,
   Minus,
   PackageCheck,
@@ -123,7 +119,6 @@ import "./rxledger-theme.css";
 import "./dashboard-burgundy.css";
 import "./dashboard-mobile.css";
 
-const SIDEBAR_WIDTH = 280;
 type ContinuityFilter = "active" | ContinuityRequestStatus | "all";
 const continuityFilters: Array<{ value: ContinuityFilter; label: string }> = [
   { value: "active", label: "Active" },
@@ -2554,20 +2549,10 @@ function App() {
     window.matchMedia("(max-width: 900px)").matches,
   );
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
-  const [drawerHandleTop, setDrawerHandleTop] = useState(() =>
-    typeof window === "undefined" ? 360 : Math.round(window.innerHeight / 2),
-  );
-  const [drawerHandleDragging, setDrawerHandleDragging] = useState(false);
   const [activeBranchId, setActiveBranchId] = useState("main");
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
   const [branchSwitching, setBranchSwitching] = useState(false);
   const [branchSwitchLabel, setBranchSwitchLabel] = useState("");
-  const drawerDragRef = useRef({
-    active: false,
-    moved: false,
-    startY: 0,
-    startTop: drawerHandleTop,
-  });
   const branchSwitchTimerRef = useRef<number | undefined>(undefined);
   const noticeTimerRef = useRef<number | undefined>(undefined);
   const noticeIdRef = useRef(0);
@@ -3222,58 +3207,6 @@ function App() {
     });
   }
 
-  function clampDrawerHandleTop(value: number) {
-    const minimum = 76;
-    const maximum =
-      typeof window === "undefined"
-        ? Math.max(minimum, value)
-        : Math.max(minimum, window.innerHeight - 76);
-    return Math.min(Math.max(value, minimum), maximum);
-  }
-
-  function startDrawerHandleDrag(event: ReactPointerEvent<HTMLButtonElement>) {
-    drawerDragRef.current = {
-      active: true,
-      moved: false,
-      startY: event.clientY,
-      startTop: drawerHandleTop,
-    };
-    setDrawerHandleDragging(true);
-    event.currentTarget.setPointerCapture(event.pointerId);
-  }
-
-  function moveDrawerHandle(event: ReactPointerEvent<HTMLButtonElement>) {
-    if (!drawerDragRef.current.active) return;
-    const nextTop =
-      drawerDragRef.current.startTop +
-      event.clientY -
-      drawerDragRef.current.startY;
-    if (Math.abs(event.clientY - drawerDragRef.current.startY) > 5) {
-      drawerDragRef.current.moved = true;
-    }
-    setDrawerHandleTop(clampDrawerHandleTop(nextTop));
-  }
-
-  function stopDrawerHandleDrag(event: ReactPointerEvent<HTMLButtonElement>) {
-    if (!drawerDragRef.current.active) return;
-    try {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    } catch {
-      // Pointer capture may already be released when the pointer is cancelled.
-    }
-    drawerDragRef.current.active = false;
-    setDrawerHandleDragging(false);
-    if (!drawerDragRef.current.moved) {
-      toggleSidebar();
-    }
-  }
-
-  function handleDrawerKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    toggleSidebar();
-  }
-
   useEffect(() => {
     if (!currentUser) return undefined;
     let timeoutId = window.setTimeout(() => {
@@ -3444,7 +3377,7 @@ function App() {
         className="sidebar"
         id="primary-navigation-panel"
         ref={sidebarRef}
-        inert={sidebarCollapsed}
+        inert={mobileNavigation && !sidebarOpen}
         role={mobileNavigation && sidebarOpen ? "dialog" : undefined}
         aria-modal={mobileNavigation && sidebarOpen ? true : undefined}
         aria-label="Control panel"
@@ -3464,7 +3397,7 @@ function App() {
             aria-label="Close control panel"
             title="Close control panel"
           >
-            <X size={17} strokeWidth={2.4} />
+            {mobileNavigation ? <X size={17} strokeWidth={2.4} /> : <PanelLeft size={20} />}
           </button>
         </div>
 
@@ -3479,10 +3412,16 @@ function App() {
                   <button
                     className={activeView === viewId ? "nav-item active" : "nav-item"}
                     type="button"
-                    aria-expanded={continuityMenuOpen}
+                    title={label}
+                    aria-label={label}
+                    aria-expanded={continuityMenuOpen && !sidebarCollapsed}
                     aria-controls="continuity-submenu"
                     onClick={() => {
-                      setContinuityMenuOpen((open) => !open);
+                      if (!mobileNavigation && sidebarCollapsed) {
+                        setSidebarCollapsed(false);
+                        setSidebarOpen(true);
+                        setContinuityMenuOpen(true);
+                      } else setContinuityMenuOpen((open) => !open);
                       if (activeView !== "continuity") {
                         navigate("continuity");
                         setSidebarOpen(true);
@@ -3584,45 +3523,19 @@ function App() {
         </div>
       </aside>
 
-      <button
-        className={`drawer-handle${sidebarCollapsed ? " is-closed" : " is-open"}${drawerHandleDragging ? " is-dragging" : ""}`}
-        type="button"
-        style={{
-          left: sidebarCollapsed ? 0 : SIDEBAR_WIDTH - 26,
-          top: drawerHandleTop,
-        }}
-        aria-label={
-          sidebarCollapsed ? "Open control panel" : "Collapse control panel"
-        }
-        aria-expanded={!sidebarCollapsed}
-        aria-controls="primary-navigation-panel"
-        tabIndex={mobileNavigation ? -1 : 0}
-        onKeyDown={handleDrawerKeyDown}
-        onPointerDown={startDrawerHandleDrag}
-        onPointerMove={moveDrawerHandle}
-        onPointerUp={stopDrawerHandleDrag}
-        onPointerCancel={stopDrawerHandleDrag}
-      >
-        {sidebarCollapsed ? (
-          <ChevronRight size={30} strokeWidth={3.2} />
-        ) : (
-          <ChevronLeft size={30} strokeWidth={3.2} />
-        )}
-      </button>
-
       <main className="workspace" inert={mobileNavigation && sidebarOpen}>
         <header className="topbar">
           <div className="topbar-title">
             <button
               ref={menuTriggerRef}
               type="button"
-              className="icon-button mobile-menu-button"
-              aria-label="Open navigation menu"
+              className="icon-button mobile-menu-button sidebar-trigger"
+              aria-label={mobileNavigation ? "Open navigation menu" : sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
               aria-controls="primary-navigation-panel"
-              aria-expanded={sidebarOpen}
+              aria-expanded={mobileNavigation ? sidebarOpen : !sidebarCollapsed}
               onClick={toggleSidebar}
             >
-              <Menu size={22} />
+              <PanelLeft size={22} />
             </button>
             <div>
               <span className="eyebrow">{db.settings.accountName}</span>

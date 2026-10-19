@@ -6054,3 +6054,28 @@ textarea:focus {
 }
 
 .markup-warning { display: block; color: #854d0e; background: #fffbeb; border-left: 3px solid #d97706; padding: 8px 10px; line-height: 1.5; font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+
+/* HealthPass-style persistent desktop icon rail and header panel trigger. */
+.sidebar-trigger.mobile-menu-button { display: inline-flex; min-width: 44px; min-height: 44px; flex-shrink: 0; }
+@media (min-width: 901px) {
+  .app-shell.sidebar-collapsed { grid-template-columns: 72px minmax(0, 1fr); }
+  .app-shell.sidebar-collapsed .workspace { grid-column: 2; }
+  .app-shell.sidebar-collapsed .sidebar { display: flex; width: 72px; padding: 16px 10px; gap: 16px; }
+  .app-shell.sidebar-collapsed .brand-identity > div:not(.brand-mark),
+  .app-shell.sidebar-collapsed .sidebar-close-button,
+  .app-shell.sidebar-collapsed .nav-group-label,
+  .app-shell.sidebar-collapsed .nav-disclosure-chevron,
+  .app-shell.sidebar-collapsed .nav-submenu,
+  .app-shell.sidebar-collapsed .user-panel > div { display: none; }
+  .app-shell.sidebar-collapsed .brand-block,
+  .app-shell.sidebar-collapsed .brand-identity { justify-content: center; padding: 0; }
+  .app-shell.sidebar-collapsed .brand-mark { width: 40px; height: 40px; min-width: 40px; }
+  .app-shell.sidebar-collapsed .nav-item,
+  .app-shell.sidebar-collapsed .sidebar-security-button { position: relative; justify-content: center; width: 100%; min-height: 44px; padding: 10px; }
+  .app-shell.sidebar-collapsed .nav-item > span,
+  .app-shell.sidebar-collapsed .sidebar-security-button > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .app-shell.sidebar-collapsed .nav-item > svg,
+  .app-shell.sidebar-collapsed .sidebar-security-button > svg { flex-shrink: 0; }
+  .app-shell.sidebar-collapsed .nav-badge { position: absolute; right: -2px; top: -2px; min-width: 16px; height: 16px; font-size: 10px; }
+  .app-shell.sidebar-collapsed .user-panel { justify-content: center; padding: 8px 0 0; }
+}

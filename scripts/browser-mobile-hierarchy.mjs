@@ -36,7 +36,7 @@ try {
         await (await menu.isVisible() ? menu : page.locator('.drawer-handle')).click();
       }
       await page.locator('.sidebar .nav-item').filter({ has: page.locator('span').filter({ hasText: new RegExp(`^${screen}$`) }) }).click();
-      if (await page.locator('.sidebar').evaluate(el => !el.inert)) await page.locator('.sidebar-close-button').click();
+      if (!await page.locator('.sidebar').evaluate(el => el.inert) && await page.locator('.sidebar-close-button').isVisible()) await page.locator('.sidebar-close-button').click();
       await page.waitForTimeout(120);
     }
     async function capture(screen) {
@@ -46,10 +46,10 @@ try {
       console.log(`${device}: ${screen} passed`);
     }
     if (width > 900) {
-      await page.locator('.drawer-handle').click();
+      await page.locator('.sidebar-trigger').click();
       assert.equal(await page.locator('.sidebar-close-button').evaluate(el => getComputedStyle(el, '::before').display), 'none', 'Desktop close bar removed');
       await page.locator('.sidebar-close-button').click();
-      assert.equal(await page.locator('.sidebar').evaluate(el => el.inert), true, 'Desktop X still closes sidebar');
+      assert.equal(await page.locator('.app-shell').evaluate(el => el.classList.contains('sidebar-collapsed')), true, 'Desktop panel toggle returns to icon rail');
     }
     await nav('Dashboard');
     await visible(page.locator('.dashboard-mobile-navigation'), mobile, 'Dashboard compact navigation breakpoint');

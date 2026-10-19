@@ -14,6 +14,7 @@
     "test:colours": "node scripts/browser-colour-audit.mjs",
     "test": "node --test scripts/pricing-policy.test.mjs scripts/rxledger-rules.test.mjs scripts/rai-access.test.mjs scripts/rai-delegation.test.mjs scripts/rai-connection.test.mjs scripts/rai-router.test.mjs scripts/dashboard-snapshot.test.mjs scripts/branch-scope.test.mjs scripts/workspace-deletion.test.mjs scripts/platform-auth.test.mjs scripts/alert-policy.test.mjs scripts/server-artifact.test.mjs",
     "preview": "vite preview",
+    "test:sidebar": "node scripts/browser-sidebar.mjs",
     "test:alerts": "node scripts/browser-alerts.mjs",
     "test:platform": "node scripts/browser-platform.mjs"
   },
