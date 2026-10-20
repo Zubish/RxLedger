@@ -21,7 +21,7 @@ for (const [device,width,height] of [['iphone12',390,844],['small-phone',320,740
  await page.goto('http://localhost:5173/audit'); await page.waitForSelector('.topbar');
  if(process.argv.includes('--interactions-only')) {
   const trigger=page.locator('.sidebar-trigger');
-  await trigger.click();
+  if(width<=900) await trigger.click(); else await page.locator('.sidebar').hover();
   if(width<=900) {
    assert.equal(await page.locator('.sidebar').getAttribute('aria-modal'),'true');
    await page.keyboard.press('Shift+Tab');
@@ -35,7 +35,7 @@ for (const [device,width,height] of [['iphone12',390,844],['small-phone',320,740
   await page.locator('.nav-submenu button').filter({hasText:'Waiting'}).click();
   assert.equal(await page.locator('.continuity-status-select select').inputValue(),'open');
   if(width<=900) assert.ok(await page.locator('.sidebar').evaluate(el=>el.inert));
-  else { assert.ok(await page.locator('.sidebar').evaluate(el=>!el.inert)); await page.locator('.sidebar-close-button').click(); }
+  else { assert.ok(await page.locator('.sidebar').evaluate(el=>!el.inert)); await page.mouse.move(width-10,200); }
   await page.locator('.branch-switcher-trigger').click();
   if(currentUser.role==='admin') {
    await page.locator('.branch-menu button').filter({hasText:'Riverside Branch'}).click();

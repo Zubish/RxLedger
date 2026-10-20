@@ -140,7 +140,7 @@ The next performance phase is server-side dashboard/report aggregation beyond st
 
 The authenticated layout is:
 
-- Fixed left control panel/sidebar on desktop, with a persistent 72px icon rail when collapsed. A PanelLeft button in the page header toggles the full panel; do not restore the floating/drag-to-position drawer handle. Collapsed icons retain accessible names, hover titles and direct navigation. Continuity expands the full panel to expose its submenu.
+- Fixed left control panel/sidebar on desktop, with a persistent 72px icon rail when collapsed. On pointer-driven desktops, entering the rail expands the panel over the workspace and leaving collapses it; keep the workspace position stable. Keyboard focus also expands it and keeps it open until focus leaves. Hide desktop panel toggles; retain a tap trigger for mobile/coarse-pointer devices. Do not restore the floating/drag-to-position drawer handle. Collapsed icons retain accessible names, hover titles and direct navigation. Continuity expands the full panel to expose its submenu.
 - Drawer-style sidebar on tablet/mobile (900px and below), opened by the header panel button. Keep backdrop, focus trapping, Escape dismissal and focus restoration; hidden mobile navigation is inert while the desktop icon rail remains interactive.
 - Topbar with account/branch context.
 - Main workspace scrolls naturally.

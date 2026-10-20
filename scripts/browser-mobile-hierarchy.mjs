@@ -46,9 +46,9 @@ try {
       console.log(`${device}: ${screen} passed`);
     }
     if (width > 900) {
-      await page.locator('.sidebar-trigger').click();
+      await page.locator('.sidebar').hover();
       assert.equal(await page.locator('.sidebar-close-button').evaluate(el => getComputedStyle(el, '::before').display), 'none', 'Desktop close bar removed');
-      await page.locator('.sidebar-close-button').click();
+      await page.mouse.move(width - 10, 200);
       assert.equal(await page.locator('.app-shell').evaluate(el => el.classList.contains('sidebar-collapsed')), true, 'Desktop panel toggle returns to icon rail');
     }
     await nav('Dashboard');

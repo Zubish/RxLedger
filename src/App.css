@@ -6079,3 +6079,15 @@ textarea:focus {
   .app-shell.sidebar-collapsed .nav-badge { position: absolute; right: -2px; top: -2px; min-width: 16px; height: 16px; font-size: 10px; }
   .app-shell.sidebar-collapsed .user-panel { justify-content: center; padding: 8px 0 0; }
 }
+
+/* Desktop pointer navigation expands over the workspace without moving it. */
+@media (min-width: 901px) {
+  .app-shell, .app-shell.sidebar-collapsed { grid-template-columns: 72px minmax(0, 1fr); }
+  .sidebar { transition: width 180ms ease; }
+}
+@media (min-width: 901px) and (hover: hover) and (pointer: fine) {
+  .sidebar-trigger.mobile-menu-button, .sidebar .sidebar-close-button { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar { transition: none; }
+}

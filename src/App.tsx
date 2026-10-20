@@ -3377,6 +3377,22 @@ function App() {
         className="sidebar"
         id="primary-navigation-panel"
         ref={sidebarRef}
+        onPointerEnter={(event) => {
+          if (!mobileNavigation && event.pointerType === "mouse") {
+            setSidebarCollapsed(false);
+          }
+        }}
+        onPointerLeave={(event) => {
+          if (!mobileNavigation && event.pointerType === "mouse" &&
+              !sidebarRef.current?.querySelector(":focus-visible")) collapseSidebar();
+        }}
+        onFocusCapture={(event) => {
+          if (!mobileNavigation && event.target.matches(":focus-visible")) setSidebarCollapsed(false);
+        }}
+        onBlurCapture={(event) => {
+          if (!mobileNavigation && !event.currentTarget.contains(event.relatedTarget as Node | null) &&
+              !event.currentTarget.matches(":hover")) collapseSidebar();
+        }}
         inert={mobileNavigation && !sidebarOpen}
         role={mobileNavigation && sidebarOpen ? "dialog" : undefined}
         aria-modal={mobileNavigation && sidebarOpen ? true : undefined}

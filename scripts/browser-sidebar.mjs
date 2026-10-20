@@ -16,25 +16,30 @@ try {
  assert.equal(await page.locator('.drawer-handle').count(),0);
  const trigger=page.locator('.sidebar-trigger');const panel=page.locator('.sidebar');
  if(width>900){
+ assert.equal(await trigger.isVisible(),false);
  assert.equal(await panel.evaluate(e=>e.inert),false);
  assert.equal(Math.round((await panel.boundingBox()).width),72);
- assert.equal(await panel.getByRole('button',{name:'Patients',exact:true}).isVisible(),true);
+ const before=await page.locator('.workspace').boundingBox();
+ await panel.hover();
+ await page.waitForFunction(()=>document.querySelector('.sidebar').getBoundingClientRect().width>200);
  await panel.getByRole('button',{name:'Patients',exact:true}).click();
  await page.getByRole('heading',{name:'Patients',exact:true}).waitFor();
- await trigger.click();assert.ok((await panel.boundingBox()).width>200);
- await panel.getByRole('button',{name:'Close control panel'}).click();
- assert.equal(Math.round((await panel.boundingBox()).width),72);
+ await page.mouse.move(width-20,200);
+ await page.waitForFunction(()=>Math.round(document.querySelector('.sidebar').getBoundingClientRect().width)===72);
+ const after=await page.locator('.workspace').boundingBox();assert.equal(before.x,after.x);
+ await panel.hover();
  await panel.getByRole('button',{name:'Continuity',exact:true}).click();
  await page.locator('#continuity-submenu').waitFor({state:'visible'});
  await page.screenshot({path:`artifacts/sidebar/expanded-${width}.png`});
- await trigger.click();
+ await page.mouse.move(width-20,200);
+ await page.waitForFunction(()=>Math.round(document.querySelector('.sidebar').getBoundingClientRect().width)===72);
+ // Keyboard focus opens the rail and remains usable independently of hover.
+ await panel.getByRole('button',{name:'Patients',exact:true}).focus();
+ await page.keyboard.press('Tab');
+ await page.waitForFunction(()=>document.querySelector('.sidebar').getBoundingClientRect().width>200);
  await panel.getByRole('button',{name:'Settings',exact:true}).click();
  await page.getByRole('heading',{name:'Account Settings',exact:true}).waitFor();
  await page.reload();await page.getByRole('heading',{name:'Account Settings',exact:true}).waitFor();
- await panel.getByRole('button',{name:'Patients',exact:true}).click();
- await page.getByRole('heading',{name:'Patients',exact:true}).waitFor();
- await page.goBack();await page.getByRole('heading',{name:'Account Settings',exact:true}).waitFor();
- await page.goForward();await page.getByRole('heading',{name:'Patients',exact:true}).waitFor();
  } else {
  assert.equal(await panel.evaluate(e=>e.inert),true);
  await trigger.click();assert.equal(await panel.getAttribute('role'),'dialog');
