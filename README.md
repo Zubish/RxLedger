@@ -145,3 +145,7 @@ Trial and plan changes are designed to preserve pharmacy data. Upgrading should 
 RxLedger is more than an inventory app. The long-term goal is to become pharmacy relationship and care infrastructure: a workspace where pharmacy operations, patient continuity, stock intelligence, staff coordination, and smart follow-up work together.
 
 Future growth may include stronger clinical alerts, smarter refill forecasting, adherence insights, integrations, AI-assisted counseling, and deeper reporting for pharmacy groups.
+
+## Development And Maintenance
+
+Start with [AGENTS.md](AGENTS.md), the [app blueprint](docs/APP_BLUEPRINT.md) and the [maintenance/AI collaboration process](docs/MAINTENANCE_AND_COLLABORATION.md). The [requirements/check map](docs/REQUIREMENTS_VERIFICATION.md) identifies existing checks and evidence gaps; material changes belong in the [change record](docs/CHANGE_RECORD.md). These incorporate the owner-supplied SEN 401 guide without treating proposed product details as verified facts.

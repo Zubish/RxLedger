@@ -1,0 +1,284 @@
+RXLEDGER — WORKING IMPROVEMENT GUIDE
+Applying SEN 401: Software Configuration Management and Maintenance
+Prepared: 20 October 2026 | Status: proposed working guide, version 1
+
+PURPOSE AND EVIDENCE BOUNDARY
+
+Use this guide to improve the reliability and maintainability of the pharmacy
+workspace while continuing to develop it quickly with AI assistance.
+
+Established context includes pharmacy/mart inventory, batches and expiry dates,
+POS, branches, roles, patient continuity, reports, alerts and workspace onboarding.
+The earlier work also restored the original purple gradient lightning logo.
+These details come from prior work, not a new audit of the current deployment.
+Confirm current implementation and requirements before treating an item as verified.
+
+Owner: __________________  Repository: Zubish/RxLedger (previously used)
+Production URL: https://rxledger.vercel.app (previously used)
+Current accepted release: __________________  Next review: __________________
+
+1. DEFINE AND ACCEPT THE PRODUCT BASELINE
+
+Document the critical pharmacy workflows: workspace setup, staff access, stock
+receipt, batch handling, sale, return/adjustment, reporting and patient follow-up.
+For each, identify the record owner, branch scope, permitted actors and outcome.
+Record plan-dependent behaviour separately from basic correctness requirements.
+
+A visual baseline should state that the original purple gradient lightning mark
+is the RxLedger product logo. Keep pharmacy-uploaded branding as a separate concern.
+List its placements: landing header/footer, onboarding, public authentication,
+initial app preparation, workspace loading and favicon.
+
+2. PRIORITY REQUIREMENTS TO ADAPT AND ACCEPT
+
+RX-01 Workspace and branch isolation
+Expected outcome: staff can access and act only within their permitted scope.
+Acceptance: test branch switching, refresh, expired sessions and direct API requests
+for a different branch/workspace. Reports, alerts and histories follow the same
+accepted scope rules. Administrator exceptions must be explicit.
+
+RX-02 Stock and batch integrity
+Expected outcome: receipt, sale, issue, return and adjustment update stock and
+movement history consistently under the accepted unit-conversion rules.
+Acceptance: test repeated submissions, concurrent activity, interrupted writes and
+mixed pack/sellable units. Define whether and when negative stock is permitted.
+An operation must not leave its stock effect and recorded movement disagreeing.
+
+RX-03 Expiry and dispensing rules
+Expected outcome: the app distinguishes expired, near-expiry and sellable stock
+using explicit date rules. FEFO recommendations reflect eligible available batches.
+Acceptance: test boundary dates, zero quantities, branch scope and overrides.
+Confirm the actual policy for expired stock; do not treat a sorting hint as a
+substitute for that policy. Define relevant time zone and date interpretation.
+
+RX-04 Sales and financial traceability
+Expected outcome: receipts, sales history, stock effects and reports agree.
+Acceptance: verify totals, discounts/taxes where supported, payment states,
+returns/voids and retry handling against accepted accounting rules. Corrections
+must remain explainable rather than silently rewriting operational history.
+
+RX-05 Patient continuity
+Expected outcome: pending medicines, follow-up and fulfilment states represent
+real work and remain available only to permitted users.
+Acceptance: transitions, repeat actions and branch transfers preserve ownership
+and appropriate history. Define how completion is confirmed and who may confirm it.
+
+RX-06 Alert preferences and scope
+Expected outcome: clearing or muting an alert has the intended effect for the
+intended user/branch and does not alter unrelated preferences.
+Acceptance: switch branches, refresh and sign back in; confirm the accepted
+preference scope and distinction between acknowledging an alert and fixing its cause.
+
+RX-07 Consistent product identity
+Expected outcome: all RxLedger logo placements use the accepted original artwork.
+Acceptance: inspect landing, entry, sign-in/sign-up, loading/refresh and favicon on
+mobile and desktop; pharmacy-specific branding continues to use its own asset.
+Record the asset source and reusable component so later redesigns preserve it.
+
+RX-08 External prescription exchange, if enabled
+Expected outcome: incoming information is distinguishable from pharmacist review
+and actual supply. Retry does not create duplicate business operations.
+Acceptance: test source identity, mapping, status ownership, outage and duplicate
+requests. Confirm the current HealthPass contract before changing it.
+
+3. RXLEDGER-SPECIFIC IMPACT ANALYSIS
+
+Trace stock-related changes across:
+  receiving -> batch balance -> POS/issue -> movement ledger -> reports -> alerts.
+
+Trace access changes across:
+  account/workspace -> branch selection -> server authorisation -> queries -> UI.
+
+Avoid fixing a visible number in isolation. A reporting mismatch may originate in
+unit conversion, reversal logic, scope or historical records. Investigate the source
+before changing a formula or hiding a discrepancy.
+
+4. VERIFICATION AND RELEASE EVIDENCE
+
+Maintain a compact set of synthetic pharmacy scenarios:
+- Receive a batch, sell some units and reconcile remaining stock with its history.
+- Complete an accepted return/adjustment and reconcile the result.
+- Attempt an unauthorised branch/workspace request and confirm rejection.
+- Exercise expiry boundaries and batch eligibility using controlled dates.
+- Retry an interrupted transaction and confirm no duplicate stock or sales effect.
+- Refresh a protected route and confirm session/navigation behaviour.
+
+For visual changes, inspect only the relevant placements and screen sizes. For
+transactional changes, verify records and reports as well as the interface.
+Release notes should identify changed rules and any action pharmacy staff must take.
+
+5. FIRST THREE IMPLEMENTATION CYCLES
+
+Cycle 1 — Baseline the pharmacy rules
+Confirm unit, expiry, reversal, scope and permission rules. Link them to code and
+current checks. Record which critical paths lack evidence.
+Completion evidence: accepted rule list and workflow/check matrix.
+
+Cycle 2 — Protect operational integrity
+Prioritise scope boundaries and stock/sales reconciliation. Fix recurring defects
+at their source and add meaningful checks for the failure modes discovered.
+Completion evidence: reconciliation scenarios and resolved high-impact gaps.
+
+Cycle 3 — Improve rollout and support
+Rehearse recovery, verify external contracts and refine staff-facing error guidance.
+Pilot significant changes with a limited workspace where practical.
+Completion evidence: recovery results, release record and updated support notes.
+
+6. MAINTENANCE PRIORITY AND PROGRESS
+
+Prioritise unauthorised access, incorrect stock or transaction effects and lost data
+before cosmetic work. Next address blocked pharmacy workflows and recurring
+support problems. Use preventive work to simplify repeatedly fragile shared rules.
+
+Suggested measures: transaction success, stock/ledger discrepancies, duplicate
+operations, branch-scope defects, repeated alert issues and recovery time. Confirm
+how each measure is calculated before relying on it for decisions.
+
+Next action: __________________  Owner: __________________
+Acceptance evidence: __________________  Target review: __________________
+
+WORKING RULES FOR DEVELOPMENT
+
+Use this guide as a living working document. Proposed requirements become accepted
+baselines only after the product owner confirms them. Record disagreements and
+exceptions; do not silently reinterpret a requirement to fit existing code.
+
+For meaningful changes, use this brief:
+  Change ID / date / owner:
+  Problem and evidence:
+  User outcome and acceptance criteria:
+  Affected screens, services, records and external systems:
+  Existing behaviour to preserve:
+  Risk and dependencies:
+  Implementation and verification approach:
+  Deployment target and recovery approach:
+  Result, remaining limits and links to evidence:
+
+Scale the process to the change. A wording or isolated visual edit needs focused
+review. A permission, data, transaction or integration change needs impact analysis
+and tests of the affected boundaries. Destructive changes need validated recovery
+arrangements. Avoid adding approval meetings for routine reversible work.
+
+For AI-assisted work:
+1. Read repository guidance, current requirements and the relevant implementation.
+2. Trace the existing workflow and dependencies before editing it.
+3. Separate verified facts, hypotheses and proposed requirements.
+4. Implement the smallest suitable change; preserve unrelated working behaviour.
+5. Verify the actual outcome, including affected failure paths.
+6. Report what changed, what was tested, what remains uncertain and what is live.
+7. Update durable project records when a material decision changes.
+
+Keep authoritative knowledge in the repository rather than only in chat history.
+Never put secrets, production records or credentials into prompts, examples,
+release notes or committed environment files. Record configuration names and
+purposes separately from their secret values.
+
+MINIMUM PROJECT RECORDS
+
+Start with a few concise files, combining sections where useful:
+- Product and requirements: users, scope, critical workflows and acceptance criteria.
+- Architecture and configuration: modules, data ownership, dependencies, environment
+  purposes, API contracts and controlled items.
+- Decisions: date, decision, reason, alternatives and consequences.
+- Operations and releases: setup, verification, deployment, recovery and support.
+- Backlog: defects, feature requests, maintenance risks and known limitations.
+
+A release record should identify the exact commit, deployment, environment, schema
+or migration state, relevant configuration changes, verification results, date and
+person responsible. A code version alone does not describe the complete system.
+
+REPEATABLE DELIVERY PROCEDURE
+
+Request -> understand -> assess impact -> implement -> verify -> release -> observe.
+
+Before release:
+- Compare the change with its acceptance criteria and behaviours to preserve.
+- Run checks suited to the risk: build/static checks, focused functional checks,
+  integration tests and regression checks as needed.
+- Keep test fixtures synthetic or appropriately de-identified and access-controlled.
+- Check environment compatibility and data-change implications.
+- Identify recovery actions; redeploying old code does not undo changed data.
+
+After release:
+- Confirm that the intended version is actually serving the intended audience.
+- Exercise the affected user workflow and inspect relevant operational signals.
+- Record defects and limitations; do not describe an unverified result as verified.
+- Close the change only after its outcome and release state are recorded.
+
+For a formal exception, record the reason, affected requirement, risk, owner,
+compensating measure and review/expiry date. The course distinguishes a deviation
+(authorised departure generally before the activity) from a waiver (acceptance of
+an existing nonconformance). Neither should become a permanent invisible shortcut.
+
+MAINTENANCE AND PROGRESS REVIEW
+
+Classify work as corrective (repair a fault), adaptive (respond to an external
+change), perfective (improve value or usability), or preventive (reduce future
+failure or maintenance cost). Review all four categories when planning work.
+
+At each working review, ask:
+- What user outcome improved, and what evidence supports that?
+- What is live, pending, blocked or deliberately deferred?
+- Which defect or support issue keeps recurring?
+- Which dependency or integration change needs preparation?
+- What is the smallest preventive action that will reduce repeated effort?
+
+Track a small number of useful measures: successful critical workflows, escaped
+regressions, failed releases, recovery time, repeated support problems and time
+from accepted request to verified delivery. Establish an initial measurement
+period before choosing targets. Do not treat commit counts as product progress.
+
+REFACTORING, MIGRATION AND RETIREMENT
+
+Understand behaviour before restructuring it. Capture important behaviour with
+appropriate checks, then improve one boundary at a time. Share code across apps
+only when its purpose and contract are stable; similar screens do not necessarily
+have identical business rules.
+
+For migration: map old and new data meanings, validate relationships and ownership,
+rehearse on an isolated environment, plan concurrent writes, compare important
+counts/totals and use pilot or phased rollout where appropriate. Define cutover,
+reconciliation, backup restoration and recovery limits before moving real users.
+
+For retirement: identify users and dependencies, preserve required records, arrange
+replacement/export access, communicate the transition, withdraw integrations and
+unused access, and verify continuity. Retention and privacy requirements must be
+established for the actual data and jurisdictions; this course summary does not
+establish legal compliance.
+
+COURSE TRACEABILITY
+
+Chapters 1-2, PDF pp. 2-4: proportionate policies, ownership and an SCM plan.
+Chapter 3, pp. 4-5: controlled items, baselines, dependency identification and reuse.
+Chapters 4-6, pp. 5-7: impact analysis, change control, status accounting and audits.
+Chapters 7-8, pp. 7-9: risk-based verification and planned maintenance.
+Chapters 9-11, pp. 9-11: comprehension, reverse engineering and reengineering.
+Chapter 12, pp. 11-12: migration, continuity, archival and retirement.
+
+Functional audit question: Does the tested behaviour meet the accepted requirement?
+Physical audit question: Does the delivered configuration match the accepted release?
+Both questions apply at the scale appropriate to the change.
+
+SOURCE AND STATUS
+
+Source: SEN_401_Detailed_Course_Summary.pdf, a 14-page condensed course summary
+covering 12 chapters, and the preceding discussion of its application to your apps.
+The source is a study summary, not a product specification or compliance standard.
+
+The app requirements, priorities and implementation cycles in this guide are
+practical recommendations derived from the course. They are not quotations from
+it, verified implementation findings or a claim that the app meets them already.
+
+IMPLEMENTATION TRACKER
+
+Requirement/change ID: __________________
+Status: proposed / accepted / implemented-unverified / verified / deferred
+Priority and reason: __________________
+Owner and dependencies: __________________
+Code/document links: __________________
+Verification evidence: __________________
+Release/deployment reference: __________________
+Remaining limits and next review: __________________
+
+Maintain one row or copied entry per meaningful item. Start with the highest-impact
+requirements above, then expand only when actual product work requires it.

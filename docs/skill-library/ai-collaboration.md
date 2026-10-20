@@ -50,3 +50,9 @@ When a decision becomes stable, add it to:
 - `docs/SKILL_LIBRARY.md` or its modules for reusable lessons.
 
 This prevents the same issue from being rediscovered in future work.
+
+## RxLedger Maintenance Agreement
+
+Apply [Maintenance And AI Collaboration](../MAINTENANCE_AND_COLLABORATION.md) and the [requirements/check map](../REQUIREMENTS_VERIFICATION.md). User corrections are requirements evidence, not proof that earlier passing tests established acceptance. Record owner acceptance only for the specific result they reviewed.
+
+Inspect before editing, distinguish verified facts from hypotheses, trace impacted records and permissions, and report the actual verification and release state. Honour discussion-only instructions and existing authorisation; do not add repeated permission questions for routine authorised work. Keep authoritative decisions in the blueprint and material change evidence in [the change record](../CHANGE_RECORD.md), not only chat history.

@@ -60,9 +60,17 @@ Check:
 
 ## Completion Standard
 
-A change is not complete until:
+Technical delivery is not complete until:
 
 - The code or docs are committed.
 - Verification results are known.
 - Any limitation is stated plainly.
 - Deployment is confirmed when production is affected.
+
+## Verification Is Not Acceptance
+
+Follow [the maintenance process](../MAINTENANCE_AND_COLLABORATION.md). System/technical checks establish their tested scope; acceptance establishes whether the owner approves the intended outcome. A build, screenshot, mocked API flow or READY deployment each establishes different evidence. Label these honestly and keep owner acceptance separate.
+
+For runtime releases, verify the served configuration and the affected workflow as authorised. Record backend/production access limits; bundle checks do not prove real transaction or database behaviour. For stock, pricing, access or migration changes, include relevant reconciliation and failure paths. Recovery of changed data is separate from redeploying previous code.
+
+Link exact commits, deployments, schema/configuration implications and results in [the change record](../CHANGE_RECORD.md). Do not run an app release merely to change documentation, or claim a recovery rehearsal that was not performed. Existing Git automation may still build a documentation push; report only the resulting state actually verified.

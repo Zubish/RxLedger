@@ -11,6 +11,8 @@ The goal is not to copy RxLedger's pharmacy UI everywhere. The goal is to reuse 
 3. Keep domain logic, UI layout, data retention, and verification in the same conversation.
 4. After implementation, update the relevant skill if a better pattern was discovered.
 
+For RxLedger work, also follow the [maintenance and collaboration process](MAINTENANCE_AND_COLLABORATION.md). It integrates the supplied SEN 401 guide with the existing blueprint and this library.
+
 ## Core Skills
 
 | Skill                    | When To Use                                                  | Reference                                                              |

@@ -1,0 +1,22 @@
+# Requirements And Verification Map
+
+Initial inventory, 2026-10-20. Derived from the SEN 401 guide and current repository references. This is not a fresh functional audit, accepted release baseline or certification. Listed checks have relevant scope; their presence does not establish full coverage. Product rules remain in the linked blueprint/specifications. Adopt this map with [the maintenance process](MAINTENANCE_AND_COLLABORATION.md).
+
+| ID / outcome | Current reference / implementation | Existing check entry points | Evidence still to establish or refresh |
+| --- | --- | --- | --- |
+| RX-01 Workspace and branch isolation | App blueprint, `server/branch-scope.ts`, API authorisation | `scripts/branch-scope.test.mjs`, `scripts/workspace-deletion.test.mjs`, `scripts/browser-navigation.mjs` | Cross-workspace direct API matrix and full expired/revoked assignment/session coverage against a controlled backend |
+| RX-02 Stock/batch integrity | Blueprint POS/branch rules, `api/action.ts`, `server/_shared.ts` | `scripts/pricing-policy.test.mjs`, `scripts/rxledger-rules.test.mjs`, synthetic UX fixture | Receive/sale/issue/reversal reconciliation, mixed units, concurrent writes and interrupted/duplicate submissions; document negative-stock boundaries |
+| RX-03 Expiry/dispensing | `getStockRows`, FEFO paths in App/API, blueprint | `scripts/dashboard-snapshot.test.mjs`, `scripts/rxledger-rules.test.mjs` | Explicit date/time-zone baseline and expired/near-expiry/zero-stock/override boundary scenarios |
+| RX-04 Sales/financial traceability | Blueprint pricing/POS rules, API sale/return logic | `scripts/pricing-policy.test.mjs`, `scripts/browser-pricing.mjs` | Backend-to-report reconciliation including supported payment, discount/tax, return/void and retry cases; tests of price calculation alone do not prove reconciliation |
+| RX-05 Patient continuity | Ecosystem map, blueprint Patient Workflow Rules, continuity actions | `scripts/rxledger-rules.test.mjs`, `scripts/browser-mobile-hierarchy.mjs` | Audited ownership/transfer/fulfilment transitions and repeated actions against a controlled backend |
+| RX-06 Alert preferences | [Alert policy](ALERT_POLICY.md), `src/alertPolicy.ts` | `scripts/alert-policy.test.mjs`, `scripts/browser-alerts.mjs` | Periodically refresh seven-day recurrence, restock resolution, per-user scope and mute/restore evidence; distinguish clock-driven tests from real elapsed-time observation |
+| RX-07 Product identity | Current branding components/assets and blueprint design rules | `scripts/browser-landing.mjs`, `scripts/browser-colour-audit.mjs` | Explicit accepted artwork/placement inventory; the reference guide's purple-lightning assertion is unconfirmed and must not silently replace accepted branding |
+| RX-08 External prescription exchange, conditional | Planned Connect/Care Network/HealthPass contracts in ecosystem blueprint | No complete prescription-exchange verification claimed | Confirm a real implemented contract before enabling; source identity, mappings, authority, duplicate protection and outage behaviour. Rai connection tests are not prescription-exchange evidence |
+| RX-09 Patient details/allergy awareness | Blueprint Patient Identification And Allergy Awareness; patient fields, profile panel, API profile/sale/draft logic | `scripts/branch-scope.test.mjs`, `scripts/browser-patient-details.mjs` | Refresh real API/persistence/audit-view evidence; confirm unknown versus no-known-allergies semantics, no cross-patient carryover and authorised branch scope. Browser fixtures do not themselves prove database writes |
+| RX-10 Navigation/responsive work surfaces | Blueprint shell, [navigation policy](BROWSER_NAVIGATION.md), mobile hierarchy | `scripts/browser-sidebar.mjs`, `scripts/browser-mobile-hierarchy.mjs`, `scripts/browser-navigation.mjs` | Relevant states/devices and explicit owner feedback for each design change; no blanket claim that every historical browser script currently passes |
+
+## Using The Map
+
+For the next material change, identify affected rows, agree or infer criteria within the owner's authorised request, run appropriate checks and link dated evidence in [the change record](CHANGE_RECORD.md). Record both failures and limits. Do not retrofit expected results to make current code appear compliant.
+
+The initial integrity priorities are RX-01 through RX-04. This prioritisation identifies work to assess; it does not authorise destructive tests against production, an architecture rewrite or a change to accepted pharmacy rules.
