@@ -65,6 +65,8 @@ Functional audit: does tested behaviour meet the accepted requirement? Physical 
 
 ## Records, Release And Recovery
 
+Use [descriptive commits and named annotated production tags](RELEASES.md). Lead release communication with the human-readable name and version; generated Git/Vercel IDs are secondary trace references.
+
 Use [CHANGE_RECORD.md](CHANGE_RECORD.md) for material changes; group minor edits rather than creating paperwork for every line. Link existing blueprints and operational guides instead of duplicating their rules. Existing relevant references include [navigation](BROWSER_NAVIGATION.md), [alerts](ALERT_POLICY.md), [platform operations](PLATFORM_ADMIN_OPERATIONS.md), [workspace removal](WORKSPACE_REMOVAL.md) and [ecosystem modules](RXLEDGER_ECOSYSTEM_MODULES.md).
 
 A meaningful record should include:

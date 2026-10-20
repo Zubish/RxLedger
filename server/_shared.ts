@@ -259,6 +259,8 @@ type Sale = {
   id: string;
   branchId: string;
   cashierUserId: string;
+  checkoutOperationId?: string;
+  checkoutFingerprint?: string;
   customerName: string;
   customerPhone: string;
   patientDetails?: PatientDetails;
@@ -441,6 +443,7 @@ type Database = {
   requisitions: Requisition[];
   branchAccessRequests: BranchAccessRequest[];
   continuityRequests: ContinuityRequest[];
+  cancelledCheckouts?: Array<{operationId: string; userId: string; branchId: string; cancelledAt: string}>;
   auditLogs: Array<{
     id: string;
     userId: string;
@@ -1117,7 +1120,7 @@ export async function saveTenantDatabase(slug: string, db: Database, allowCreati
   if (!saved.length) {
     if (!await tenantWorkspaceExists(normalizedSlug))
       throw new Error("Authentication required: company portal no longer exists");
-    throw new Error("The workspace changed while this request was processing. Refresh to load the latest data, then try again. This request was not saved.");
+    throw Object.assign(new Error("The workspace changed while this request was processing. Refresh to load the latest data, then try again. This request was not saved."), {name: "WorkspaceConflictError"});
   }
   tenantVersions.set(db, { slug: normalizedSlug, revision: String(saved[0].revision) });
 }
@@ -1553,6 +1556,7 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
       };
     }),
     alertPreferences: raw.alertPreferences ?? [],
+    cancelledCheckouts: raw.cancelledCheckouts ?? [],
     securityEvents: raw.securityEvents ?? empty.securityEvents,
     requisitions: (raw.requisitions ?? empty.requisitions).map((request) => ({
       ...request,

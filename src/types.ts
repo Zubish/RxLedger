@@ -189,6 +189,8 @@ export type Sale = {
   id: string;
   branchId: string;
   cashierUserId: string;
+  checkoutOperationId?: string;
+  checkoutFingerprint?: string;
   customerName: string;
   customerPhone: string;
   patientDetails?: PatientDetails;
@@ -454,6 +456,7 @@ export type Database = {
   requisitions: Requisition[];
   branchAccessRequests: BranchAccessRequest[];
   continuityRequests: ContinuityRequest[];
+  cancelledCheckouts?: Array<{operationId: string; userId: string; branchId: string; cancelledAt: string}>;
   settings: AppSettings;
 };
 

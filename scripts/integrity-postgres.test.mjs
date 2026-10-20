@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {createRequire, Module} from 'node:module';
 import {resolve} from 'node:path';
@@ -52,6 +53,7 @@ test('persisted API integrity: scope, reconciliation, allergy audit and concurre
   const expired=await shared.createSession('staff');
   await postgres.query("UPDATE sessions SET expires_at=now()-interval '1 minute' WHERE token_hash=$1",[shared.hashToken(expired.token)]);
   async function request(handler,{action:actionName,payload,slug='integrity-fixture',token=session.token,query={}}={}) {
+   if(actionName==='recordSale') payload={operationId:randomUUID(),...payload};
    const req={method:handler===action?'POST':'GET',headers:{'x-rxledger-company':slug,authorization:`Bearer ${token}`},body:{action:actionName,payload},query};
    const res={code:200,body:null,status(code){this.code=code;return this;},json(body){this.body=body;},setHeader(){}};
    await handler(req,res);return res;

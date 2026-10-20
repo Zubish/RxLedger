@@ -1,0 +1,8 @@
+{
+  "application": "RxLedger",
+  "name": "Checkout Reliability — Duplicate Sale Protection",
+  "version": "checkout-reliability-v1.0.0",
+  "tag": "release/checkout-reliability-v1.0.0",
+  "changeRecord": "RXLEDGER-CHECKOUT-RELIABILITY-01",
+  "date": "2026-10-20"
+}

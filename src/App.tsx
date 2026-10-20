@@ -64,6 +64,8 @@ import {
 } from "lucide-react";
 import {
   bootstrap,
+  ApiError,
+  type ActionResult,
   clearStoredToken,
   getStoredToken,
   getStoredCompanySlug,
@@ -307,6 +309,8 @@ type Sale = {
   id: string;
   branchId: string;
   cashierUserId: string;
+  checkoutOperationId?: string;
+  checkoutFingerprint?: string;
   customerName: string;
   customerPhone: string;
   patientDetails?: PatientDetails;
@@ -591,6 +595,7 @@ type Database = {
   requisitions: Requisition[];
   branchAccessRequests: BranchAccessRequest[];
   continuityRequests: ContinuityRequest[];
+  cancelledCheckouts?: Array<{operationId: string; userId: string; branchId: string; cancelledAt: string}>;
   settings: AppSettings;
 };
 
@@ -2449,6 +2454,7 @@ type ExecuteAction = (
   action: string,
   payload: Record<string, unknown>,
   successMessage?: string,
+  callbacks?: {onResult?: (result: ActionResult) => void; onError?: (error: unknown) => void; quietError?: boolean},
 ) => Promise<boolean>;
 
 type NoticeTone = "success" | "warning" | "danger" | "info";
@@ -2964,6 +2970,7 @@ function App() {
     action: string,
     payload: Record<string, unknown>,
     successMessage?: string,
+    callbacks?: {onResult?: (result: ActionResult) => void; onError?: (error: unknown) => void; quietError?: boolean},
   ) {
     const generation = workspaceGeneration.current;
     try {
@@ -2975,15 +2982,17 @@ function App() {
       setSessionUserId(result.currentUser.id);
       setConnectionError("");
       if (successMessage) flash(successMessage, "success");
+      callbacks?.onResult?.(result);
       return true;
     } catch (error) {
+      callbacks?.onError?.(error);
       const message =
         error instanceof Error ? error.message : "Unable to complete action";
       if (message.toLowerCase().includes("authentication")) {
         await forceSignOut("Session expired. Please sign in again.");
         return false;
       }
-      flash(message, inferNoticeTone(message));
+      if (!callbacks?.quietError) flash(message, inferNoticeTone(message));
       return false;
     }
   }
@@ -7478,6 +7487,84 @@ function POSView({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyStartDate, setHistoryStartDate] = useState(today());
   const [historyEndDate, setHistoryEndDate] = useState(today());
+  // Store only an opaque ID, never a patient's cart or personal details.
+  const checkoutStorageKey = `rxledger:${db.settings.companySlug}:checkout:${currentUser.id}:${activeBranch.id}`;
+  const [pendingOperationId, setPendingOperationId] = useState(() => {
+    try { return sessionStorage.getItem(checkoutStorageKey) || ""; } catch { return ""; }
+  });
+  const [checkoutPhase, setCheckoutPhase] = useState<"ready" | "processing" | "unconfirmed" | "confirmed" | "failed" | "cancelled">(
+    pendingOperationId ? "unconfirmed" : "ready",
+  );
+  const [checkoutMessage, setCheckoutMessage] = useState(pendingOperationId
+    ? "A previous checkout needs confirmation. Check its status before starting another sale." : "");
+  const [confirmedReceipt, setConfirmedReceipt] = useState<Sale | null>(null);
+  const checkoutBusy = useRef(false);
+  const pendingCheckoutPayload = useRef<Record<string, unknown> | null>(null);
+  const [canRetryPayload, setCanRetryPayload] = useState(false);
+  const pendingLabels = useRef<ReturnType<typeof buildMedicationLabels>>([]);
+  const checkoutLocked = Boolean(pendingOperationId) || checkoutPhase === "processing";
+
+  function clearPendingCheckout() {
+    try { sessionStorage.removeItem(checkoutStorageKey); } catch { /* A retained ID can safely be checked again. */ }
+    setPendingOperationId("");
+    pendingCheckoutPayload.current = null;
+    setCanRetryPayload(false);
+  }
+
+  async function sendCheckout(action: "recordSale" | "getCheckoutStatus" | "cancelCheckout", payload: Record<string, unknown>) {
+    if (checkoutBusy.current) return;
+    checkoutBusy.current = true;
+    const wasUnconfirmed = checkoutPhase === "unconfirmed";
+    setCheckoutPhase("processing");
+    setCheckoutMessage(action === "recordSale" ? "Confirming sale. Please wait…" : "Checking checkout…");
+    try {
+      await executeAction(action, payload, undefined, {
+        quietError: true,
+        onResult: result => {
+          const checkout = result.checkout;
+          if (checkout?.state === "confirmed" && checkout.sale) {
+            setConfirmedReceipt(checkout.sale);
+            clearPendingCheckout();
+            resetSaleForm();
+            setCheckoutPhase("confirmed");
+            setCheckoutMessage("Sale confirmed. Stock was deducted once.");
+            try { if (pendingLabels.current.length) printMedicationLabels(pendingLabels.current); }
+            catch { setCheckoutMessage("Sale confirmed. Stock was deducted once. Medication labels could not be printed."); }
+            pendingLabels.current = [];
+          } else if (checkout?.state === "cancelled") {
+            clearPendingCheckout();
+            pendingLabels.current = [];
+            resetSaleForm();
+            setCheckoutPhase("cancelled");
+            setCheckoutMessage("Checkout cancelled. No sale was recorded.");
+          } else {
+            setCheckoutPhase("unconfirmed");
+            setCheckoutMessage("This sale is not confirmed yet. Check again or cancel the unconfirmed checkout before starting another sale.");
+          }
+        },
+        onError: error => {
+          // Only an explicit pre-save rejection unlocks an editable cart. A
+          // missing response or save error might hide a committed transaction.
+          if (action === "recordSale" && !wasUnconfirmed && error instanceof ApiError && error.checkoutState === "rejected") {
+            clearPendingCheckout();
+            pendingLabels.current = [];
+            setCheckoutPhase("failed");
+            setCheckoutMessage(`Sale not recorded. ${error.message}`);
+          } else {
+            setCheckoutPhase("unconfirmed");
+            setCheckoutMessage("Confirmation was interrupted. Retry confirmation to recover the same checkout; do not enter the sale again.");
+          }
+        },
+      });
+    } finally { checkoutBusy.current = false; }
+  }
+
+  function retryCheckout() {
+    if (!pendingOperationId) return;
+    if (pendingCheckoutPayload.current) void sendCheckout("recordSale", pendingCheckoutPayload.current);
+    else void sendCheckout("getCheckoutStatus", {branchId: activeBranch.id, operationId: pendingOperationId});
+  }
+
 
   const stockByMedicine = useMemo(
     () =>
@@ -7967,7 +8054,7 @@ function POSView({
   }
 
   async function saveDraft() {
-    if (!canSell || !cart.length) return;
+    if (checkoutLocked || checkoutBusy.current || !canSell || !cart.length) return;
     if (discountTooHigh) {
       flash(`Discount exceeds your ${maxDiscountPercent}% limit`);
       return;
@@ -7994,11 +8081,13 @@ function POSView({
   }
 
   function clearCart() {
+    if (checkoutLocked || checkoutBusy.current) return;
     resetSaleForm();
     flash("POS cart cleared");
   }
 
   function deleteDraft(draftId: string) {
+    if (checkoutLocked || checkoutBusy.current) return;
     void executeAction(
       "clearPosDraft",
       { branchId: activeBranch.id, draftId },
@@ -8008,6 +8097,7 @@ function POSView({
   }
 
   function loadDraft(draft: PosDraft) {
+    if (checkoutLocked || checkoutBusy.current) return;
     setSelectedDraftId(draft.id);
     setCart(
       draft.items.map((item) => ({
@@ -8063,9 +8153,7 @@ function POSView({
   ) {
     const win = window.open("", "_blank", "width=900,height=700");
     if (!win) {
-      flash(
-        "Medication labels are ready, but the browser blocked the print window",
-      );
+      setCheckoutMessage("Sale confirmed. Stock was deducted once. Allow pop-ups in your browser to print medication labels.");
       return;
     }
     const patient =
@@ -8117,7 +8205,7 @@ function POSView({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!canCompleteSale || !cart.length) return;
+    if (checkoutBusy.current || checkoutLocked || !canCompleteSale || !cart.length) return;
     if (discountTooHigh) {
       flash(`Discount exceeds your ${maxDiscountPercent}% limit`);
       return;
@@ -8134,14 +8222,16 @@ function POSView({
       flash("Every POS item needs a saved selling price");
       return;
     }
-    const labels = buildMedicationLabels();
-    const completed = await executeAction(
-      "recordSale",
-      salePayload(),
-      "Sale completed and inventory deducted",
-    );
-    if (completed && labels.length) printMedicationLabels(labels);
-    if (completed) resetSaleForm();
+    const operationId = crypto.randomUUID();
+    try { sessionStorage.setItem(checkoutStorageKey, operationId); }
+    catch { flash("Checkout could not be secured in this browser. Enable session storage and try again."); return; }
+    const payload = {...salePayload(), operationId};
+    pendingCheckoutPayload.current = payload;
+    setCanRetryPayload(true);
+    pendingLabels.current = buildMedicationLabels();
+    setPendingOperationId(operationId);
+    setConfirmedReceipt(null);
+    await sendCheckout("recordSale", payload);
   }
 
   function printSalesHistory() {
@@ -8256,7 +8346,21 @@ function POSView({
           </div>
         )}
 
-        <form className="pos-terminal-grid" onSubmit={submit}>
+        {checkoutPhase !== "ready" && (
+          <section className="pos-checkout-status" data-phase={checkoutPhase} aria-live="polite" role="status">
+            <strong>{checkoutPhase === "processing" ? "Processing checkout" : checkoutPhase === "confirmed" ? "Sale confirmed" : checkoutPhase === "failed" ? "Sale not recorded" : checkoutPhase === "cancelled" ? "Checkout cancelled" : "Confirmation needed"}</strong>
+            <p>{checkoutMessage}</p>
+            {confirmedReceipt && <p className="pos-confirmed-receipt">Receipt <b>{confirmedReceipt.reference}</b> · {money.format(confirmedReceipt.total)}</p>}
+            {checkoutPhase === "unconfirmed" && pendingOperationId && (
+              <div className="pos-checkout-recovery">
+                <button type="button" onClick={retryCheckout}>{canRetryPayload ? "Retry confirmation" : "Check confirmation"}</button>
+                <button type="button" className="secondary" onClick={() => void sendCheckout("cancelCheckout", {branchId: activeBranch.id, operationId: pendingOperationId})}>Cancel unconfirmed checkout</button>
+              </div>
+            )}
+          </section>
+        )}
+        <form className="pos-checkout-form" onSubmit={submit}>
+          <fieldset className="pos-terminal-grid pos-checkout-fields" disabled={checkoutLocked}>
           <section className="pos-catalog-panel">
             <div className="pos-search-row">
               <label className="pos-search-control">
@@ -8848,7 +8952,7 @@ function POSView({
                 }
               >
                 <CheckCircle2 size={17} />
-                Complete sale
+                {checkoutPhase === "processing" ? "Processing…" : "Complete sale"}
               </button>
             </div>
             {canSell && !canCompleteSale && (
@@ -8858,6 +8962,7 @@ function POSView({
               </div>
             )}
           </aside>
+          </fieldset>
         </form>
       </div>
 

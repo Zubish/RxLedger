@@ -114,6 +114,7 @@ const patientAuditCalls = [];
 const globalAccess = (actor, primary) => accessibleBranchIds(actor, primary) === null;
 const assignment = (actor, branch) => (accessibleBranchIds(actor) ?? []).includes(branch);
 mutationModule.require = (name) => {
+ if(name === "node:crypto") return require(name);
  if(name.endsWith("alertPolicy.js")) return {inventoryAlerts};
  if (name.endsWith("branch-scope.js")) return { accessibleBranchIds, primaryAdminIdForDatabase, productQuantityInBranches, scopeDatabaseForUser };
  if (name.endsWith("databasePatch.js")) return { snapshotHeavyCollections, buildDatabasePatch };
@@ -245,7 +246,7 @@ function receive(state, overrides={}) {
  mutations.receiveStock(state,"local","pharmacist",{branchId:"a",supplierId:"supplier",items:[{itemId:"m",quantity:1,unitCost:2800,sellingPrice:130,batchNumber:"TEST",expiryDate:"2028-01-01",...overrides}]});
 }
 function sell(state, quantities, extra={}) {
- mutations.recordSale(state,"local","pharmacist",{branchId:"a",items:quantities.map(quantity=>({itemType:"medicine",itemId:"m",quantity})),...extra});
+ mutations.recordSale(state,"local","pharmacist",{operationId:require("node:crypto").randomUUID(),branchId:"a",items:quantities.map(quantity=>({itemType:"medicine",itemId:"m",quantity})),...extra});
 }
 test("receive, repeated medicine lines, sale totals, issue and return reconcile in least units",()=>{
  const state=stockFixture();receive(state);

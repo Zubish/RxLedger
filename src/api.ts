@@ -1,4 +1,4 @@
-import type { Database, RegisterInput, SetupInput, User } from "./types";
+import type { Database, RegisterInput, SetupInput, User, Sale } from "./types";
 import type { DatabasePatch } from "./databasePatch";
 
 const SESSION_HINT_KEY = "rxledger-session-active";
@@ -50,6 +50,23 @@ export function clearWorkspaceBrowserData(slug: string) {
   }
 }
 
+export type ActionResult = {
+  db: Database;
+  databasePatch: DatabasePatch;
+  currentUser: User;
+  checkout?: {state: "confirmed" | "cancelled" | "not_found"; sale?: Sale; replayed?: boolean};
+};
+
+export class ApiError extends Error {
+  status: number;
+  checkoutState?: string;
+  constructor(message: string, status: number, checkoutState?: string) {
+    super(message);
+    this.status = status;
+    this.checkoutState = checkoutState;
+  }
+}
+
 async function request<T>(path: string, options: RequestInit = {}) {
   const companySlug = getStoredCompanySlug();
   const headers = new Headers(options.headers);
@@ -69,8 +86,9 @@ async function request<T>(path: string, options: RequestInit = {}) {
   }
   const body = (await response.json().catch(() => ({}))) as {
     error?: string;
+    checkoutState?: string;
   } & T;
-  if (!response.ok) throw new Error(body.error || "Request failed");
+  if (!response.ok) throw new ApiError(body.error || "Request failed", response.status, body.checkoutState);
   return body as ApiResult<T>;
 }
 
@@ -206,12 +224,14 @@ export async function runAction(
   action: string,
   payload: Record<string, unknown>,
 ) {
-  return request<{
-    db: Database;
-    databasePatch: DatabasePatch;
-    currentUser: User;
-  }>("/api/action", {
-    method: "POST",
-    body: JSON.stringify({ action, payload }),
-  });
+  const controller = new AbortController();
+  const checkout = ["recordSale", "getCheckoutStatus", "cancelCheckout"].includes(action);
+  const timeout = checkout ? setTimeout(() => controller.abort(), 20_000) : undefined;
+  try {
+    return await request<ActionResult>("/api/action", {
+      method: "POST",
+      body: JSON.stringify({ action, payload }),
+      signal: checkout ? controller.signal : undefined,
+    });
+  } finally { if (timeout !== undefined) clearTimeout(timeout); }
 }

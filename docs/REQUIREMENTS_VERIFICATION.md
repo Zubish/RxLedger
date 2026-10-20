@@ -33,3 +33,11 @@ Implemented focused corrective work for RX-01/02/04/09 and branch-owned Continui
 | RX-09 | Persisted profile correction, audit before/after, and a stale checkout retaining current branch allergies. Mocked browser checks at 390/1440 cover profile save/refresh, reopened stale draft, compact POS display and switching to an unrelated patient. | Browser uses synthetic mocked API; persisted handler tests are separate. Full audit-report UI and clinical identity matching beyond existing phone rules remain outside this pass. |
 
 Reproduce with `npm test` (includes the isolated PostgreSQL suite), `npm run test:integrity`, and `npm run test:patient-details` against a local Vite server. PGlite is a pinned development-only dependency; tests initialize a disposable database in memory and do not contact the production database. Its tests replace Neon transport and telemetry delivery, while executing application validation, authentication, authorization, persistence SQL and response scoping.
+
+## Checkout Reliability — Duplicate Sale Protection
+
+Release **checkout-reliability-v1.0.0**, record **RXLEDGER-CHECKOUT-RELIABILITY-01**. RX-02/RX-04 now include operation-key deduplication and original-receipt recovery; RX-01 includes scoped lookup/cancellation and fresh authorisation after conflicts. See [the contract and evidence](CHECKOUT_RELIABILITY.md).
+
+Fresh isolated PostgreSQL coverage exercises repeated requests, forced concurrent saves, cancellation/sale races in both directions, consumed-draft replay, changed-cart rejection, read-only recovery and authenticated boundaries. Browser → actual API → isolated PostgreSQL checks at 390/1440 exercise committed response loss, injected rejected retry, refresh recovery, non-arrival cancellation, preserved stock/sale/audit counts, clear status, label-popup failure and editable definite rejection. Native client transport checks bound a hanging request without automatic replay.
+
+This closes the previously recorded checkout operation-key gap for clients using the new contract. Other action types, hosted-service load, report/refund reconciliation, external payment settlement and backup/recovery remain outside this slice. Previous dated evidence and its historical limitations are preserved above.

@@ -30,6 +30,19 @@ Record material changes using [the maintenance process](MAINTENANCE_AND_COLLABOR
 - Owner acceptance: not yet reviewed; implementation was authorised, final behaviour/design acceptance remains separate.
 - Remaining: general operation-key checkout idempotency for ambiguous responses, complete role/action matrix, higher-contention hosted-service checks, financial report/refund reconciliation and backup/recovery exercise. See the dated requirements map for precise limits.
 
+## RXLEDGER-CHECKOUT-RELIABILITY-01 — Checkout Reliability: Duplicate Sale Protection
+
+- Request/owner: Musa Ibrahim authorised the next slice, reliable checkout retries, and required descriptive commit/production release naming.
+- Release name/version/tag: **Checkout Reliability — Duplicate Sale Protection**, **checkout-reliability-v1.0.0**, **release/checkout-reliability-v1.0.0**. [Named releases](RELEASES.md) and public release manifest identify the intended code; actual deployment is verified separately.
+- Outcome/criteria: one operation records one sale/receipt/stock deduction; duplicates and concurrent retries return the original result; ambiguous confirmation does not invite a new sale; first-attempt validation rejection preserves an editable cart; refresh recovery and safe cancellation work without storing patient/cart data locally.
+- Scope/category: corrective/preventive; POS, API transport/action handler, tenant JSON/read normalisation/response scope, synthetic API/browser checks and release documentation. Preserve existing permissions, price rules, financial recording and patient metadata.
+- Implementation: implemented; contract in [CHECKOUT_RELIABILITY.md](CHECKOUT_RELIABILITY.md). New sale metadata stores operation ID/fingerprint; scoped cancellation tombstones prevent late commits. Conflicts reload/re-authorise and recover committed results. Matching replay does not create another audit entry or consume stock/drafts again.
+- Verification: all 15 test files pass; build passes; lint has no errors and the existing RaiConsent dependency warning. Focused PostgreSQL, browser-to-handler-to-PostgreSQL checkout checks and the patient browser regression pass at 390/1440; exact release results reported at completion. Browser fault injection drops a response after an actual local commit, drops a request before arrival and injects a rejected retry. Production patient transactions are not tested or inserted.
+- Data/configuration: additive optional JSON metadata/collection; no SQL migration, new environment variable or runtime dependency. New recording requests require an operation ID; old cached POS must refresh. Historical sales remain readable.
+- Recovery: prior code lacks the protocol and may omit cancellation metadata on save. Preserve full data, resolve/quiesce pending checkouts and prefer a compatible forward fix. No production restore exercise performed.
+- Owner acceptance: implementation authorised; final result not yet reviewed.
+- Remaining: hosted-service contention/load, other action idempotency, financial-report/refund reconciliation and restore drills. This feature is not offline checkout or payment-provider settlement.
+
 ## Compact Template For Future Material Changes
 
 - ID/date / request / owner:

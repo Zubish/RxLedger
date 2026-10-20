@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type {PatientDetails} from "../src/patientDetails.js";
 import { inventoryAlerts } from "../src/alertPolicy.js";
 import { accessibleBranchIds, productQuantityInBranches, scopeDatabaseForUser } from "../server/branch-scope.js";
@@ -51,6 +52,8 @@ import {
 } from "../src/databasePatch.js";
 import type { Branch } from "../server/_shared.js";
 
+type CheckoutResult = {state: "confirmed" | "cancelled" | "not_found"; sale?: Sale; replayed?: boolean};
+
 type ActionBody = {
   action: string;
   payload?: Record<string, unknown>;
@@ -74,6 +77,7 @@ export default async function handler(
   let loadMs = 0;
   let authMs = 0;
   let saveMs = 0;
+  let saveAttempted = false;
   try {
     const body = req.body as ActionBody;
     actionName = body.action || "unknown";
@@ -96,8 +100,11 @@ export default async function handler(
       fail(res, 401, "Authentication required");
       return;
     }
+    let responseActor = actor;
     const heavySnapshot = snapshotHeavyCollections(scopeDatabaseForUser(db, actor));
 
+    let checkoutResult: CheckoutResult | undefined;
+    let skipSave = false;
     switch (body.action) {
       case "setAlertPreferences": {
         const payload = body.payload || {};
@@ -229,7 +236,16 @@ export default async function handler(
         issueStock(db, actor.id, actor.role, body.payload);
         break;
       case "recordSale":
-        recordSale(db, actor.id, actor.role, body.payload);
+        checkoutResult = recordSale(db, actor.id, actor.role, body.payload);
+        skipSave = Boolean(checkoutResult.replayed);
+        break;
+      case "getCheckoutStatus":
+        checkoutResult = checkoutStatus(db, actor.id, actor.role, body.payload);
+        skipSave = true;
+        break;
+      case "cancelCheckout":
+        checkoutResult = cancelCheckout(db, actor.id, actor.role, body.payload);
+        skipSave = checkoutResult.state === "confirmed" || Boolean(checkoutResult.replayed);
         break;
       case "savePosDraft":
         savePosDraft(db, actor.id, actor.role, body.payload);
@@ -258,15 +274,44 @@ export default async function handler(
     }
 
     const saveStartedAt = Date.now();
-    const dbWithReadModels = withReadModels(db);
-    await saveTenantDatabase(companySlug, dbWithReadModels);
+    let dbWithReadModels = withReadModels(db);
+    if (!skipSave) {
+      saveAttempted = true;
+      try {
+        await saveTenantDatabase(companySlug, dbWithReadModels);
+      } catch (error) {
+        if (!(error instanceof Error) || error.name !== "WorkspaceConflictError" ||
+            !["recordSale", "cancelCheckout"].includes(body.action)) throw error;
+        // Another request may have committed this operation. Re-authorise on
+        // fresh state and return its receipt, never replay old mutated state.
+        const fresh = await loadTenantDatabase(companySlug);
+        const freshActor = fresh && await getAuthenticatedUser(req, fresh);
+        if (!fresh || !freshActor) throw new Error("Authentication required", {cause: error});
+        const recovered = body.action === "recordSale"
+          ? completedCheckout(fresh, freshActor.id, freshActor.role, body.payload)
+          : checkoutStatus(fresh, freshActor.id, freshActor.role, body.payload);
+        if (!recovered || recovered.state === "not_found") throw error;
+        if (body.action === "recordSale" && recovered.state === "cancelled")
+          throw new Error("This checkout was cancelled. Start a new sale.", {cause: error});
+        responseActor = freshActor; checkoutResult = recovered;
+        dbWithReadModels = withReadModels(fresh);
+      }
+    }
     saveMs = Date.now() - saveStartedAt;
-    const clean = scopeDatabaseForUser(sanitizeDatabase(dbWithReadModels), actor);
+    const clean = scopeDatabaseForUser(sanitizeDatabase(dbWithReadModels), responseActor);
     const databasePatch = buildDatabasePatch(heavySnapshot, clean);
+    if (checkoutResult?.sale) {
+      const sale = checkoutResult.sale;
+      if (!databasePatch.sales.upserts.some(item => item.id === sale.id)) databasePatch.sales.upserts.push(sale);
+      for (const entry of clean.ledger.filter(item => item.reference === sale.reference)) {
+        if (!databasePatch.ledger.upserts.some(item => item.id === entry.id)) databasePatch.ledger.upserts.push(entry);
+      }
+    }
     const response = {
+      checkout: checkoutResult,
       db: stripHeavyCollections(clean),
       databasePatch,
-      currentUser: clean.users.find((user) => user.id === actor.id),
+      currentUser: clean.users.find((user) => user.id === responseActor.id),
     };
     const totalMs = Date.now() - startedAt;
     const responseBytes = jsonByteLength(response);
@@ -298,11 +343,10 @@ export default async function handler(
       saveMs,
       totalMs: Date.now() - startedAt,
     });
-    fail(
-      res,
-      400,
-      error instanceof Error ? error.message : "Unable to complete action",
-    );
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Unable to complete action",
+      checkoutState: saveAttempted || (error instanceof Error && error.name === "CheckoutMismatchError") ? "unknown" : "rejected",
+    });
   }
 }
 
@@ -2446,6 +2490,58 @@ function fulfillContinuityRequestsFromSale(
   }
 }
 
+/** Canonical JSON makes object-key order irrelevant, while preserving cart order. */
+function checkoutFingerprint(payload: Record<string, unknown>) {
+  const canonical = (value: unknown): unknown => Array.isArray(value)
+    ? value.map(canonical)
+    : value && typeof value === "object"
+      ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, item]) => [key, canonical(item)]))
+      : value;
+  const {operationId: _operationId, ...request} = payload;
+  void _operationId;
+  return createHash("sha256").update(JSON.stringify(canonical(request))).digest("hex");
+}
+
+function checkoutContext(db: Database, actorId: string, actorRole: Role, payload: Record<string, unknown> | undefined) {
+  const actor = db.users.find(user => user.id === actorId);
+  const branchId = requireString(payload?.branchId, "Branch");
+  if (!actor || !db.branches.some(branch => branch.id === branchId && branch.active) ||
+      !canCompleteSaleInBranch(db, {...actor, role: actorRole}, branchId))
+    throw new Error("You do not have permission to confirm this checkout");
+  const operationId = requireString(payload?.operationId, "Checkout operation ID. Refresh POS");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(operationId))
+    throw new Error("Invalid checkout operation ID. Refresh POS before continuing.");
+  return {actor, branchId, operationId: operationId.toLowerCase()};
+}
+
+function checkoutStatus(db: Database, actorId: string, actorRole: Role, payload: Record<string, unknown> | undefined): CheckoutResult {
+  const {branchId, operationId} = checkoutContext(db, actorId, actorRole, payload);
+  const sale = db.sales.find(item => item.checkoutOperationId === operationId);
+  const cancelled = db.cancelledCheckouts?.find(item => item.operationId === operationId);
+  if ((sale && (sale.cashierUserId !== actorId || sale.branchId !== branchId)) ||
+      (cancelled && (cancelled.userId !== actorId || cancelled.branchId !== branchId)))
+    throw new Error("Checkout not found or not permitted");
+  if (sale) return {state: "confirmed", sale, replayed: true};
+  return {state: cancelled ? "cancelled" : "not_found", replayed: Boolean(cancelled)};
+}
+
+function completedCheckout(db: Database, actorId: string, actorRole: Role, payload: Record<string, unknown> | undefined): CheckoutResult | undefined {
+  const result = checkoutStatus(db, actorId, actorRole, payload);
+  if (result.state === "confirmed" && result.sale?.checkoutFingerprint !== checkoutFingerprint(payload!))
+    throw Object.assign(new Error("This checkout ID belongs to a different cart. Recover its original receipt before starting another sale."), {name: "CheckoutMismatchError"});
+  return result.state === "not_found" ? undefined : result;
+}
+
+function cancelCheckout(db: Database, actorId: string, actorRole: Role, payload: Record<string, unknown> | undefined): CheckoutResult {
+  const result = checkoutStatus(db, actorId, actorRole, payload);
+  if (result.state !== "not_found") return result;
+  const {branchId, operationId} = checkoutContext(db, actorId, actorRole, payload);
+  const cancelled = {operationId, branchId, userId: actorId, cancelledAt: nowIso()};
+  db.cancelledCheckouts = [...(db.cancelledCheckouts || []), cancelled];
+  addAudit(db, actorId, "Cancelled unconfirmed checkout", "checkout", operationId, undefined, cancelled);
+  return {state: "cancelled"};
+}
+
 function recordSale(
   db: Database,
   actorId: string,
@@ -2464,6 +2560,11 @@ function recordSale(
     throw new Error("You do not have permission to sell in this branch");
   if (!canCompleteSaleInBranch(db, { ...actor, role: actorRole }, branchId))
     throw new Error("Only authorized branch staff can complete POS sales");
+  const existingCheckout = completedCheckout(db, actorId, actorRole, payload);
+  if (existingCheckout?.state === "confirmed") return existingCheckout;
+  if (existingCheckout?.state === "cancelled") throw new Error("This checkout was cancelled. Start a new sale.");
+  const {operationId} = checkoutContext(db, actorId, actorRole, payload);
+  const fingerprint = checkoutFingerprint(payload!);
   const requestedDraftId = optionalString(payload?.draftId);
   const draft = requestedDraftId
     ? db.posDrafts.find(
@@ -2610,6 +2711,8 @@ function recordSale(
 
   const sale: Sale = {
     id: id("sale"),
+    checkoutOperationId: operationId,
+    checkoutFingerprint: fingerprint,
     branchId,
     cashierUserId: actorId,
     customerName:
@@ -2652,6 +2755,7 @@ function recordSale(
   fulfillContinuityRequestsFromSale(db, actorId, sale);
   db.posDrafts = db.posDrafts.filter((item) => item.id !== draft?.id);
   addAudit(db, actorId, "Completed POS sale", "sale", sale.id, undefined, sale);
+  return {state: "confirmed" as const, sale, replayed: false};
 }
 
 function updateSellingPrice(
