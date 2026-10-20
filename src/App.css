@@ -3522,7 +3522,7 @@ td strong {
   padding: 0 10px;
 }
 
-.patient-profile-edit div {
+.patient-profile-edit > .patient-edit-actions {
   align-items: end;
   display: flex;
   flex-wrap: wrap;
@@ -6105,3 +6105,17 @@ textarea:focus {
 .pos-patient-details[open] summary { margin-bottom: 12px; }
 .pos-patient-details .patient-details-fields { grid-template-columns: minmax(0,1fr); }
 @media(max-width:600px) { .patient-details-fields { grid-template-columns: minmax(0,1fr); } }
+
+/* Align profile controls without the legacy form-wide flex rule. */
+.patient-profile-edit { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+.patient-profile-edit > .patient-edit-actions { grid-column: 1 / -1; justify-content: flex-end; }
+.patient-details-fields { grid-template-columns: minmax(0, .7fr) minmax(0, 1fr) minmax(0, 1.5fr); align-items: start; gap: 12px; }
+.patient-details-fields label { align-content: start; }
+.patient-details-fields input, .patient-details-fields select, .patient-details-fields textarea { border: 1px solid var(--rx-border, #d5e1e0); border-radius: 8px; background: #fff; color: var(--rx-text, #172e3c); font: inherit; min-height: 44px; padding: 10px; box-sizing: border-box; }
+.patient-details-fields textarea { resize: vertical; }
+.patient-specific-allergy, .patient-details-help { grid-column: 1 / -1; }
+.patient-details-help { color: var(--rx-muted); margin: 0; font-size: 12px; line-height: 1.5; }
+@media (max-width: 900px) { .patient-details-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } .patient-details-fields > label:nth-child(3) { grid-column: 1 / -1; } }
+@media (max-width: 600px) { .patient-profile-edit, .patient-details-fields { grid-template-columns: minmax(0, 1fr); } }
+.patient-details-fields input, .patient-details-fields select, .patient-details-fields textarea { font-size: 14px; }
+@media (max-width: 900px) { .patient-details-fields input, .patient-details-fields select, .patient-details-fields textarea { font-size: 16px; } }

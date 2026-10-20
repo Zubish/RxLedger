@@ -28,8 +28,15 @@ try {for(const width of [390,1440]) {
  await page.getByRole('button',{name:'Edit profile',exact:true}).click();
  await page.getByRole('spinbutton',{name:/Age \(years\)/}).fill('36');
  await page.getByLabel(/^Gender/).selectOption('female');
- await page.getByLabel(/^Allergy status/).selectOption('recorded');
- await page.getByLabel('Allergies and reaction',{exact:true}).fill('Penicillin: rash');
+ const fields=page.locator('.patient-profile-edit .patient-details-fields');
+ assert.equal(await page.getByLabel('Specific allergy and reaction',{exact:true}).isVisible(),true);
+ if(width>900){
+  const controls=await fields.locator('input,select').evaluateAll(elements=>elements.map(el=>el.getBoundingClientRect().top));
+  assert.ok(Math.max(...controls)-Math.min(...controls)<2,'Age, gender and allergy status must align');
+ }
+ await page.getByLabel('Specific allergy and reaction',{exact:true}).fill('Penicillin: rash');
+ assert.equal(await page.getByLabel(/^Allergy status/).inputValue(),'recorded');
+ await page.screenshot({path:`artifacts/patient-details/edit-${width}.png`,fullPage:true});
  await page.getByRole('button',{name:'Save profile',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('.patient-allergy-notice')?.textContent.includes('Penicillin: rash'));
  assert.equal(saved.payload.patientDetails.age,36);

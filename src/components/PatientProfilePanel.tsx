@@ -162,7 +162,7 @@ export function PatientProfilePanel({
             />
           </label>
           <PatientDetailsFields value={patientEdit.details} onChange={details=>setPatientEdit(current=>({...current,details}))}/>
-          <div>
+          <div className="patient-edit-actions">
             <button type="submit">Save profile</button>
             <button type="button" onClick={onCancelEdit}>
               Cancel
