@@ -1,6 +1,6 @@
 # Checkout Reliability — Duplicate Sale Protection
 
-Release: **checkout-reliability-v1.0.0**. Git tag: **release/checkout-reliability-v1.0.0**. Change record: **RXLEDGER-CHECKOUT-RELIABILITY-01**.
+Release: **checkout-reliability-v1.0.1**. Git tag: **release/checkout-reliability-v1.0.1**. Change records: **RXLEDGER-CHECKOUT-RELIABILITY-01**, **RXLEDGER-CHECKOUT-RELIABILITY-02**.
 
 ## User Outcome
 
@@ -18,6 +18,7 @@ An interrupted confirmation can be retried without recording a second sale, dedu
 
 ## Uncertain Confirmation And Refresh
 
+- Truncated JSON or incomplete action responses are rejected as uncertain; they never clear a checkout or enter incomplete database state into the UI.
 - Checkout API requests have a 20-second client timeout. Timeout, missing response or uncertain save errors keep the cart locked and retain the same operation ID. There is no automatic sale resubmission.
 - `Retry confirmation` resends the frozen request in the same mounted POS. A rejected retry does not prove that an earlier interrupted request failed; it remains uncertain.
 - Only the opaque operation ID is stored in tab session storage, scoped by workspace/user/branch. Cart contents and patient information are not persisted in browser storage by this feature. Checkout is blocked if the ID cannot be stored before submission.

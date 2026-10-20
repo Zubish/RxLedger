@@ -28,3 +28,11 @@ test('a definite rejection remains distinguishable from an uncertain save failur
   await assert.rejects(runAction('recordSale',{}),error=>error instanceof ApiError && error.status===400 && error.checkoutState===checkoutState);
  }}finally{reset();}
 });
+
+test('truncated or incomplete success responses never masquerade as confirmed actions',async()=>{
+ globalThis.localStorage={getItem:()=> 'synthetic'};
+ try {for(const body of ['{"checkout":', '{}', 'null', '[]']) {
+  globalThis.fetch=async()=>new Response(body,{status:200,headers:{'content-type':'application/json'}});
+  await assert.rejects(runAction('recordSale',{}),/interrupted|incomplete/);
+ }}finally{reset();}
+});

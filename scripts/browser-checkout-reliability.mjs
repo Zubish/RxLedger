@@ -29,6 +29,9 @@ try {for(const width of [390,1440]) {
   if(body?.action==='recordSale' && mode==='drop-after-commit') {
    mode='normal';await new Promise(resolve=>setTimeout(resolve,150));await route.abort('failed');return;
   }
+  if(body?.action==='recordSale' && mode==='truncate-after-commit') {
+   mode='normal';await route.fulfill({status:200,contentType:'application/json',body:'{"checkout":'});return;
+  }
   await route.fulfill({status:result.code,json:result.body});
  });
  const page=await context.newPage();const errors=[];page.on('pageerror',error=>errors.push(error.message));
@@ -72,8 +75,8 @@ try {for(const width of [390,1440]) {
   assert.equal((await api.action('recordSale',neverSent)).code,400);
   assert.deepEqual(await count(),{sales:initial.sales+1,stock:initial.stock-1,audits:initial.audits+1});
 
-  // A committed sale survives a dropped response and page refresh.
-  await add();mode='drop-after-commit';await page.locator('.complete').click();await phase('unconfirmed');
+  // A committed sale survives a truncated JSON response and page refresh.
+  await add();mode='truncate-after-commit';await page.locator('.complete').click();await phase('unconfirmed');
   const afterCommit=await count();await page.reload();await phase('unconfirmed');
   await page.getByRole('button',{name:'Check confirmation',exact:true}).click();await phase('confirmed');
   assert.deepEqual(await count(),afterCommit);

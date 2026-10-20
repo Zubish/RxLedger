@@ -43,6 +43,16 @@ Record material changes using [the maintenance process](MAINTENANCE_AND_COLLABOR
 - Owner acceptance: implementation authorised; final result not yet reviewed.
 - Remaining: hosted-service contention/load, other action idempotency, financial-report/refund reconciliation and restore drills. This feature is not offline checkout or payment-provider settlement.
 
+## RXLEDGER-CHECKOUT-RELIABILITY-02 — Incomplete Confirmation Protection
+
+- Owner/request: continuation of Musa Ibrahim's authorised Checkout Reliability slice and descriptive release naming.
+- Finding: the inherited API parser substituted an empty object for unreadable JSON. A truncated committed response could enter the success path without a valid action result.
+- Implementation: reject malformed JSON, invalid response roots and incomplete action envelopes; preserve uncertain checkout recovery. No database/schema/configuration change.
+- Verification: native client cases cover truncated JSON and incomplete/null/array success bodies; browser fault injection truncates the response after an actual isolated PostgreSQL commit, then refresh/status recovery retrieves the same sale. Build/lint/regression results and production checks reported at completion.
+- Release name/version/tag: **Checkout Reliability — Duplicate Sale Protection**, **checkout-reliability-v1.0.1**, **release/checkout-reliability-v1.0.1**. Published **v1.0.0** remains unchanged; this is a separate descriptive patch commit/tag.
+- Recovery: same checkout data/rollback limits as the parent release; no production record repair or restore exercise.
+- Owner acceptance: not yet reviewed.
+
 ## Compact Template For Future Material Changes
 
 - ID/date / request / owner:

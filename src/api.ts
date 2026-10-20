@@ -84,10 +84,11 @@ async function request<T>(path: string, options: RequestInit = {}) {
       "Backend API is not available. Run npx vercel dev with DATABASE_URL for API-backed flows.",
     );
   }
-  const body = (await response.json().catch(() => ({}))) as {
-    error?: string;
-    checkoutState?: string;
-  } & T;
+  const body = (await response.json().catch((error: unknown) => {
+    throw new Error("The server response was interrupted or unreadable. Check confirmation before retrying.", {cause: error});
+  })) as {error?: string; checkoutState?: string} & T;
+  if (!body || typeof body !== "object" || Array.isArray(body))
+    throw new Error("The server returned an incomplete response. Check confirmation before retrying.");
   if (!response.ok) throw new ApiError(body.error || "Request failed", response.status, body.checkoutState);
   return body as ApiResult<T>;
 }
@@ -228,10 +229,16 @@ export async function runAction(
   const checkout = ["recordSale", "getCheckoutStatus", "cancelCheckout"].includes(action);
   const timeout = checkout ? setTimeout(() => controller.abort(), 20_000) : undefined;
   try {
-    return await request<ActionResult>("/api/action", {
+    const result = await request<ActionResult>("/api/action", {
       method: "POST",
       body: JSON.stringify({ action, payload }),
       signal: checkout ? controller.signal : undefined,
     });
+    if (!result.db || !Array.isArray(result.db.users) || !result.currentUser?.id ||
+        !result.databasePatch || !["sales", "ledger", "auditLogs"].every(key => {
+          const collection = result.databasePatch[key as keyof DatabasePatch];
+          return collection && Array.isArray(collection.upserts) && Array.isArray(collection.removedIds);
+        })) throw new Error("The server returned an incomplete action result. Check confirmation before retrying.");
+    return result;
   } finally { if (timeout !== undefined) clearTimeout(timeout); }
 }
