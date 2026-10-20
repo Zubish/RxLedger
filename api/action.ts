@@ -1316,10 +1316,14 @@ function receiveStock(
       const expiryDate = optionalString(input.expiryDate);
       if (expiryDate && expiryDate < today())
         throw new Error("Expiry date must be today or a future date");
-      const unitCost = Number(input.unitCost) || product.costPrice || 0;
+      const unitCost = input.unitCost === undefined || input.unitCost === ""
+        ? product.costPrice || 0 : requireNumber(input.unitCost, "Unit cost") || product.costPrice || 0;
+      if (unitCost < 0) throw new Error("Unit cost cannot be negative");
       const sellingPrice = pricingPolicy(db.settings).enabled
         ? calculatedSellingPrice(db, "product", productId, unitCost)
-        : Number(input.sellingPrice) || product.sellingPrice || 0;
+        : input.sellingPrice === undefined || input.sellingPrice === ""
+          ? product.sellingPrice || 0 : requireNumber(input.sellingPrice, "Selling price") || product.sellingPrice || 0;
+      if (sellingPrice < 0) throw new Error("Selling price cannot be negative");
       if (sellingPrice > 0 && sellingPrice < unitCost)
         throw new Error("Selling price cannot be lower than unit cost");
       const beforeProduct = { ...product };
@@ -1395,16 +1399,19 @@ function receiveStock(
     const expiryDate = requireString(input.expiryDate, "Expiry date");
     if (expiryDate < today())
       throw new Error("Expiry date must be today or a future date");
-    const containerCost =
-      Number(input.unitCost) ||
-      (medicine.costPrice > 0 ? medicine.costPrice * unitsPerContainer : 0);
+    const containerCost = input.unitCost === undefined || input.unitCost === ""
+      ? (medicine.costPrice > 0 ? medicine.costPrice * unitsPerContainer : 0)
+      : requireNumber(input.unitCost, "Container cost");
+    if (containerCost < 0) throw new Error("Container cost cannot be negative");
     const unitCost =
       containerCost > 0
         ? containerCost / unitsPerContainer
         : medicine.costPrice || 0;
     const sellingPrice = pricingPolicy(db.settings).enabled
       ? calculatedSellingPrice(db, "medicine", medicineId, unitCost)
-      : Number(input.sellingPrice) || medicine.sellingPrice || 0;
+      : input.sellingPrice === undefined || input.sellingPrice === ""
+        ? medicine.sellingPrice || 0 : requireNumber(input.sellingPrice, "Selling price") || medicine.sellingPrice || 0;
+    if (sellingPrice < 0) throw new Error("Selling price cannot be negative");
     if (sellingPrice > 0 && sellingPrice < unitCost)
       throw new Error("Selling price cannot be lower than unit cost");
     const beforeMedicine = { ...medicine };
@@ -1715,7 +1722,10 @@ function patientDetailsForSale(db: Database, branchId: string, phone: string, va
   const key = normalizePatientPhone(phone);
   const history = key ? db.sales.filter(sale => sale.branchId === branchId && normalizePatientPhone(sale.customerPhone) === key && sale.patientDetails)
     .sort((a,b)=>(b.patientDetails?.updatedAt || b.soldAt).localeCompare(a.patientDetails?.updatedAt || a.soldAt))[0]?.patientDetails : undefined;
-  const previous = draft && key && normalizePatientPhone(draft.customerPhone) === key ? draft.patientDetails || history : history;
+  // POS is read-only for existing profile details. A stale cart must not replace
+  // a newer allergy correction made in Patients > Edit profile.
+  if (history) return history;
+  const previous = draft && key && normalizePatientPhone(draft.customerPhone) === key ? draft.patientDetails : undefined;
   return normalizePatientDetails(value, previous);
 }
 
@@ -2403,6 +2413,7 @@ function fulfillContinuityRequestsFromSale(
   db.continuityRequests.forEach((request) => {
     if (request.status === "fulfilled" || request.status === "cancelled")
       return;
+    if (request.originBranchId !== sale.branchId) return;
     if (!soldMedicineIds.has(request.medicineId)) return;
     if (!patientMatchesContinuityRequest(request, sale)) return;
     const before = { ...request };
@@ -2462,11 +2473,13 @@ function recordSale(
           item.expiresAt > nowIso(),
       )
     : activeDraft(db, actorId, branchId);
+  if (requestedDraftId && !draft)
+    throw new Error("This draft is expired, already completed or unavailable. Refresh POS before continuing.");
   const inputs = normalizeDraftItems(payload?.items ?? draft?.items);
   if (!inputs.length) throw new Error("Add at least one item to the POS cart");
 
   const saleItems: Sale["items"] = [];
-  const ledgerEntries = [];
+  const ledgerEntries: Database["ledger"] = [];
   for (const input of inputs) {
     const quantity = requireNumber(input.quantity, "Quantity");
     if (quantity <= 0) throw new Error("Quantity must be greater than zero");
@@ -2525,7 +2538,9 @@ function recordSale(
       )
       .map((batch) => ({
         batch,
-        quantity: getBatchAvailable(db, batch.id),
+        quantity: getBatchAvailable(db, batch.id) + ledgerEntries.reduce(
+          (sum, entry) => entry.itemType === "medicine" && entry.batchId === batch.id ? sum + entry.quantity : sum, 0,
+        ),
         daysToExpiry: daysUntil(batch.expiryDate),
       }))
       .filter((row) => row.quantity > 0 && row.daysToExpiry >= 0)
@@ -2727,6 +2742,9 @@ function adjustStock(
     throw new Error("You only have view access in this branch");
   const mode = requireString(payload?.mode, "Transaction type") as LedgerType;
   const quantity = requireNumber(payload?.quantity, "Quantity");
+  if (quantity <= 0) throw new Error("Quantity must be greater than zero");
+  if (!["adjustment", "customer-return", "write-off", "supplier-return"].includes(mode))
+    throw new Error("Unsupported adjustment type");
   const current = db.ledger
     .filter((entry) => entry.batchId === batchId)
     .reduce((sum, entry) => sum + entry.quantity, 0);

@@ -224,7 +224,11 @@ Before adding a new `max-height` or `overflow`, prefer these variables and check
 - Saving a POS draft persists a 10-minute temporary cart and then clears the active cart to reduce information overload.
 - The POS `Clear` button clears only the active cart/form.
 - Draft deletion must happen from the Draft carts modal only.
-- Completing a sale removes the selected draft and deducts inventory.
+- Completing a sale removes the selected draft and deducts inventory. A requested draft that is expired, missing, foreign to the branch or already consumed must not silently become a new sale.
+- Repeated medicine lines in a checkout share the remaining batch balance; FEFO allocation must include pending deductions from earlier lines. Reject an overdrawn cart before persisting it.
+- Automatic fulfilment from POS closes matching Continuity requests only in the sale's originating branch. Availability in another branch does not authorise changing that branch's patient workflow.
+- Stock adjustments accept positive quantities only: adjustment/customer return adds stock, write-off/supplier return removes it. Unsupported directions and reductions beyond available stock are rejected. A physical customer return is an inventory movement, not an automatic financial refund.
+- Receiving validates finite, nonnegative costs and manual selling prices on the server before applying least-unit conversion, markup and rounding.
 - Pharmacists and allowed branch roles can prepare/save drafts; only cashiers complete sales.
 
 ## Subscription Rules
@@ -264,6 +268,7 @@ Before adding a new `max-height` or `overflow`, prefer these variables and check
 - Store profile metadata on the existing branch-scoped sales/draft records separately from historical clinical-risk snapshots. Profile edits update matching records only within the authorised branch scope, with before/after metadata in patient-profile audit entries; new sale/draft snapshots also include the recorded details in their existing audits.
 - Age is recorded at a point in time, not calculated from an assumed birth date. Keep the age-recording date when the same recorded age is carried forward. Gender/age aid identification but do not create a new automatic identity match or merge policy.
 - Patient profile selection and POS patient lookup must prominently show documented allergies or prompt the professional to ask when status is unknown. Confirmed no-known-allergies history still asks for reconfirmation.
+- Existing branch patient-profile metadata takes precedence over stale POS/draft snapshots. Correct existing demographics/allergies in Patients > Edit profile; checkout must not erase a newer allergy correction.
 - POS details are keyed to the current patient phone so they cannot silently carry over to a different patient. POS displays a compact age/gender badge (for example 44, M) and allergy summary without documentation forms. Edit demographics and allergies through Patients > Edit profile; carry the selected details into the sale/draft; keep branch authorisation and existing clinical decision boundaries.
 
 ## Clinical Safety Rules
@@ -305,3 +310,9 @@ For deployment changes:
 - Confirm production returns the new bundle.
 - Check `/api/bootstrap`, `/api/state`, and `/api/action` timing and response bytes in Vercel runtime logs.
 - Confirm Speed Insights trends by route after enough real-user samples have accumulated.
+
+## Concurrent Workspace Writes
+
+- Ordinary tenant saves require the server-side version obtained when loading that workspace. Preserve that version through read-model construction, never send it to the browser or accept a client-provided version.
+- Compare and update the existing PostgreSQL `updated_at` value atomically, preserving full timestamp precision and increasing it on every save. A stale save fails with a refresh/retry instruction instead of overwriting another request's stock, patient, audit or permission changes. A save cannot recreate a deleted workspace or target a different workspace.
+- This is optimistic conflict detection, not offline sync or a general idempotency guarantee. A fresh checkout without a consumed draft still needs a durable operation-key contract to guarantee deduplication after an ambiguous network response.

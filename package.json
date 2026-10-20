@@ -12,12 +12,13 @@
     "test:mobile": "node scripts/browser-mobile-hierarchy.mjs",
     "test:navigation": "node scripts/browser-navigation.mjs",
     "test:colours": "node scripts/browser-colour-audit.mjs",
-    "test": "node --test scripts/pricing-policy.test.mjs scripts/rxledger-rules.test.mjs scripts/rai-access.test.mjs scripts/rai-delegation.test.mjs scripts/rai-connection.test.mjs scripts/rai-router.test.mjs scripts/dashboard-snapshot.test.mjs scripts/branch-scope.test.mjs scripts/workspace-deletion.test.mjs scripts/platform-auth.test.mjs scripts/alert-policy.test.mjs scripts/server-artifact.test.mjs",
+    "test": "node --test scripts/pricing-policy.test.mjs scripts/rxledger-rules.test.mjs scripts/rai-access.test.mjs scripts/rai-delegation.test.mjs scripts/rai-connection.test.mjs scripts/rai-router.test.mjs scripts/dashboard-snapshot.test.mjs scripts/branch-scope.test.mjs scripts/workspace-deletion.test.mjs scripts/platform-auth.test.mjs scripts/alert-policy.test.mjs scripts/server-artifact.test.mjs scripts/integrity-postgres.test.mjs",
     "preview": "vite preview",
     "test:patient-details": "node scripts/browser-patient-details.mjs",
     "test:sidebar": "node scripts/browser-sidebar.mjs",
     "test:alerts": "node scripts/browser-alerts.mjs",
-    "test:platform": "node scripts/browser-platform.mjs"
+    "test:platform": "node scripts/browser-platform.mjs",
+    "test:integrity": "node scripts/integrity-postgres.test.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
@@ -37,6 +38,7 @@
     "@babel/core": "^7.29.0",
     "@babel/traverse": "^7.29.0",
     "@babel/types": "^7.29.0",
+    "@electric-sql/pglite": "0.5.10",
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.0",
     "@types/node": "^24.12.2",

@@ -119,13 +119,15 @@ mutationModule.require = (name) => {
  if (name.endsWith("databasePatch.js")) return { snapshotHeavyCollections, buildDatabasePatch };
  if (name.endsWith("_shared.js")) return {
   canAdmin: globalAccess, hasActiveBranchAssignment: assignment,
+  canAdjust: actor => ["admin", "pharmacist"].includes(actor.role),
+  daysUntil: value => Math.ceil((new Date(value).getTime() - new Date("2026-10-09").getTime()) / 86400000),
   canWrite: actor => actor.role !== "viewer", canWriteBranch: (actor, branch, primary) => globalAccess(actor, primary) || assignment(actor, branch),
   canManageBranch: () => false, addAudit: (...args) => patientAuditCalls.push(args), id: () => `generated-${++nextId}`,
   nowIso: () => "2026-10-09T10:00:00Z", today: () => "2026-10-09",
  };
  throw new Error(`Unexpected dependency: ${name}`);
 };
-mutationModule._compile(ts.transpileModule(readFileSync(actionFilename, "utf8") + "\nexport { updatePatientProfile, clearPosDraft, sendChatMessage, upsertProduct, markChatRead, normalizePatientDetails, patientDetailsForSale };", { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, actionFilename);
+mutationModule._compile(ts.transpileModule(readFileSync(actionFilename, "utf8") + "\nexport { updatePatientProfile, clearPosDraft, sendChatMessage, upsertProduct, markChatRead, normalizePatientDetails, patientDetailsForSale, receiveStock, recordSale, issueStock, adjustStock, fulfillContinuityRequestsFromSale };", { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, actionFilename);
 const mutations = mutationModule.exports;
 test("patient corrections never update another branch's matching phone/name", () => {
  const patientDb = structuredClone(db);
@@ -229,4 +231,93 @@ test("unknown allergies stay unknown, invalid entries are rejected, and sale inh
  const state={sales:[{branchId:"b",customerPhone:"080123",soldAt:"2026-01-01",patientDetails:{allergyStatus:"recorded",allergies:"Private branch"}}]};
  assert.equal(mutations.patientDetailsForSale(state,"a","080123",undefined),undefined);
  assert.equal(mutations.patientDetailsForSale(state,"b","080123",undefined).allergies,"Private branch");
+});
+
+
+function stockFixture() {
+ const state=structuredClone(db);
+ state.settings={...state.settings,autoPricingEnabled:true,globalMarkupPercent:30,pricingRoundingRule:0};
+ state.medicines=[{id:"m",sku:"M",brandName:"Synthetic medicine",genericName:"Example",category:"",nafdacNumber:"",active:true,packSize:28,costPrice:0,sellingPrice:0}];
+ state.products=[];state.suppliers=[{id:"supplier"}];state.batches=[];state.ledger=[];state.sales=[];state.posDrafts=[];state.receipts=[];state.continuityRequests=[];
+ return state;
+}
+function receive(state, overrides={}) {
+ mutations.receiveStock(state,"local","pharmacist",{branchId:"a",supplierId:"supplier",items:[{itemId:"m",quantity:1,unitCost:2800,sellingPrice:130,batchNumber:"TEST",expiryDate:"2028-01-01",...overrides}]});
+}
+function sell(state, quantities, extra={}) {
+ mutations.recordSale(state,"local","pharmacist",{branchId:"a",items:quantities.map(quantity=>({itemType:"medicine",itemId:"m",quantity})),...extra});
+}
+test("receive, repeated medicine lines, sale totals, issue and return reconcile in least units",()=>{
+ const state=stockFixture();receive(state);
+ const batch=state.batches[0].id;
+ assert.equal(state.ledger.reduce((sum,row)=>sum+row.quantity,0),28);
+ assert.equal(state.batches[0].unitCost,100);
+ assert.equal(state.medicines[0].sellingPrice,130);
+ sell(state,[10,10]);
+ assert.equal(state.sales[0].subtotal,2600);
+ assert.equal(state.sales[0].total,2600);
+ assert.equal(state.sales[0].items.reduce((sum,row)=>sum+row.quantity,0),20);
+ assert.equal(state.ledger.filter(row=>row.batchId===batch).reduce((sum,row)=>sum+row.quantity,0),8);
+ mutations.issueStock(state,"local","pharmacist",{branchId:"a",medicineId:"m",quantity:3});
+ mutations.adjustStock(state,"local","pharmacist",{batchId:batch,mode:"customer-return",quantity:2,reason:"Synthetic physical return"});
+ assert.equal(state.ledger.filter(row=>row.batchId===batch).reduce((sum,row)=>sum+row.quantity,0),7);
+});
+test("repeated lines cannot oversell a batch and failed medicine sale leaves stock/sales unchanged",()=>{
+ const state=stockFixture();receive(state);const before=structuredClone(state);
+ assert.throws(()=>sell(state,[20,20]),/enough non-expired stock/);
+ assert.deepEqual(state,before);
+});
+test("FEFO allocates early expiry first, skips expired stock and preserves another branch",()=>{
+ const state=stockFixture();receive(state,{expiryDate:"2028-01-01"});receive(state,{expiryDate:"2027-01-01"});
+ const early=state.batches.find(row=>row.expiryDate==="2027-01-01").id;
+ state.batches.push({id:"expired",branchId:"a",medicineId:"m",expiryDate:"2020-01-01"},{id:"foreign",branchId:"b",medicineId:"m",expiryDate:"2026-12-01"});
+ state.ledger.push({batchId:"expired",quantity:100},{batchId:"foreign",quantity:100});
+ sell(state,[30]);
+ assert.deepEqual(state.sales[0].items.map(row=>row.quantity),[28,2]);
+ assert.equal(state.sales[0].items[0].batchId,early);
+ assert.equal(state.ledger.filter(row=>row.batchId==="foreign").reduce((sum,row)=>sum+row.quantity,0),100);
+ assert.equal(state.ledger.filter(row=>row.batchId==="expired").reduce((sum,row)=>sum+row.quantity,0),100);
+});
+test("sale fulfilment cannot change matching patient requests from a different branch",()=>{
+ const state=stockFixture();receive(state);
+ state.continuityRequests=["a","b"].map(branch=>({id:branch,originBranchId:branch,patientName:"Synthetic",patientPhone:"080123",medicineId:"m",status:"open"}));
+ sell(state,[1],{customerName:"Synthetic",customerPhone:"080123"});
+ assert.deepEqual(state.continuityRequests.map(row=>row.status),["fulfilled","open"]);
+});
+test("expired, foreign or already-consumed draft cannot fall back to a fresh sale",()=>{
+ const state=stockFixture();receive(state);const before=structuredClone(state);
+ assert.throws(()=>sell(state,[1],{draftId:"already-completed"}),/draft is expired, already completed or unavailable/);
+ assert.deepEqual(state,before);
+});
+test("invalid adjustment directions and quantities are rejected without ledger changes",()=>{
+ const state=stockFixture();receive(state);const before=structuredClone(state);
+ for(const input of [{mode:"write-off",quantity:-5},{mode:"customer-return",quantity:0},{mode:"stock-in",quantity:2},{mode:"bogus",quantity:2},{mode:"supplier-return",quantity:29}])
+  assert.throws(()=>mutations.adjustStock(state,"local","pharmacist",{batchId:state.batches[0].id,reason:"test",...input}));
+ assert.deepEqual(state,before);
+});
+test("negative and non-finite receiving costs cannot corrupt least-unit prices",()=>{
+ for(const unitCost of [-1,Infinity,"not-a-number"]) {
+  const state=stockFixture();const before=structuredClone(state);
+  assert.throws(()=>receive(state,{unitCost}));assert.deepEqual(state,before);
+ }
+});
+test("a stale POS/draft allergy snapshot never replaces the current branch profile",()=>{
+ const state=stockFixture();
+ const current={age:44,gender:"male",allergyStatus:"recorded",allergies:"Penicillin: rash",updatedAt:"2026-10-09T09:00:00Z"};
+ state.sales=[{branchId:"a",customerPhone:"080123",soldAt:"2026-10-09",patientDetails:current}];
+ const stale={allergyStatus:"none",allergies:"",updatedAt:"2026-10-01"};
+ assert.deepEqual(mutations.patientDetailsForSale(state,"a","080123",stale,{customerPhone:"080123",patientDetails:stale}),current);
+ assert.equal(mutations.patientDetailsForSale(state,"b","080123",undefined),undefined);
+});
+
+test("receiving computes configured category/SKU markup and custom rounding per tablet",()=>{
+ const state=stockFixture();state.settings.pricingRoundingRule=25;
+ state.settings.productMarkupPercentages={"medicine:m":50};
+ receive(state,{sellingPrice:9999});
+ assert.equal(state.batches[0].unitCost,100);
+ assert.equal(state.batches[0].sellingPrice,150);
+ assert.equal(state.medicines[0].sellingPrice,150);
+ state.settings.autoPricingEnabled=false;
+ for(const sellingPrice of [-1,Infinity,"invalid"])
+  assert.throws(()=>receive(state,{sellingPrice}));
 });

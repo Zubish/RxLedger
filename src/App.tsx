@@ -7694,8 +7694,10 @@ function POSView({
       (profile) => normalizePhone(profile.phone) === phone,
     );
   }, [customerPhone, patientProfiles]);
-  const patientDetails: PatientDetails = patientDetailsEdit?.phone === normalizePhone(customerPhone)
-    ? patientDetailsEdit.details : selectedPatient?.details || {allergyStatus:"unknown",allergies:""};
+  const patientDetails: PatientDetails = selectedPatient?.details || (
+    patientDetailsEdit?.phone === normalizePhone(customerPhone)
+      ? patientDetailsEdit.details : {allergyStatus:"unknown",allergies:""}
+  );
 
   const nameMatches = useMemo(() => {
     const queryText = customerName.trim().toLowerCase();

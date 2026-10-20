@@ -876,19 +876,24 @@ export async function saveRootState(root: RootState) {
   `;
 }
 
+// Keep persistence versions server-side; never serialize them into client payloads.
+const tenantVersions = new WeakMap<Database, { slug: string; revision: string }>();
+
 export async function loadTenantDatabase(slug: string) {
   const normalizedSlug = normalizeCompanySlug(slug);
   if (!normalizedSlug) return null;
   await ensureSchema();
   const sql = getSql();
   const rows = await sql`
-    SELECT data
+    SELECT data, updated_at::text AS revision
     FROM tenant_state
     WHERE slug = ${normalizedSlug}
     LIMIT 1
   `;
   if (rows[0]?.data) {
-    return normalizeDatabase(rows[0].data as Partial<Database>);
+    const db = normalizeDatabase(rows[0].data as Partial<Database>);
+    tenantVersions.set(db, { slug: normalizedSlug, revision: String(rows[0].revision) });
+    return db;
   }
 
   // Compatibility fallback for databases created before tenant_state existed.
@@ -897,7 +902,7 @@ export async function loadTenantDatabase(slug: string) {
   if (!tenant) return null;
   const db = normalizeDatabase(tenant.workspace);
   await saveTenantDatabase(normalizedSlug, db, true);
-  return db;
+  return loadTenantDatabase(normalizedSlug);
 }
 
 export async function loadTenantBootstrap(slug: string) {
@@ -1097,14 +1102,24 @@ export async function saveTenantDatabase(slug: string, db: Database, allowCreati
     `;
     return;
   }
-  // An in-flight request must never recreate a workspace that was deleted.
+  const version = tenantVersions.get(db);
+  if (!version || version.slug !== normalizedSlug)
+    throw new Error("Reload the workspace before saving changes");
+  // The comparison and write are one atomic PostgreSQL operation. Concurrent
+  // requests cannot silently replace a sale, profile correction or access change.
   const saved = await sql`
     UPDATE tenant_state
-    SET data = ${JSON.stringify(clean)}::jsonb, updated_at = now()
-    WHERE slug = ${normalizedSlug}
-    RETURNING slug
+    SET data = ${JSON.stringify(clean)}::jsonb,
+        updated_at = GREATEST(clock_timestamp(), updated_at + interval '1 microsecond')
+    WHERE slug = ${normalizedSlug} AND updated_at = ${version.revision}::timestamptz
+    RETURNING slug, updated_at::text AS revision
   `;
-  if (!saved.length) throw new Error("Authentication required: company portal no longer exists");
+  if (!saved.length) {
+    if (!await tenantWorkspaceExists(normalizedSlug))
+      throw new Error("Authentication required: company portal no longer exists");
+    throw new Error("The workspace changed while this request was processing. Refresh to load the latest data, then try again. This request was not saved.");
+  }
+  tenantVersions.set(db, { slug: normalizedSlug, revision: String(saved[0].revision) });
 }
 
 export async function tenantWorkspaceExists(slug: string) {
@@ -1673,11 +1688,14 @@ function buildLedgerSummary(db: Database): LedgerSummary {
 }
 
 export function withReadModels(db: Database): Database {
-  return reconcileAlertPreferences<Database>({
+  const rebuilt = reconcileAlertPreferences<Database>({
     ...db,
     stockSnapshot: buildStockSnapshot(db),
     ledgerSummary: buildLedgerSummary(db),
   });
+  const version = tenantVersions.get(db);
+  if (version) tenantVersions.set(rebuilt, version);
+  return rebuilt;
 }
 
 export function sanitizeDatabase(db: Database) {

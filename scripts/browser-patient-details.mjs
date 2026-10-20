@@ -62,6 +62,8 @@ try {for(const width of [390,1440]) {
  await page.locator('.pos-action-row').getByRole('button',{name:'Draft',exact:true}).click();
  await page.waitForTimeout(200);
  assert.equal(saved.action,'savePosDraft');assert.equal(saved.payload.patientDetails.age,36);assert.equal(saved.payload.patientDetails.allergyStatus,'recorded');
+ // Simulate an older saved cart alongside a corrected persisted patient profile.
+ db.posDrafts[0].patientDetails={age:35,gender:'female',allergyStatus:'none',allergies:'',updatedAt:'2020-01-01'};
  await page.reload();await page.locator('#pos-customer-phone').waitFor();
  assert.equal(await page.locator('#pos-customer-phone').inputValue(),'08012345678');
  assert.match(await page.locator('.patient-allergy-notice').innerText(),/Penicillin: rash/);

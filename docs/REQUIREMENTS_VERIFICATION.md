@@ -20,3 +20,16 @@ Initial inventory, 2026-10-20. Derived from the SEN 401 guide and current reposi
 For the next material change, identify affected rows, agree or infer criteria within the owner's authorised request, run appropriate checks and link dated evidence in [the change record](CHANGE_RECORD.md). Record both failures and limits. Do not retrofit expected results to make current code appear compliant.
 
 The initial integrity priorities are RX-01 through RX-04. This prioritisation identifies work to assess; it does not authorise destructive tests against production, an architecture rewrite or a change to accepted pharmacy rules.
+
+## Integrity Pass — 2026-10-20 (SCM-2026-10-20-02)
+
+Implemented focused corrective work for RX-01/02/04/09 and branch-owned Continuity side effects; this is not a complete audit of every requirement.
+
+| Requirement | Fresh evidence | Remaining limits |
+| --- | --- | --- |
+| RX-01 | Actual state/action handlers and authentication SQL against isolated PGlite PostgreSQL: foreign-workspace tokens, suspended/expired/invalid sessions, foreign-branch and viewer writes, revoked assignments and branch-filtered sales history. Conditional saves prevent stale permission/state replacement. | Local embedded PostgreSQL transport replaces Neon; no production patient transactions. Full role/action/history matrix and high-contention hosted-service load still need coverage. |
+| RX-02 / RX-03 | Backend checks for receive-to-least-unit conversion, repeated-line allocation, FEFO, expired/foreign stock, sale/issue/physical-return reconciliation and invalid adjustments. Persisted API checks reject overselling and consumed-draft replay without changing stored tenant JSON. Atomic PostgreSQL version comparison allows one concurrent snapshot writer and rejects the stale writer. | More multi-client load, transfer/requisition failures and expiry date/time-zone boundary cases remain. Draft replay protection and concurrent-save rejection are not general checkout idempotency or offline replay. |
+| RX-04 | Persisted receiving at 2800/28 gives 100 cost/tablet and 130 selling price at 30% markup; sale quantity, total and signed ledger agree. Backend regression covers item override/custom rounding and rejects invalid receiving money. | Report UI/export totals, all payment methods, discount/tax boundaries and financial refund/void contracts remain to verify. Inventory return does not establish a refunded sale. |
+| RX-09 | Persisted profile correction, audit before/after, and a stale checkout retaining current branch allergies. Mocked browser checks at 390/1440 cover profile save/refresh, reopened stale draft, compact POS display and switching to an unrelated patient. | Browser uses synthetic mocked API; persisted handler tests are separate. Full audit-report UI and clinical identity matching beyond existing phone rules remain outside this pass. |
+
+Reproduce with `npm test` (includes the isolated PostgreSQL suite), `npm run test:integrity`, and `npm run test:patient-details` against a local Vite server. PGlite is a pinned development-only dependency; tests initialize a disposable database in memory and do not contact the production database. Its tests replace Neon transport and telemetry delivery, while executing application validation, authentication, authorization, persistence SQL and response scoping.
