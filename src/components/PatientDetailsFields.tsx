@@ -1,6 +1,7 @@
 import type {PatientDetails} from '../patientDetails';
-export function AllergyNotice({details}:{details?:PatientDetails}) {
+export function AllergyNotice({details,compact=false}:{details?:PatientDetails;compact?:boolean}) {
  const status=details?.allergyStatus || (details?.allergies?.trim() ? 'recorded' : 'unknown');
+ if(compact) return <div className={`patient-allergy-notice pos-allergy-summary ${status==='recorded'?'has-allergies':''}`} role="status"><strong>Allergies:</strong><span>{status==='recorded'?details?.allergies:status==='none'?'No known allergies — reconfirm':'Not recorded — ask patient'}</span></div>;
  return <div className={`patient-allergy-notice ${status === 'recorded' ? 'has-allergies' : ''}`} role="status">
  <strong>{status==='recorded'?'Documented allergies':status==='none'?'No known allergies confirmed':'Allergy status not recorded'}</strong>
  <span>{status==='recorded'?details?.allergies:status==='none'?'Previously recorded as no known allergies. Reconfirm with the patient.':'Ask the patient about allergies and record their response before dispensing.'}</span>

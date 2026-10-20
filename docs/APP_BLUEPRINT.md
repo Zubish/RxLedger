@@ -262,7 +262,7 @@ Before adding a new `max-height` or `overflow`, prefer these variables and check
 - Store profile metadata on the existing branch-scoped sales/draft records separately from historical clinical-risk snapshots. Profile edits update matching records only within the authorised branch scope, with before/after metadata in patient-profile audit entries; new sale/draft snapshots also include the recorded details in their existing audits.
 - Age is recorded at a point in time, not calculated from an assumed birth date. Keep the age-recording date when the same recorded age is carried forward. Gender/age aid identification but do not create a new automatic identity match or merge policy.
 - Patient profile selection and POS patient lookup must prominently show documented allergies or prompt the professional to ask when status is unknown. Confirmed no-known-allergies history still asks for reconfirmation.
-- POS details are keyed to the current patient phone so they cannot silently carry over to a different patient. Save them with the sale/draft or through Patients > Edit profile; keep branch authorisation and existing clinical decision boundaries.
+- POS details are keyed to the current patient phone so they cannot silently carry over to a different patient. POS displays a compact age/gender badge (for example 44, M) and allergy summary without documentation forms. Edit demographics and allergies through Patients > Edit profile; carry the selected details into the sale/draft; keep branch authorisation and existing clinical decision boundaries.
 
 ## Clinical Safety Rules
 

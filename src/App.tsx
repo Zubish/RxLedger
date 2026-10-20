@@ -1,4 +1,4 @@
-import { AllergyNotice, PatientDetailsFields } from "./components/PatientDetailsFields";
+import { AllergyNotice } from "./components/PatientDetailsFields";
 import type { PatientDetails } from "./patientDetails";
 import { publicWorkspaceSlug, tenantWorkspaceSlug } from "./workspaceIdentity";
 import { alertDisposition, eventAlertKey, inventoryAlerts } from "./alertPolicy";
@@ -8657,7 +8657,10 @@ function POSView({
                   disabled={!canSell}
                 >
                   <strong>{selectedPatient.name}</strong>
-                  <span>
+                  {(patientDetails.age !== undefined || (patientDetails.gender && patientDetails.gender !== "prefer_not_to_say")) && <b className="pos-patient-demographics" title={`Recorded age: ${patientDetails.age ?? "not recorded"}; gender: ${patientDetails.gender?.replaceAll("_", " ") || "not recorded"}`}>
+                    {[patientDetails.age, patientDetails.gender === "male" ? "M" : patientDetails.gender === "female" ? "F" : patientDetails.gender === "other" ? "Other" : undefined].filter(value => value !== undefined).join(", ")}
+                  </b>}
+                  <span className="pos-patient-visit">
                     {selectedPatient.phone} / {selectedPatient.sales.length}{" "}
                     previous visit
                     {selectedPatient.sales.length === 1 ? "" : "s"} / last seen{" "}
@@ -8665,13 +8668,7 @@ function POSView({
                   </span>
                 </button>
               )}
-              {(customerPhone.trim() || selectedPatient) && <>
-                <AllergyNotice details={patientDetails}/>
-                <details className="pos-patient-details"><summary>Patient age, gender and allergies</summary>
-                  <PatientDetailsFields value={patientDetails} onChange={details=>setPatientDetailsEdit({phone:normalizePhone(customerPhone),details})}/>
-                  <small>Saved with the sale or draft. Existing profiles can also be edited in Patients.</small>
-                </details>
-              </>}
+              {(customerPhone.trim() || selectedPatient) && <AllergyNotice details={patientDetails} compact/>}
               <div className="pos-payment-block">
                 <span>
                   <Wallet size={15} /> Payment method
