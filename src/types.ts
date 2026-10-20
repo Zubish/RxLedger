@@ -1,3 +1,4 @@
+import type { PatientDetails } from "./patientDetails";
 import type { AlertPreference } from "./alertPolicy";
 export type Role = "admin" | "pharmacist" | "inventory" | "cashier" | "viewer";
 export type UserStatus = "pending" | "active" | "suspended";
@@ -190,6 +191,7 @@ export type Sale = {
   cashierUserId: string;
   customerName: string;
   customerPhone: string;
+  patientDetails?: PatientDetails;
   patientInfoReliability?: PatientInfoReliability;
   patientRiskContext?: PatientRiskContext;
   paymentMethod: "cash" | "card" | "transfer" | "mixed";
@@ -228,6 +230,7 @@ export type PosDraft = {
   bookingCode: string;
   customerName: string;
   customerPhone: string;
+  patientDetails?: PatientDetails;
   patientInfoReliability?: PatientInfoReliability;
   patientRiskContext?: PatientRiskContext;
   paymentMethod: Sale["paymentMethod"];

@@ -256,6 +256,14 @@ Before adding a new `max-height` or `overflow`, prefer these variables and check
 - WhatsApp/copy actions should never require leaving the patient context.
 - Patient Continuity is the strategic differentiator. Avoid adding scattered patient widgets that do not strengthen the patient journey.
 
+### Patient Identification And Allergy Awareness
+
+- Optional patient details carry recorded age in years, its recording date, gender and an explicit allergy status: unknown/not recorded, no known allergies confirmed, or documented allergies with reaction notes where known. Never interpret missing history as no known allergies.
+- Store profile metadata on the existing branch-scoped sales/draft records separately from historical clinical-risk snapshots. Profile edits update matching records only within the authorised branch scope, with before/after metadata in patient-profile audit entries; new sale/draft snapshots also include the recorded details in their existing audits.
+- Age is recorded at a point in time, not calculated from an assumed birth date. Keep the age-recording date when the same recorded age is carried forward. Gender/age aid identification but do not create a new automatic identity match or merge policy.
+- Patient profile selection and POS patient lookup must prominently show documented allergies or prompt the professional to ask when status is unknown. Confirmed no-known-allergies history still asks for reconfirmation.
+- POS details are keyed to the current patient phone so they cannot silently carry over to a different patient. Save them with the sale/draft or through Patients > Edit profile; keep branch authorisation and existing clinical decision boundaries.
+
 ## Clinical Safety Rules
 
 - Start with deterministic, auditable rules before AI-generated explanations.

@@ -1,3 +1,5 @@
+import type {PatientDetails} from "../patientDetails";
+import {AllergyNotice,PatientDetailsFields} from "./PatientDetailsFields";
 import { useId, useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
 import { ClipboardList } from "lucide-react";
 import { WhatsAppIcon } from "./WhatsAppIcon";
@@ -11,6 +13,7 @@ const money = new Intl.NumberFormat("en-NG", {
 export type PatientProfileSummary = {
   name: string;
   phone: string;
+  details?: PatientDetails;
   visitCount: number;
   totalSpent: number;
 };
@@ -18,6 +21,7 @@ export type PatientProfileSummary = {
 export type PatientEditForm = {
   name: string;
   phone: string;
+  details: PatientDetails;
 };
 
 export type PatientContinuityItem = {
@@ -122,6 +126,8 @@ export function PatientProfilePanel({
         </div>
       </header>
 
+      <AllergyNotice details={profile.details}/>
+      <p className="patient-demographics">Age: {profile.details?.age === undefined ? "Not recorded" : `${profile.details.age} years${profile.details.ageRecordedAt ? ` (recorded ${new Date(profile.details.ageRecordedAt).toLocaleDateString()})` : " (at recording)"}`} · Gender: {profile.details?.gender?.replaceAll("_", " ") || "Not recorded"}</p>
       {editingPatient && (
         <form
           className="patient-profile-edit"
@@ -155,6 +161,7 @@ export function PatientProfilePanel({
               required
             />
           </label>
+          <PatientDetailsFields value={patientEdit.details} onChange={details=>setPatientEdit(current=>({...current,details}))}/>
           <div>
             <button type="submit">Save profile</button>
             <button type="button" onClick={onCancelEdit}>

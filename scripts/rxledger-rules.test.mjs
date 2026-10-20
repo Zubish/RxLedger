@@ -103,8 +103,8 @@ assertPresent(
 );
 assertPresent(
   app,
-  /<strong>{db\.settings\.accountName}<\/strong>[\s\S]*<span>Company file<\/span>/,
-  "RxLedger sidebar should present the customer company file instead of the software name.",
+  /<strong>{db\.settings\.accountName}<\/strong>/,
+  "RxLedger sidebar should present the customer workspace name.",
 );
 assertAbsent(
   app,

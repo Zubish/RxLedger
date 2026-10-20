@@ -110,6 +110,7 @@ const ts = require("typescript");
 const actionFilename = resolve("api/action.ts");
 const mutationModule = new Module(actionFilename);
 let nextId = 0;
+const patientAuditCalls = [];
 const globalAccess = (actor, primary) => accessibleBranchIds(actor, primary) === null;
 const assignment = (actor, branch) => (accessibleBranchIds(actor) ?? []).includes(branch);
 mutationModule.require = (name) => {
@@ -119,12 +120,12 @@ mutationModule.require = (name) => {
  if (name.endsWith("_shared.js")) return {
   canAdmin: globalAccess, hasActiveBranchAssignment: assignment,
   canWrite: actor => actor.role !== "viewer", canWriteBranch: (actor, branch, primary) => globalAccess(actor, primary) || assignment(actor, branch),
-  canManageBranch: () => false, addAudit: () => {}, id: () => `generated-${++nextId}`,
+  canManageBranch: () => false, addAudit: (...args) => patientAuditCalls.push(args), id: () => `generated-${++nextId}`,
   nowIso: () => "2026-10-09T10:00:00Z", today: () => "2026-10-09",
  };
  throw new Error(`Unexpected dependency: ${name}`);
 };
-mutationModule._compile(ts.transpileModule(readFileSync(actionFilename, "utf8") + "\nexport { updatePatientProfile, clearPosDraft, sendChatMessage, upsertProduct, markChatRead };", { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, actionFilename);
+mutationModule._compile(ts.transpileModule(readFileSync(actionFilename, "utf8") + "\nexport { updatePatientProfile, clearPosDraft, sendChatMessage, upsertProduct, markChatRead, normalizePatientDetails, patientDetailsForSale };", { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, actionFilename);
 const mutations = mutationModule.exports;
 test("patient corrections never update another branch's matching phone/name", () => {
  const patientDb = structuredClone(db);
@@ -202,4 +203,30 @@ test("multi-branch staff patient edits affect only the explicitly selected branc
  assert.deepEqual(mutable.sales.map(row => row.customerName), ["Corrected", "Old"]);
  mutations.updatePatientProfile(mutable, "admin", { ...payload, patientName: "Global correction" });
  assert.deepEqual(mutable.sales.map(row => row.customerName), ["Corrected", "Global correction"]);
+});
+
+test("patient demographics and allergy updates are branch-scoped and audited with before/after",()=>{
+ const state=structuredClone(db);
+ const old={age:35,gender:"female",allergyStatus:"none",allergies:"",updatedAt:"2026-01-01",ageRecordedAt:"2026-01-01"};
+ state.sales=[{id:"sa",branchId:"a",customerName:"Jane",customerPhone:"080123",soldAt:"2026-01-01",patientDetails:structuredClone(old)},{id:"sb",branchId:"b",customerName:"Jane",customerPhone:"080123",soldAt:"2026-01-01",patientDetails:structuredClone(old)}];
+ state.posDrafts=[{branchId:"a",customerName:"Jane",customerPhone:"080123"}];state.continuityRequests=[];
+ mutations.updatePatientProfile(state,"local",{branchId:"a",oldPatientPhone:"080123",patientName:"Jane",patientPhone:"080123",patientDetails:{age:36,gender:"female",allergyStatus:"recorded",allergies:"Penicillin: rash"}});
+ assert.equal(state.sales[0].patientDetails.allergies,"Penicillin: rash");
+ assert.deepEqual(state.sales[1].patientDetails,old);
+ assert.equal(state.posDrafts[0].patientDetails.age,36);
+ const audit=patientAuditCalls.at(-1);
+ assert.equal(audit[3],"patient-profile");assert.equal(audit[5].matchingSales[0].patientDetails.allergyStatus,"none");assert.equal(audit[6].patientDetails.allergies,"Penicillin: rash");
+ assert.equal(audit[6].branchId,"a");
+ const previous=structuredClone(state.sales);
+ assert.throws(()=>mutations.updatePatientProfile(state,"local",{branchId:"a",oldPatientPhone:"080123",patientName:"Jane",patientPhone:"080123",patientDetails:{age:-1,allergyStatus:"none"}}),/age/);
+ assert.deepEqual(state.sales,previous);
+});
+test("unknown allergies stay unknown, invalid entries are rejected, and sale inheritance is branch-specific",()=>{
+ assert.equal(mutations.normalizePatientDetails({allergyStatus:"unknown"}).allergyStatus,"unknown");
+ assert.throws(()=>mutations.normalizePatientDetails({allergyStatus:"recorded",allergies:" "}),/Describe/);
+ assert.throws(()=>mutations.normalizePatientDetails({age:131}),/age/);
+ assert.throws(()=>mutations.normalizePatientDetails({gender:"invalid"}),/gender/);
+ const state={sales:[{branchId:"b",customerPhone:"080123",soldAt:"2026-01-01",patientDetails:{allergyStatus:"recorded",allergies:"Private branch"}}]};
+ assert.equal(mutations.patientDetailsForSale(state,"a","080123",undefined),undefined);
+ assert.equal(mutations.patientDetailsForSale(state,"b","080123",undefined).allergies,"Private branch");
 });

@@ -1,3 +1,4 @@
+import type {PatientDetails} from "../src/patientDetails.js";
 import { inventoryAlerts } from "../src/alertPolicy.js";
 import { accessibleBranchIds, productQuantityInBranches, scopeDatabaseForUser } from "../server/branch-scope.js";
 import {
@@ -1692,6 +1693,32 @@ function updateContinuityRequest(
   );
 }
 
+function normalizePatientDetails(value: unknown, previous?: PatientDetails): PatientDetails | undefined {
+  if (value === undefined) return previous;
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid patient details");
+  const input = value as Record<string, unknown>;
+  const age = input.age === undefined || input.age === null || input.age === "" ? undefined : Number(input.age);
+  if (age !== undefined && (!Number.isInteger(age) || age < 0 || age > 130)) throw new Error("Patient age must be a whole number from 0 to 130");
+  const gender = optionalString(input.gender) || undefined;
+  if (gender && !["female", "male", "other", "prefer_not_to_say"].includes(gender)) throw new Error("Invalid patient gender");
+  const allergyStatus = optionalString(input.allergyStatus) || "unknown";
+  if (!["unknown", "none", "recorded"].includes(allergyStatus)) throw new Error("Invalid allergy status");
+  const allergies = allergyStatus === "recorded" ? optionalString(input.allergies) : "";
+  if (allergyStatus === "recorded" && !allergies) throw new Error("Describe the documented allergies");
+  if (allergies.length > 2000) throw new Error("Allergy details must be at most 2000 characters");
+  const now = nowIso();
+  return {age, gender:gender as PatientDetails["gender"], allergyStatus:allergyStatus as PatientDetails["allergyStatus"], allergies, updatedAt:now,
+    ageRecordedAt:age === undefined ? undefined : previous?.age === age ? previous.ageRecordedAt || previous.updatedAt || now : now};
+}
+
+function patientDetailsForSale(db: Database, branchId: string, phone: string, value: unknown, draft?: PosDraft) {
+  const key = normalizePatientPhone(phone);
+  const history = key ? db.sales.filter(sale => sale.branchId === branchId && normalizePatientPhone(sale.customerPhone) === key && sale.patientDetails)
+    .sort((a,b)=>(b.patientDetails?.updatedAt || b.soldAt).localeCompare(a.patientDetails?.updatedAt || a.soldAt))[0]?.patientDetails : undefined;
+  const previous = draft && key && normalizePatientPhone(draft.customerPhone) === key ? draft.patientDetails || history : history;
+  return normalizePatientDetails(value, previous);
+}
+
 function updatePatientProfile(
   db: Database,
   actorId: string,
@@ -1731,6 +1758,7 @@ function updatePatientProfile(
         id: sale.id,
         customerName: sale.customerName,
         customerPhone: sale.customerPhone,
+        patientDetails: sale.patientDetails,
       })),
     matchingContinuityRequests: db.continuityRequests
       .filter(
@@ -1746,6 +1774,9 @@ function updatePatientProfile(
         patientPhone: request.patientPhone,
       })),
   };
+  const previousDetails = db.sales.filter(sale => canEditBranch(sale.branchId) && normalizePatientPhone(sale.customerPhone) === oldPhone && sale.patientDetails)
+    .sort((a,b)=>(b.patientDetails?.updatedAt || b.soldAt).localeCompare(a.patientDetails?.updatedAt || a.soldAt))[0]?.patientDetails;
+  const patientDetails = normalizePatientDetails(payload?.patientDetails, previousDetails);
   let updatedSales = 0;
   let updatedContinuity = 0;
   db.sales.forEach((sale) => {
@@ -1758,6 +1789,7 @@ function updatePatientProfile(
     if (!matches) return;
     sale.customerName = patientName;
     sale.customerPhone = patientPhone;
+    if (patientDetails) sale.patientDetails = patientDetails;
     updatedSales += 1;
   });
   db.posDrafts.forEach((draft) => {
@@ -1770,6 +1802,7 @@ function updatePatientProfile(
     if (!matches) return;
     draft.customerName = patientName;
     draft.customerPhone = patientPhone;
+    if (patientDetails) draft.patientDetails = patientDetails;
     draft.updatedAt = nowIso();
   });
   db.continuityRequests.forEach((request) => {
@@ -1794,7 +1827,7 @@ function updatePatientProfile(
     "patient-profile",
     newPhone || patientName,
     before,
-    { patientName, patientPhone, updatedSales, updatedContinuity },
+    { patientName, patientPhone, patientDetails, branchId, updatedSales, updatedContinuity },
   );
 }
 
@@ -2263,6 +2296,7 @@ function savePosDraft(
       optionalString(payload?.customerName) || existing?.customerName || "",
     customerPhone:
       optionalString(payload?.customerPhone) || existing?.customerPhone || "",
+    patientDetails: patientDetailsForSale(db, branchId, optionalString(payload?.customerPhone) || existing?.customerPhone || "", payload?.patientDetails, existing),
     patientInfoReliability: normalizePatientInfoReliability(
       payload?.patientInfoReliability || existing?.patientInfoReliability,
     ),
@@ -2567,6 +2601,7 @@ function recordSale(
       optionalString(payload?.customerName) || draft?.customerName || "",
     customerPhone:
       optionalString(payload?.customerPhone) || draft?.customerPhone || "",
+    patientDetails: patientDetailsForSale(db, branchId, optionalString(payload?.customerPhone) || draft?.customerPhone || "", payload?.patientDetails, draft),
     patientInfoReliability: normalizePatientInfoReliability(
       payload?.patientInfoReliability || draft?.patientInfoReliability,
     ),

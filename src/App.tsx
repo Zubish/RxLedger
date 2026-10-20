@@ -1,3 +1,5 @@
+import { AllergyNotice, PatientDetailsFields } from "./components/PatientDetailsFields";
+import type { PatientDetails } from "./patientDetails";
 import { publicWorkspaceSlug, tenantWorkspaceSlug } from "./workspaceIdentity";
 import { alertDisposition, eventAlertKey, inventoryAlerts } from "./alertPolicy";
 import type { AlertPreference } from "./alertPolicy";
@@ -307,6 +309,7 @@ type Sale = {
   cashierUserId: string;
   customerName: string;
   customerPhone: string;
+  patientDetails?: PatientDetails;
   patientInfoReliability?: PatientInfoReliability;
   patientRiskContext?: PatientRiskContext;
   paymentMethod: "cash" | "card" | "transfer" | "mixed";
@@ -345,6 +348,7 @@ type PosDraft = {
   bookingCode: string;
   customerName: string;
   customerPhone: string;
+  patientDetails?: PatientDetails;
   patientInfoReliability?: PatientInfoReliability;
   patientRiskContext?: PatientRiskContext;
   paymentMethod: Sale["paymentMethod"];
@@ -1639,6 +1643,7 @@ function buildPatientProfiles(db: Database) {
       sales: Sale[];
       totalSpent: number;
       lastVisit: string;
+      details?: PatientDetails;
     }
   >();
   db.sales.forEach((sale) => {
@@ -1649,6 +1654,7 @@ function buildPatientProfiles(db: Database) {
     const total = sale.total ?? sale.subtotal;
     if (existing) {
       existing.sales.push(sale);
+      if (sale.patientDetails && (!existing.details || (sale.patientDetails.updatedAt || sale.soldAt) > (existing.details.updatedAt || existing.lastVisit))) existing.details = sale.patientDetails;
       existing.totalSpent += total;
       if (sale.soldAt > existing.lastVisit) {
         existing.lastVisit = sale.soldAt;
@@ -1664,6 +1670,7 @@ function buildPatientProfiles(db: Database) {
       sales: [sale],
       totalSpent: total,
       lastVisit: sale.soldAt,
+      details: sale.patientDetails || (sale.patientRiskContext?.allergies?.trim() ? {allergyStatus: "recorded", allergies: sale.patientRiskContext.allergies} : undefined),
     });
   });
   return [...map.values()]
@@ -3403,7 +3410,6 @@ function App() {
             <BrandMark settings={db.settings} />
             <div>
               <strong>{db.settings.accountName}</strong>
-              <span>Company file</span>
             </div>
           </div>
           <button
@@ -7452,6 +7458,7 @@ function POSView({
   const [customerPhone, setCustomerPhone] = useState(
     continuityTarget?.patientPhone ?? currentDraft?.customerPhone ?? "",
   );
+  const [patientDetailsEdit, setPatientDetailsEdit] = useState<{phone:string;details:PatientDetails} | null>(() => currentDraft?.patientDetails ? {phone:normalizePhone(currentDraft.customerPhone),details:currentDraft.patientDetails} : null);
   const [paymentMethod, setPaymentMethod] = useState<Sale["paymentMethod"]>(
     currentDraft?.paymentMethod ?? "cash",
   );
@@ -7687,6 +7694,9 @@ function POSView({
       (profile) => normalizePhone(profile.phone) === phone,
     );
   }, [customerPhone, patientProfiles]);
+  const patientDetails: PatientDetails = patientDetailsEdit?.phone === normalizePhone(customerPhone)
+    ? patientDetailsEdit.details : selectedPatient?.details || {allergyStatus:"unknown",allergies:""};
+
   const nameMatches = useMemo(() => {
     const queryText = customerName.trim().toLowerCase();
     if (queryText.length < 2) return [];
@@ -7907,6 +7917,7 @@ function POSView({
   ) {
     setCustomerName(profile.name === "Walk-in patient" ? "" : profile.name);
     setCustomerPhone(profile.phone);
+    setPatientDetailsEdit({phone:normalizePhone(profile.phone),details:profile.details || {allergyStatus:"unknown",allergies:""}});
     flash(`${profile.name} selected for this sale`);
   }
 
@@ -7916,6 +7927,7 @@ function POSView({
       draftId: selectedDraftId,
       customerName,
       customerPhone,
+      patientDetails,
       paymentMethod,
       discount: safeDiscount,
       note,
@@ -7970,6 +7982,7 @@ function POSView({
     setCart([]);
     setCustomerName("");
     setCustomerPhone("");
+    setPatientDetailsEdit(null);
     setDiscount(0);
     setCashPaid(0);
     setNote("");
@@ -8007,6 +8020,7 @@ function POSView({
     );
     setCustomerName(draft.customerName);
     setCustomerPhone(draft.customerPhone);
+    setPatientDetailsEdit(draft.patientDetails ? {phone:normalizePhone(draft.customerPhone),details:draft.patientDetails} : null);
     setPaymentMethod(draft.paymentMethod);
     setDiscount(draft.discount);
     setDiscountMode("amount");
@@ -8651,6 +8665,13 @@ function POSView({
                   </span>
                 </button>
               )}
+              {(customerPhone.trim() || selectedPatient) && <>
+                <AllergyNotice details={patientDetails}/>
+                <details className="pos-patient-details"><summary>Patient age, gender and allergies</summary>
+                  <PatientDetailsFields value={patientDetails} onChange={details=>setPatientDetailsEdit({phone:normalizePhone(customerPhone),details})}/>
+                  <small>Saved with the sale or draft. Existing profiles can also be edited in Patients.</small>
+                </details>
+              </>}
               <div className="pos-payment-block">
                 <span>
                   <Wallet size={15} /> Payment method
@@ -8829,7 +8850,6 @@ function POSView({
               >
                 <CheckCircle2 size={17} />
                 Complete sale
-                <span>Enter</span>
               </button>
             </div>
             {canSell && !canCompleteSale && (
@@ -9484,7 +9504,7 @@ function PatientsView({
   const [selectedSaleId, setSelectedSaleId] = useState("");
   const [editingPatient, setEditingPatient] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false);
-  const [patientEdit, setPatientEdit] = useState({ name: "", phone: "" });
+  const [patientEdit, setPatientEdit] = useState<{name:string;phone:string;details:PatientDetails}>({ name: "", phone: "", details: {allergyStatus:"unknown",allergies:""} });
   const profiles = useMemo(() => buildPatientProfiles(db), [db]);
   const refillRows = useMemo(() => buildRefillRows(db), [db]);
   const dueRows = refillRows.filter((row) => row.daysUntilDue <= 7);
@@ -9559,6 +9579,7 @@ function PatientsView({
     ? {
         name: selectedProfile.name,
         phone: selectedProfile.phone,
+        details: selectedProfile.details,
         visitCount: selectedProfile.sales.length,
         totalSpent: selectedProfile.totalSpent,
       }
@@ -9627,6 +9648,7 @@ function PatientsView({
     setPatientEdit({
       name: selectedProfile.name,
       phone: selectedProfile.phone,
+      details: selectedProfile.details || {allergyStatus:"unknown",allergies:""},
     });
     setEditingPatient(true);
   }
@@ -9642,6 +9664,7 @@ function PatientsView({
         oldPatientPhone: selectedProfile.phone,
         patientName: patientEdit.name,
         patientPhone: patientEdit.phone,
+        patientDetails: patientEdit.details,
       },
       "Patient profile updated",
     );
@@ -9734,6 +9757,7 @@ function PatientsView({
                   {profile.phone || "No phone saved"} / {profile.sales.length}{" "}
                   visit{profile.sales.length === 1 ? "" : "s"}
                 </span>
+                {(profile.details?.age !== undefined || profile.details?.gender) && <small>{profile.details.age !== undefined ? `Age ${profile.details.age} at recording` : "Age not recorded"} · {profile.details.gender?.replaceAll("_", " ") || "Gender not recorded"}</small>}
                 <small>
                   Last seen {new Date(profile.lastVisit).toLocaleDateString()}{" "}
                   at{" "}

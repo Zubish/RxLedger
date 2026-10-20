@@ -1,3 +1,4 @@
+import type { PatientDetails } from "../src/patientDetails.js";
 /// <reference types="node" />
 import { tenantWorkspaceSlug } from "../src/workspaceIdentity.js";
 import { reconcileAlertPreferences } from "../src/alertPolicy.js";
@@ -260,6 +261,7 @@ type Sale = {
   cashierUserId: string;
   customerName: string;
   customerPhone: string;
+  patientDetails?: PatientDetails;
   patientInfoReliability?: PatientInfoReliability;
   patientRiskContext?: PatientRiskContext;
   paymentMethod: "cash" | "card" | "transfer" | "mixed";
@@ -298,6 +300,7 @@ type PosDraft = {
   bookingCode: string;
   customerName: string;
   customerPhone: string;
+  patientDetails?: PatientDetails;
   patientInfoReliability?: PatientInfoReliability;
   patientRiskContext?: PatientRiskContext;
   paymentMethod: Sale["paymentMethod"];
