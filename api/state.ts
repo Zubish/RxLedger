@@ -1,3 +1,5 @@
+import {hasPermission} from "../src/accessPolicy.js";
+import {redactStaffData} from "../src/dataAccess.js";
 import financialReport from "../server/financial-report.js";
 import { accessibleBranchIds, primaryAdminIdForDatabase, scopeDatabaseForUser } from "../server/branch-scope.js";
 import {
@@ -53,6 +55,7 @@ export default async function handler(
         fail(res, 401, "Authentication required");
         return;
       }
+      if(user.accessPolicy && !hasPermission(user,scope==="sales"?"sales.history":"inventory.view",primaryAdminIdForDatabase(authDb))){fail(res,403,"Your staff access does not allow this history");return;}
       const rawLimit = req.query?.limit;
       const rawCursor = req.query?.cursor;
       const limit = Number(Array.isArray(rawLimit) ? rawLimit[0] : rawLimit);
@@ -77,6 +80,7 @@ export default async function handler(
         totalMs,
         responseBytes,
       });
+      if(user.accessPolicy){const masked=redactStaffData({...authDb,...page},user,true);page.sales=masked.sales;}
       res.status(200).json(page);
       return;
     }
@@ -95,6 +99,7 @@ export default async function handler(
         fail(res, 401, "Authentication required");
         return;
       }
+      if(user.accessPolicy && !hasPermission(user,"inventory.view",primaryAdminIdForDatabase(authDb))){fail(res,403,"Your staff access does not allow this history");return;}
       const rawLimit = req.query?.limit;
       const rawCursor = req.query?.cursor;
       const limit = Number(Array.isArray(rawLimit) ? rawLimit[0] : rawLimit);
@@ -119,6 +124,7 @@ export default async function handler(
         totalMs,
         responseBytes,
       });
+      if(user.accessPolicy){const masked=redactStaffData({...authDb,...page},user,true);page.ledger=masked.ledger;}
       res.status(200).json(page);
       return;
     }
@@ -141,7 +147,7 @@ export default async function handler(
         fail(res, 403, "Only the global admin can view the audit trail");
         return;
       }
-      const response = { auditLogs: db.auditLogs };
+      const response = { auditLogs: sanitizeDatabase(db).auditLogs };
       const totalMs = Date.now() - startedAt;
       const responseBytes = jsonByteLength(response);
       setServerTiming(res, { load: loadMs, auth: authMs, total: totalMs });

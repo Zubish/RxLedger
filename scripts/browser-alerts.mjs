@@ -1,3 +1,4 @@
+import {loadServerModule} from "./helpers/load-server-module.mjs";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { chromium } from "playwright";
@@ -6,7 +7,7 @@ import {
   reconcileAlertPreferences,
   ALERT_REMINDER_MS,
 } from "../src/alertPolicy.ts";
-import { scopeDatabaseForUser } from "../server/branch-scope.ts";
+const { scopeDatabaseForUser }=loadServerModule("server/branch-scope.ts");
 const base = process.env.RXLEDGER_AUDIT_URL || "http://127.0.0.1:5173";
 const browser = await chromium.launch({
   executablePath: "/usr/bin/chromium",

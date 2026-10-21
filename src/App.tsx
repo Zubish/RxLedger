@@ -1,3 +1,7 @@
+import {StaffAccessEditor} from "./components/StaffAccessEditor";
+import {hasPermission,canOpenPage,effectivePermissions} from "./accessPolicy";
+import {redactStaffData} from "./dataAccess";
+import type {StaffAccess,StaffRole} from "./accessPolicy.js";
 import {moneyAmount} from "./financial";
 import {FinancialReconciliation} from "./components/FinancialReconciliation";
 import {normalizePatientPhone as registryPhone, normalizePatientName, patientMatchesPhone, patientMatchesName} from "./patientRegistry";
@@ -176,6 +180,8 @@ type User = {
   branchIds: string[];
   managedBranchIds: string[];
   branchAccessExpiresAt?: Record<string, string>;
+  accessPolicy?: StaffAccess;
+  accessRevision?: number;
   lastChatSeenAt?: string;
   lastChatSeenAtByBranch?: Record<string, string>;
   knownDevices?: Array<{
@@ -579,6 +585,7 @@ type AppSettings = {
 };
 
 type Database = {
+  staffRoles?: StaffRole[];
   patients?: PatientRecord[];
   alertPreferences?: AlertPreference[];
   users: User[];
@@ -992,6 +999,7 @@ function MarkupWarning({ actual, target, unit = "unit" }: { actual: number; targ
 }
 
 function discountLimitPercent(db: Database, user: User) {
+  if(user.accessPolicy && !hasPermission(user,"sales.discount",getPrimaryAdminId(db)))return 0;
   if (isSuperAdmin(db, user) || user.role === "admin") return 100;
   const policy = pricingPolicy(db.settings);
   if (db.branches.some((branch) => canManageBranch(db, user, branch.id)))
@@ -1858,6 +1866,7 @@ function canManageBranch(db: Database, user: User, branchId: string) {
 }
 
 function canWriteBranch(db: Database, user: User, branchId: string) {
+  if(user.accessPolicy && !isSuperAdmin(db,user))return effectivePermissions(user).some(key=>key.startsWith("inventory.")&&key!=="inventory.view") && hasActiveBranchAssignment(user,branchId);
   return (
     isSuperAdmin(db, user) ||
     ((user.role === "admin" ||
@@ -2627,27 +2636,27 @@ function App() {
         : [],
     [currentUser, db, stockRows],
   );
-  const canWrite = currentUser
+  const canWrite = currentUser?.accessPolicy ? effectivePermissions(currentUser).some(key=>key.startsWith("inventory.")&&key!=="inventory.view") : currentUser
     ? currentUser.role === "admin" ||
       currentUser.role === "pharmacist" ||
       currentUser.role === "inventory"
     : false;
   const canSell =
     currentUser && activeBranch
-      ? isSuperAdmin(db, currentUser) ||
+      ? (currentUser.accessPolicy && !isSuperAdmin(db,currentUser) ? hasPermission(currentUser,"sales.prepare") && hasActiveBranchAssignment(currentUser,activeBranch.id) : isSuperAdmin(db, currentUser) ||
         canManageBranch(db, currentUser, activeBranch.id) ||
         ((currentUser.role === "pharmacist" ||
           currentUser.role === "cashier") &&
-          hasActiveBranchAssignment(currentUser, activeBranch.id))
+          hasActiveBranchAssignment(currentUser, activeBranch.id)))
       : false;
-  const canManagePrices =
+  const canManagePrices = currentUser?.accessPolicy && activeBranch && !isSuperAdmin(db,currentUser) ? hasPermission(currentUser,"pricing.edit") && hasActiveBranchAssignment(currentUser,activeBranch.id) :
     currentUser && activeBranch
       ? isSuperAdmin(db, currentUser) ||
         canManageBranch(db, currentUser, activeBranch.id) ||
         (currentUser.role === "inventory" &&
           hasActiveBranchAssignment(currentUser, activeBranch.id))
       : false;
-  const canAdjust = currentUser
+  const canAdjust = currentUser?.accessPolicy && !isSuperAdmin(db,currentUser) ? hasPermission(currentUser,"inventory.adjust") : currentUser
     ? currentUser.role === "admin" || currentUser.role === "pharmacist"
     : false;
   const canAdmin = isSuperAdmin(db, currentUser);
@@ -2998,7 +3007,7 @@ function App() {
       const result = await runAction(action, payload);
       if (generation !== workspaceGeneration.current) return false;
       setDb((previous) =>
-        applyDatabasePatch(previous, result.db, result.databasePatch),
+        redactStaffData(applyDatabasePatch(previous, result.db, result.databasePatch),result.currentUser),
       );
       setSessionUserId(result.currentUser.id);
       setConnectionError("");
@@ -3017,6 +3026,17 @@ function App() {
       return false;
     }
   }
+
+  const refreshStaffAccess=useEffectEvent(async()=>{
+    if(document.visibilityState!=="hidden")await executeAction("refreshStaffAccess",{},undefined,{quietError:true});
+  });
+  useEffect(()=>{
+    if(!sessionUserId || loading)return;
+    const refresh=()=>{void refreshStaffAccess();};
+    const timer=window.setInterval(refresh,30_000);
+    window.addEventListener("focus",refresh);
+    return()=>{window.clearInterval(timer);window.removeEventListener("focus",refresh);};
+  },[sessionUserId,loading]);
 
   const refreshRegistry = useEffectEvent(async () => {
     if (document.visibilityState === "hidden" || !activeBranch) return;
@@ -3157,7 +3177,7 @@ function App() {
 
   function navigate(view: View, historyMode: "push" | "replace" | "none" = "push", filter: ContinuityFilter = continuityFilter) {
     const nextView =
-      (view === "users" || view === "audit") && !canAdmin
+      ((view === "users" || view === "audit") && !canAdmin) || Boolean(currentUser?.accessPolicy && !canOpenPage(currentUser,view,getPrimaryAdminId(db)))
         ? "dashboard"
         : view;
     if (historyMode !== "none") writeNavigation(nextView, filter, historyMode === "replace");
@@ -3183,7 +3203,7 @@ function App() {
   const restoreNavigation = useEffectEvent((replace: boolean) => {
     const route = readNavigation();
     navigate(route.view, replace ? "replace" : "none", route.filter);
-    if ((route.view === "users" || route.view === "audit") && !canAdmin) {
+    if (((route.view === "users" || route.view === "audit") && !canAdmin) || Boolean(currentUser && !canOpenPage(currentUser,route.view,getPrimaryAdminId(db)))) {
       writeNavigation("dashboard", route.filter, true);
     }
   });
@@ -3198,7 +3218,7 @@ function App() {
       window.removeEventListener("popstate", restore);
       window.removeEventListener("hashchange", restore);
     };
-  }, [sessionUserId, loading, canAdmin]);
+  }, [sessionUserId, loading, canAdmin, currentUser?.accessRevision]);
 
   useEffect(() => {
     if (!sessionUserId || loading) { stopCollection(); return; }
@@ -3470,7 +3490,7 @@ function App() {
 
         <nav className="nav-list" aria-label="Primary navigation">
           {views
-            .filter(({ adminOnly }) => !adminOnly || canAdmin)
+            .filter(({ adminOnly, id }) => (!adminOnly || canAdmin) && canOpenPage(currentUser,id,getPrimaryAdminId(db)))
             .map(({ id: viewId, label, icon: Icon, adminOnly }) => {
             const disabled = adminOnly && !canAdmin;
             if (viewId === "continuity") {
@@ -3607,7 +3627,8 @@ function App() {
             <div>
               <span className="eyebrow">{db.settings.accountName}</span>
               <h1>{views.find((view) => view.id === activeView)?.label}</h1>
-              {activeView === "dashboard" && (
+              {currentUser.accessPolicy && !hasPermission(currentUser,"pricing.cost",getPrimaryAdminId(db)) && <p role="status">Cost information is hidden by your staff access policy.</p>}
+          {activeView === "dashboard" && (
                 <p className="dashboard-welcome">
                   Welcome back, {currentUser.name}. Here is your inventory today.
                 </p>
@@ -3744,9 +3765,9 @@ function App() {
               stockRows={medicinePageStockRows}
               stockTotals={medicinePageStockTotals}
               activeBranch={activeBranch}
-              canWrite={Boolean(canWriteActiveBranch)}
+              canWrite={Boolean(canWriteActiveBranch) && (!currentUser.accessPolicy || hasPermission(currentUser,"inventory.catalogue",getPrimaryAdminId(db)))}
               canManagePrices={Boolean(canManagePrices)}
-              canFulfillActiveBranch={Boolean(canWriteActiveBranch)}
+              canFulfillActiveBranch={Boolean(canWriteActiveBranch) && (!currentUser.accessPolicy || hasPermission(currentUser,"inventory.transfer",getPrimaryAdminId(db)))}
               executeAction={executeAction}
               flash={flash}
             />
@@ -3756,7 +3777,9 @@ function App() {
               key={activeBranch.id}
               db={activeBranchDb}
               activeBranchId={activeBranch.id}
-              canWrite={Boolean(canManagePrices)}
+              canWrite={currentUser.accessPolicy ? hasPermission(currentUser,"inventory.catalogue",getPrimaryAdminId(db)) && Boolean(activeBranch && hasActiveBranchAssignment(currentUser,activeBranch.id)) : Boolean(canManagePrices)}
+              canManagePrices={Boolean(canManagePrices)}
+              canAdjustStock={!currentUser.accessPolicy || hasPermission(currentUser,"inventory.adjust",getPrimaryAdminId(db))}
               executeAction={executeAction}
               flash={flash}
             />
@@ -3764,16 +3787,17 @@ function App() {
           {activeView === "suppliers" && (
             <Suppliers
               db={db}
-              canWrite={canWrite}
+              canWrite={canWrite && (!currentUser.accessPolicy || hasPermission(currentUser,"inventory.catalogue",getPrimaryAdminId(db)))}
               executeAction={executeAction}
             />
           )}
           {activeView === "receive" && activeBranch && (
             <ReceiveStock
+              canSetManualPrices={!currentUser.accessPolicy || hasPermission(currentUser,"pricing.edit",getPrimaryAdminId(db))}
               key={activeBranch.id}
               db={activeBranchDb}
               activeBranch={activeBranch}
-              canWrite={Boolean(canWriteActiveBranch)}
+              canWrite={Boolean(canWriteActiveBranch) && (!currentUser.accessPolicy || hasPermission(currentUser,"inventory.receive",getPrimaryAdminId(db)))}
               executeAction={executeAction}
               flash={flash}
             />
@@ -3799,8 +3823,8 @@ function App() {
               key={`${currentUser.id}-${activeBranch?.id ?? "none"}`}
               db={activeBranchDb}
               activeBranch={activeBranch}
-              canRegisterPatient={canSell}
-              canViewCareHistory={canAdmin || currentUser.role==="pharmacist" || Boolean(activeBranch && canManageBranch(db,currentUser,activeBranch.id))}
+              canRegisterPatient={currentUser.accessPolicy ? hasPermission(currentUser,"patients.edit",getPrimaryAdminId(db)) : canSell}
+              canViewCareHistory={hasPermission(currentUser,"patients.care",getPrimaryAdminId(db)) && (canAdmin || currentUser.role==="pharmacist" || Boolean(activeBranch && canManageBranch(db,currentUser,activeBranch.id)))}
               canMergePatients={canAdmin}
               salesHistoryLoaded={salesHistoryLoaded}
               salesHistoryLoading={salesHistoryLoading}
@@ -3829,7 +3853,7 @@ function App() {
               db={db}
               activeBranch={activeBranch}
               stockRows={activeBranchStockRows}
-              canWrite={Boolean(canWriteActiveBranch)}
+              canWrite={Boolean(canWriteActiveBranch) && (!currentUser.accessPolicy || hasPermission(currentUser,"inventory.issue",getPrimaryAdminId(db)))}
               executeAction={executeAction}
               flash={flash}
             />
@@ -3845,6 +3869,7 @@ function App() {
           )}
           {activeView === "reports" && (
             <Reports
+              currentUser={currentUser}
               db={canAdmin ? db : activeBranchDb}
               stockRows={dashboardStockRows}
               stockTotals={dashboardStockTotals}
@@ -6032,12 +6057,14 @@ function ReceiveStock({
   db,
   activeBranch,
   canWrite,
+  canSetManualPrices=true,
   executeAction,
   flash,
 }: {
   db: Database;
   activeBranch: Branch;
   canWrite: boolean;
+  canSetManualPrices?: boolean;
   executeAction: ExecuteAction;
   flash: (message: string) => void;
 }) {
@@ -6618,7 +6645,7 @@ function ReceiveStock({
                           sellingPrice: Number(event.target.value),
                         })
                       }
-                      disabled={!canWrite || policy.enabled}
+                      disabled={!canWrite || !canSetManualPrices || policy.enabled}
                     />
                     {!policy.enabled && <MarkupWarning actual={Number(line.sellingPrice) || 0} target={calculatedSellingPrice(db, line.itemType, selectedItemId, lineUnitCost({ ...line, itemId: selectedItemId })).price} unit={selectedMedicine ? medicineSellableUnit(selectedMedicine) : db.products.find(item => item.id === selectedItemId)?.unit || "unit"} />}
                   </label>
@@ -7095,12 +7122,16 @@ function ProductsView({
   db,
   activeBranchId,
   canWrite,
+  canManagePrices=true,
+  canAdjustStock=true,
   executeAction,
   flash,
 }: {
   db: Database;
   activeBranchId: string;
   canWrite: boolean;
+  canManagePrices?: boolean;
+  canAdjustStock?: boolean;
   executeAction: ExecuteAction;
   flash: (message: string) => void;
 }) {
@@ -7154,7 +7185,7 @@ function ProductsView({
       category: form.category.trim() || "General retail",
       unit: form.unit.trim() || "Unit",
       costPrice: Math.max(0, Number(form.costPrice) || 0),
-      sellingPrice: autoPricingOn
+      sellingPrice: autoPricingOn && canManagePrices
         ? productTarget
         : Math.max(0, Number(form.sellingPrice) || 0),
       quantity: Math.max(0, Number(form.quantity) || 0),
@@ -7318,7 +7349,7 @@ function ProductsView({
               onChange={(event) =>
                 setForm({ ...form, quantity: Number(event.target.value) })
               }
-              disabled={!canWrite}
+              disabled={!canWrite || !canAdjustStock}
             />
           </label>
           <label>
@@ -7330,7 +7361,7 @@ function ProductsView({
               onChange={(event) =>
                 setForm({ ...form, costPrice: Number(event.target.value) })
               }
-              disabled={!canWrite}
+              disabled={!canWrite || !canManagePrices}
             />
           </label>
           <label>
@@ -7339,14 +7370,14 @@ function ProductsView({
               type="number"
               min="0"
               value={numberInputValue(
-                autoPricingOn
+                autoPricingOn && canManagePrices
                   ? productTarget
                   : form.sellingPrice,
               )}
               onChange={(event) =>
                 setForm({ ...form, sellingPrice: Number(event.target.value) })
               }
-              disabled={!canWrite || autoPricingOn}
+              disabled={!canWrite || !canManagePrices || autoPricingOn}
             />
             {!autoPricingOn && <MarkupWarning actual={Number(form.sellingPrice) || 0} target={productTarget} unit={form.unit || "unit"} />}
           </label>
@@ -7806,7 +7837,7 @@ function POSView({
         draft.expiresAt > new Date().toISOString(),
     )
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  const canCompleteSale =
+  const canCompleteSale = currentUser.accessPolicy && !isSuperAdmin(db,currentUser) ? hasPermission(currentUser,"sales.complete") && hasActiveBranchAssignment(currentUser,activeBranch.id) :
     isSuperAdmin(db, currentUser) ||
     canManageBranch(db, currentUser, activeBranch.id) ||
     ((currentUser.role === "pharmacist" || currentUser.role === "cashier") &&
@@ -8762,8 +8793,8 @@ function POSView({
             </div>
 
             <div className="patient-registry-actions">
-              {db.patients && canSell && <button type="button" className="ghost-button" onClick={()=>setPatientRegistrationOpen(true)}>Register patient</button>}
-              {selectedPatient?.patientId && (isSuperAdmin(db,currentUser) || currentUser.role==="pharmacist" || canManageBranch(db,currentUser,activeBranch.id)) && <PatientCareHistoryButton patientId={selectedPatient.patientId} branchId={activeBranch.id} executeAction={executeAction}/>}
+              {db.patients && canSell && hasPermission(currentUser,"patients.edit",getPrimaryAdminId(db)) && <button type="button" className="ghost-button" onClick={()=>setPatientRegistrationOpen(true)}>Register patient</button>}
+              {selectedPatient?.patientId && hasPermission(currentUser,"patients.care",getPrimaryAdminId(db)) && (isSuperAdmin(db,currentUser) || currentUser.role==="pharmacist" || canManageBranch(db,currentUser,activeBranch.id)) && <PatientCareHistoryButton patientId={selectedPatient.patientId} branchId={activeBranch.id} executeAction={executeAction}/>}
             </div>
             <div className="pos-customer-panel">
               <div className="pos-customer-field">
@@ -9366,7 +9397,7 @@ function ContinuityCentre({
     (request) => request.status === "open",
   );
   const dueRefills = refillRows.filter((row) => row.daysUntilDue <= 7);
-  const canCreate = Boolean(activeBranch);
+  const canCreate = Boolean(activeBranch) && (!currentUser.accessPolicy || hasPermission(currentUser,"patients.edit",getPrimaryAdminId(db)));
   const selectedMedicine = db.medicines.find(
     (medicine) => medicine.id === form.medicineId,
   );
@@ -10243,6 +10274,7 @@ function Adjustments({
 
 function Reports({
   db,
+  currentUser,
   stockRows,
   stockTotals,
   activeBranch,
@@ -10252,6 +10284,7 @@ function Reports({
   onLoadMoreLedgerHistory,
 }: {
   db: Database;
+  currentUser: User;
   stockRows: StockRow[];
   stockTotals: Map<string, number>;
   activeBranch?: Branch;
@@ -10669,11 +10702,11 @@ function Reports({
 
   return (
     <>
-    <div className="button-row"><button type="button" className="ghost-button" aria-pressed={!financialOpen} onClick={()=>setFinancialOpen(false)}>Inventory reports</button><button type="button" className="ghost-button" aria-pressed={financialOpen} onClick={()=>setFinancialOpen(true)}>Sales reconciliation</button></div>
-    {financialOpen ? <FinancialReconciliation key={activeBranch?.id || "all"} branchId={activeBranch?.id || ""}/> : <ReportsPanel
+    <div className="button-row"><button type="button" className="ghost-button" aria-pressed={!financialOpen} onClick={()=>setFinancialOpen(false)}>Inventory reports</button><button type="button" disabled={!hasPermission(currentUser,"reports.sales",getPrimaryAdminId(db))} className="ghost-button" aria-pressed={financialOpen} onClick={()=>setFinancialOpen(true)}>Sales reconciliation</button></div>
+    {financialOpen && hasPermission(currentUser,"reports.sales",getPrimaryAdminId(db)) ? <FinancialReconciliation key={`${activeBranch?.id || "all"}:${currentUser.accessRevision || 0}`} branchId={activeBranch?.id || ""} canExport={hasPermission(currentUser,"reports.export",getPrimaryAdminId(db))}/> : <ReportsPanel
       report={report}
       setReport={setReport}
-      rows={rows}
+      rows={hasPermission(currentUser,"pricing.cost",getPrimaryAdminId(db)) ? rows : rows.map(row=>Object.fromEntries(Object.entries(row).map(([key,value])=>[key,/cost|margin/i.test(key)?"Restricted":value])))}
       categories={categories}
       suppliers={db.suppliers}
       movementFilterOptions={movementFilterOptions}
@@ -10707,7 +10740,8 @@ function Reports({
       historyLoading={historyLoading}
       historyLoadMoreLabel={historyLoadMoreLabel}
       onLoadMoreHistory={loadMoreHistory}
-      onExportCsv={exportCsv}
+      canExport={hasPermission(currentUser,"reports.export",getPrimaryAdminId(db))}
+      onExportCsv={(name,exportRows)=>{if(hasPermission(currentUser,"reports.export",getPrimaryAdminId(db)))exportCsv(name,exportRows);}}
       onPrint={() => window.print()}
     />}
     </>
@@ -10900,6 +10934,9 @@ function UserManagement({
   executeAction: ExecuteAction;
   flash: (message: string) => void;
 }) {
+  const [accessUser,setAccessUser]=useState<User|null>(null);
+  const [staffSearch,setStaffSearch]=useState("");
+  const [staffStatus,setStaffStatus]=useState("all");
   const primaryAdminId = getPrimaryAdminId(db);
   const securityEvents = db.securityEvents.slice(0, 50);
 
@@ -10934,117 +10971,25 @@ function UserManagement({
 
   return (
     <div className="page-grid">
+      {accessUser && <StaffAccessEditor user={accessUser} db={db} executeAction={executeAction} onClose={()=>setAccessUser(null)}/>}
       <section className="content-section">
         <div className="section-heading">
           <div>
             <h2>User Access Control</h2>
             <p>
-              New registrations stay pending until an admin assigns a role and
-              activates the account.
+              Choose a role preset, customise permissions and branch scope, then activate the account. Existing access stays unchanged until saved.
             </p>
           </div>
         </div>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>User</th>
-                <th>Phone</th>
-                <th>Role</th>
-                <th>Branch access</th>
-                <th>Status</th>
-                <th>Requested</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {db.users.map((user) => (
-                <tr key={user.id}>
-                  <td>
-                    <strong>{user.name}</strong>
-                    <span>
-                      {user.email}
-                      {user.id === primaryAdminId ? " / Permanent admin" : ""}
-                    </span>
-                  </td>
-                  <td>{user.phone || "-"}</td>
-                  <td>
-                    <select
-                      value={user.role}
-                      onChange={(event) =>
-                        updateUser(user.id, {
-                          role: event.target.value as Role,
-                        })
-                      }
-                      disabled={
-                        user.id === currentUser.id || user.id === primaryAdminId
-                      }
-                    >
-                      {Object.entries(roleLabels).map(([role, label]) => (
-                        <option key={role} value={role}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td>
-                    <span>
-                      {isSuperAdmin(db, user)
-                        ? "All branches"
-                        : db.branches
-                            .filter((branch) =>
-                              hasActiveBranchAssignment(user, branch.id),
-                            )
-                            .map((branch) => {
-                              const expiresAt = getBranchAccessExpiry(
-                                user,
-                                branch.id,
-                              );
-                              return `${branch.name}${expiresAt ? ` until ${expiresAt}` : ""}`;
-                            })
-                            .join(", ") || "View only everywhere"}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={`pill ${user.status}`}>
-                      {statusLabels[user.status]}
-                    </span>
-                  </td>
-                  <td>{new Date(user.createdAt).toLocaleDateString()}</td>
-                  <td>
-                    <div className="button-row">
-                      <button
-                        className="ghost-button"
-                        type="button"
-                        onClick={() =>
-                          updateUser(user.id, { status: "active" })
-                        }
-                        disabled={user.status === "active"}
-                      >
-                        <UserCheck size={16} />
-                        Activate
-                      </button>
-                      <button
-                        className="ghost-button"
-                        type="button"
-                        onClick={() =>
-                          updateUser(user.id, { status: "suspended" })
-                        }
-                        disabled={
-                          user.id === currentUser.id ||
-                          user.id === primaryAdminId ||
-                          user.status === "suspended"
-                        }
-                      >
-                        <XCircle size={16} />
-                        Suspend
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="staff-list-filters"><label>Find staff<input type="search" value={staffSearch} onChange={event=>setStaffSearch(event.target.value)} placeholder="Name, email or job title"/></label><label>Account status<select value={staffStatus} onChange={event=>setStaffStatus(event.target.value)}><option value="all">All staff</option><option value="pending">Pending</option><option value="active">Active</option><option value="suspended">Suspended</option></select></label></div>
+        <div className="staff-user-list" role="list">
+          {db.users.filter(user=>(staffStatus==="all" || user.status===staffStatus) && `${user.name} ${user.email} ${user.accessPolicy?.title || roleLabels[user.role]}`.toLowerCase().includes(staffSearch.toLowerCase())).map(user=><article className="staff-user-card" role="listitem" key={user.id}>
+            <header><div><strong>{user.name}</strong><span>{user.email}</span>{user.phone && <span>{user.phone}</span>}</div><span className={`pill ${user.status}`}>{statusLabels[user.status]}</span></header>
+            <p><b>{user.accessPolicy?.title || roleLabels[user.role]}</b> · {user.id===primaryAdminId?"Workspace owner · protected":user.accessPolicy?`${effectivePermissions(user).length} permissions`:"Existing role access"}</p>
+            <p>{user.id===primaryAdminId?"All branches":db.branches.filter(branch=>hasActiveBranchAssignment(user,branch.id)).map(branch=>`${branch.name}${getBranchAccessExpiry(user,branch.id)?` · until ${getBranchAccessExpiry(user,branch.id)}`:""}`).join(", ") || "No assigned branch"}</p>
+            <small>Registered {new Date(user.createdAt).toLocaleDateString()}</small>
+            {user.id!==primaryAdminId && <div className="button-row"><button type="button" className="primary-button" onClick={()=>setAccessUser(structuredClone(user))}>Manage access</button><button type="button" className="ghost-button" disabled={user.status==="active"} onClick={()=>updateUser(user.id,{status:"active"})}>Activate</button><button type="button" className="ghost-button" disabled={user.status==="suspended" || user.id===currentUser.id} onClick={()=>updateUser(user.id,{status:"suspended"})}>Suspend</button></div>}
+          </article>)}
         </div>
       </section>
 

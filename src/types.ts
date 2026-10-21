@@ -1,3 +1,4 @@
+import type {StaffAccess,StaffRole} from "./accessPolicy.js";
 import type {PatientRecord} from "./patientRegistry.js";
 import type { PatientDetails } from "./patientDetails";
 import type { AlertPreference } from "./alertPolicy";
@@ -48,6 +49,8 @@ export type User = {
   branchIds: string[];
   managedBranchIds: string[];
   branchAccessExpiresAt?: Record<string, string>;
+  accessPolicy?: StaffAccess;
+  accessRevision?: number;
   lastChatSeenAt?: string;
   lastChatSeenAtByBranch?: Record<string, string>;
   knownDevices?: Array<{
@@ -444,6 +447,7 @@ export type AppSettings = {
 };
 
 export type Database = {
+  staffRoles?: StaffRole[];
   patients?: PatientRecord[];
   alertPreferences?: AlertPreference[];
   users: User[];

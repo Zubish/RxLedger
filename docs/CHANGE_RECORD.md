@@ -75,6 +75,17 @@ Record material changes using [the maintenance process](MAINTENANCE_AND_COLLABOR
 - Release: **Sales Reconciliation — Financial Snapshots**, `release/sales-reconciliation-v1.0.0`. Additive JSON fields; older code can omit cost snapshots, so prefer compatible forward fixes. Snapshot restoration is separate from code rollback and cannot undo external payments.
 - Owner acceptance: not yet reviewed. Remaining: recurring backup coverage, reviewed tax/refund/settlement contracts, hosted load and custom-domain setup once supplied.
 
+## RXLEDGER-STAFF-PERMISSIONS-01 — Role Presets And Individual Access
+
+- Date/owner/request: 2026-10-21; Musa Ibrahim approved adapting the HealthPass role/personal-restriction pattern to RxLedger Users.
+- Outcome: searchable responsive staff list; focused access editor with presets, grouped grant checkboxes, individual denials, per-branch assignment/expiry, reusable templates and explicit audited save. Workspace ownership stays protected; role titles do not establish clinical credentials.
+- Scope/category: adaptive/preventive; optional user access policies/revisions and reusable template collection, mutation gates, history/report/analytics restrictions, response/cache redaction, navigation/controls, audit credential hygiene and public bootstrap minimisation. [Contract](STAFF_PERMISSIONS.md).
+- Data/configuration: additive JSON only; no SQL schema, credentials, environment variable or dependency changes. Existing staff access is retained until explicitly saved. Templates are snapshots, not dynamically linked assignments.
+- Verification: actual API/PostgreSQL cases exercise grants/denials/dependencies, owner protection, stale saves, branch boundaries/expiry, structured data redaction, pricing/catalogue/stock bypasses, template isolation and audit output. Browser editor/session flows pass at 390/1440px; checkout and financial browser regressions pass at 390/1440px, and navigation at 390/768/1440px. All 18 test files and build pass; lint reports only the existing RaiConsent dependency warning. No production staff or pharmacy test mutations.
+- Release: **Staff Permissions — Role Presets And Individual Access**, `release/staff-permissions-v1.0.0`. Production readiness and served manifest/assets are verified independently.
+- Recovery: prefer compatible forward fixes. Prior builds do not enforce these policies and may drop metadata; a code rollback alone is unsafe when restrictions are relied upon. No new production restore drill; recurring-backup limitation remains in [RECOVERY_RUNBOOK.md](RECOVERY_RUNBOOK.md).
+- Owner acceptance: not yet reviewed. Limits: no template editing/deletion or live role propagation, no automated professional credential verification, no prevention of copying previously authorised data, no new delegated owner-administration permissions or enterprise load claim.
+
 ## Compact Template For Future Material Changes
 
 - ID/date / request / owner:

@@ -20,6 +20,9 @@ test("emitted server modules load with real relative dependencies and initialize
     for (const file of [
       "src/alertPolicy.ts",
       "src/financial.ts",
+      "src/accessPolicy.ts",
+      "src/dataAccess.ts",
+      "server/staff-access.ts",
       "src/patientRegistry.ts",
       "server/patient-registry.ts",
       "src/workspaceIdentity.ts",

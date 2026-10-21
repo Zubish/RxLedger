@@ -5,7 +5,7 @@ import { createRequire, Module } from "node:module";
 import { resolve } from "node:path";
 import test from "node:test";
 import { snapshotHeavyCollections, buildDatabasePatch } from "../src/databasePatch.ts";
-import { accessibleBranchIds, canAccessPatientRegistry, primaryAdminIdForDatabase, productQuantityInBranches, scopeDatabaseForUser } from "../server/branch-scope.ts";
+const { accessibleBranchIds, canAccessPatientRegistry, primaryAdminIdForDatabase, productQuantityInBranches, scopeDatabaseForUser }=loadServerModule("server/branch-scope.ts");
 import { inventoryAlerts } from "../src/alertPolicy.ts";
 const user = { id: "local", role: "pharmacist", status: "active", branchIds: ["a", "expired"], managedBranchIds: [], branchAccessExpiresAt: { expired: "2000-01-01" } };
 const foreign = { ...user, id: "foreign", branchIds: ["b"] };
@@ -116,6 +116,8 @@ const globalAccess = (actor, primary) => accessibleBranchIds(actor, primary) ===
 const assignment = (actor, branch) => (accessibleBranchIds(actor) ?? []).includes(branch);
 mutationModule.require = (name) => {
  if(name.endsWith("patient-registry.js")) return loadServerModule("server/patient-registry.ts");
+ if(name.endsWith("staff-access.js")) return loadServerModule("server/staff-access.ts");
+ if(name.endsWith("accessPolicy.js")) return loadServerModule("src/accessPolicy.ts");
  if(name.endsWith("financial.js")) return loadServerModule("src/financial.ts");
  if(name.endsWith("patientRegistry.js")) return loadServerModule("src/patientRegistry.ts");
  if(name === "node:crypto") return require(name);

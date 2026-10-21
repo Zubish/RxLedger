@@ -4,6 +4,14 @@ Use descriptive commit subjects and annotated production tags. Report the releas
 
 For a new release, update `public/release.json`, its change record and this list. Link the annotated tag to the exact verified commit and confirm that production serves the named release manifest and tested assets. A named tag identifies code; deployment readiness and owner acceptance are recorded separately.
 
+## Staff Permissions — Role Presets And Individual Access
+
+- Version: **staff-permissions-v1.0.0**
+- Annotated tag: **release/staff-permissions-v1.0.0**
+- Change record: **RXLEDGER-STAFF-PERMISSIONS-01** in [CHANGE_RECORD.md](CHANGE_RECORD.md).
+- Owner-controlled feature grants, personal restrictions, branch/date scope and reusable preset snapshots. Enforced in actions, structured data, history, reports and analytics; responsive Users editor and session refresh.
+- Contract, evidence and compatibility limits: [STAFF_PERMISSIONS.md](STAFF_PERMISSIONS.md).
+
 ## Sales Reconciliation — Financial Snapshots
 
 - Version: **sales-reconciliation-v1.0.0**

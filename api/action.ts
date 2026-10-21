@@ -1,3 +1,5 @@
+import {saveStaffAccess,saveStaffRole,enforceActionPermission} from "../server/staff-access.js";
+import {hasPermission} from "../src/accessPolicy.js";
 import {moneyAmount} from "../src/financial.js";
 import type {PatientRecord} from "../src/patientRegistry.js";
 import {canonicalPatient} from "../server/patient-registry.js";
@@ -104,6 +106,8 @@ export default async function handler(
       fail(res, 401, "Authentication required");
       return;
     }
+    enforceActionPermission(db,actor,body.action);
+    const beforeAccess=new Map(db.users.map(user=>[user.id,JSON.stringify([user.role,user.status,user.branchIds,user.managedBranchIds,user.branchAccessExpiresAt,user.accessPolicy])]));
     let responseActor = actor;
     const heavySnapshot = snapshotHeavyCollections(scopeDatabaseForUser(db, actor));
 
@@ -187,6 +191,12 @@ export default async function handler(
         );
         break;
       }
+      case "refreshStaffAccess":
+        skipSave=true;break;
+      case "saveStaffAccess":
+        saveStaffAccess(db,actor.id,body.payload);break;
+      case "saveStaffRole":
+        saveStaffRole(db,actor.id,body.payload);break;
       case "updateUser":
         updateUser(db, actor.id, body.payload);
         break;
@@ -301,6 +311,7 @@ export default async function handler(
         return;
     }
 
+    for(const user of db.users){if(beforeAccess.has(user.id) && beforeAccess.get(user.id)!==JSON.stringify([user.role,user.status,user.branchIds,user.managedBranchIds,user.branchAccessExpiresAt,user.accessPolicy])){user.accessRevision=(user.accessRevision || 0)+1;if(user.accessPolicy)user.accessPolicy.revision=user.accessRevision;}}
     const saveStartedAt = Date.now();
     let dbWithReadModels = withReadModels(db);
     if (!skipSave) {
@@ -329,7 +340,9 @@ export default async function handler(
     const clean = scopeDatabaseForUser(sanitizeDatabase(dbWithReadModels), responseActor);
     const databasePatch = buildDatabasePatch(heavySnapshot, clean);
     if (checkoutResult?.sale) {
-      const sale = checkoutResult.sale;
+      const originalSale=checkoutResult.sale;
+      const sale = clean.sales.find(sale=>sale.id===originalSale.id) || {...originalSale,items:originalSale.items.map(item=>({...item,unitCost:undefined}))};
+      checkoutResult={...checkoutResult,sale};
       if (!databasePatch.sales.upserts.some(item => item.id === sale.id)) databasePatch.sales.upserts.push(sale);
       for (const entry of clean.ledger.filter(item => item.reference === sale.reference)) {
         if (!databasePatch.ledger.upserts.some(item => item.id === entry.id)) databasePatch.ledger.upserts.push(entry);
@@ -622,6 +635,7 @@ function calculatedSellingPrice(
 }
 
 function discountLimitPercent(db: Database, actor: User) {
+  if(actor.accessPolicy && !hasPermission(actor,"sales.discount",getPrimaryAdminId(db)))return 0;
   if (canAdmin(actor, getPrimaryAdminId(db)) || actor.role === "admin")
     return 100;
   const policy = pricingPolicy(db.settings);
@@ -674,13 +688,16 @@ function updateUser(
   if (target.id === actorId && updates.status && updates.status !== "active")
     throw new Error("You cannot suspend your own active admin account");
   const before = { ...target };
+  if(updates.role && !["admin","pharmacist","cashier","inventory","viewer"].includes(updates.role))throw new Error("Invalid job role");
+  if(updates.status && !["pending","active","suspended"].includes(updates.status))throw new Error("Invalid user status");
+  if(updates.role && target.accessPolicy)throw new Error("Use Manage access to change this staff member’s role");
   if (updates.role) target.role = updates.role;
   if (updates.status) {
     target.status = updates.status;
     if (updates.status === "active") {
       target.approvedAt = nowIso();
       target.approvedBy = actorId;
-      if (!target.branchIds.length && db.branches[0])
+      if (!target.accessPolicy && !target.branchIds.length && db.branches[0])
         target.branchIds = [db.branches[0].id];
     }
   }
@@ -795,7 +812,7 @@ function updateBranchAccess(
   };
   target.branchAccessExpiresAt = { ...(target.branchAccessExpiresAt ?? {}) };
   target.branchIds = canAccess
-    ? [branchId]
+    ? target.accessPolicy ? [...new Set([...target.branchIds,branchId])] : [branchId]
     : target.branchIds.filter((id) => id !== branchId);
   if (canAccess && expiresAt) {
     target.branchAccessExpiresAt[branchId] = expiresAt;
@@ -901,6 +918,7 @@ function canManageMedicinePrices(
 ) {
   const primaryAdminId = getPrimaryAdminId(db);
   if (canAdmin(actor, primaryAdminId)) return true;
+  if(actor.accessPolicy)return hasPermission(actor,"pricing.edit") && Boolean(branchId && hasActiveBranchAssignment(actor,branchId));
   if (branchId && canManageBranch(actor, branchId, primaryAdminId)) return true;
   return actorRole === "inventory" && branchId
     ? hasActiveBranchAssignment(actor, branchId)
@@ -1107,11 +1125,13 @@ function upsertProduct(
   if (!canAdmin(actor, getPrimaryAdminId(db)) && !hasActiveBranchAssignment(actor, branchId))
     throw new Error("You do not have permission to change stock in this branch");
   const input = (payload?.record ?? {}) as Partial<Product>;
-  const costPrice = Number(input.costPrice) || 0;
+  const existingProduct=db.products.find(product=>product.id===input.id);
+  const mayPrice=!actor.accessPolicy || hasPermission(actor,"pricing.edit",getPrimaryAdminId(db));
+  const costPrice = mayPrice ? Number(input.costPrice) || 0 : existingProduct?.costPrice || 0;
   const provisionalId = input.id || id("prd");
   const pricingDb = { ...db, products: [...db.products.filter(item => item.id !== provisionalId),
     { ...input, id: provisionalId, sku: input.sku || "", name: input.name || "", category: input.category || "General retail" } as Product] };
-  const sellingPrice = pricingPolicy(db.settings).enabled
+  const sellingPrice = !mayPrice ? existingProduct?.sellingPrice || 0 : pricingPolicy(db.settings).enabled
     ? calculatedSellingPrice(pricingDb, "product", provisionalId, costPrice)
     : Number(input.sellingPrice) || 0;
   if (sellingPrice > 0 && sellingPrice < costPrice)
@@ -1156,6 +1176,7 @@ function upsertProduct(
   const currentBranchQuantity = productQuantityInBranches(db, record.id, [branchId]);
   const requestedBranchQuantity = record.quantity;
   const difference = requestedBranchQuantity - currentBranchQuantity;
+  if(actor.accessPolicy && difference!==0 && !hasPermission(actor,"inventory.adjust",getPrimaryAdminId(db)))throw new Error("Stock correction requires Adjust stock access; receive deliveries through Goods Receiving");
   record.quantity = Math.max(0, (before?.quantity ?? 0) + difference);
   if (difference !== 0) db.ledger.unshift({
     id: id("led"), itemType: "product", medicineId: "", productId: record.id,
@@ -1397,7 +1418,8 @@ function receiveStock(
         ? calculatedSellingPrice(db, "product", productId, unitCost)
         : input.sellingPrice === undefined || input.sellingPrice === ""
           ? product.sellingPrice || 0 : requireNumber(input.sellingPrice, "Selling price") || product.sellingPrice || 0;
-      if (sellingPrice < 0) throw new Error("Selling price cannot be negative");
+      if(actor.accessPolicy && !pricingPolicy(db.settings).enabled && !hasPermission(actor,"pricing.edit",getPrimaryAdminId(db)) && sellingPrice!==(product.sellingPrice || 0))throw new Error("Changing the manual selling price requires pricing access");
+    if (sellingPrice < 0) throw new Error("Selling price cannot be negative");
       if (sellingPrice > 0 && sellingPrice < unitCost)
         throw new Error("Selling price cannot be lower than unit cost");
       const beforeProduct = { ...product };
@@ -1488,6 +1510,7 @@ function receiveStock(
     if (sellingPrice < 0) throw new Error("Selling price cannot be negative");
     if (sellingPrice > 0 && sellingPrice < unitCost)
       throw new Error("Selling price cannot be lower than unit cost");
+if(actor.accessPolicy && !pricingPolicy(db.settings).enabled && !hasPermission(actor,"pricing.edit",getPrimaryAdminId(db)) && sellingPrice!==(medicine.sellingPrice || 0))throw new Error("Changing the manual selling price requires pricing access");
     const beforeMedicine = { ...medicine };
     if (unitCost > 0) medicine.costPrice = unitCost;
     if (sellingPrice > 0) medicine.sellingPrice = sellingPrice;
@@ -2413,6 +2436,7 @@ function issueStock(
 }
 
 function canSellInBranch(db: Database, actor: User, branchId: string) {
+  if(actor.accessPolicy && !canAdmin(actor,getPrimaryAdminId(db)))return hasPermission(actor,"sales.prepare") && hasActiveBranchAssignment(actor,branchId);
   return (
     canAdmin(actor, getPrimaryAdminId(db)) ||
     canManageBranch(actor, branchId, getPrimaryAdminId(db)) ||
@@ -2422,6 +2446,7 @@ function canSellInBranch(db: Database, actor: User, branchId: string) {
 }
 
 function canCompleteSaleInBranch(db: Database, actor: User, branchId: string) {
+  if(actor.accessPolicy && !canAdmin(actor,getPrimaryAdminId(db)))return hasPermission(actor,"sales.complete") && hasActiveBranchAssignment(actor,branchId);
   const primaryAdminId = getPrimaryAdminId(db);
   return (
     canAdmin(actor, primaryAdminId) ||

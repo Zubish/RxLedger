@@ -16,6 +16,8 @@ Sales, drafts and continuity carry patient IDs. Current registry details are fet
 - Sales, stock, ledger, receipts, drafts, continuity operations and financial reports retain their existing branch authorisation. Shared identity grants no foreign-branch transaction access.
 - Only the workspace owner can merge duplicates. Require both current revisions, identity confirmation, a reason and explicitly reviewed final demographics/allergies. Keep the source as a merged alias; relink patient references, not financial values or clinical snapshots.
 
+The [staff permission policy](STAFF_PERMISSIONS.md) adds explicit feature restrictions to these boundaries. Patient lookup, editing and clinical history are separately controllable; professional/branch authority still applies.
+
 ## Persistence and existing records
 
 The optional `patients` collection and patient IDs are additive fields in existing tenant JSON; no SQL schema or configuration change is needed. Legacy import deterministically separates branch/name/contact groups, marks them for review and preserves documented historical allergies. It does not assume that matching contacts across branches prove the same person. Existing ambiguous duplicates need owner review.

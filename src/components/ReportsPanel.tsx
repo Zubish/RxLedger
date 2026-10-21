@@ -58,7 +58,9 @@ export function ReportsPanel({
   onLoadMoreHistory,
   onExportCsv,
   onPrint,
+  canExport = true,
 }: {
+  canExport?: boolean;
   report: ReportKind;
   setReport: (report: ReportKind) => void;
   rows: ReportRow[];
@@ -127,12 +129,12 @@ export function ReportsPanel({
             className="ghost-button"
             type="button"
             onClick={() => onExportCsv(`${report}-report.csv`, rows)}
-            disabled={!rows.length}
+            disabled={!rows.length || !canExport}
           >
             <Download size={16} />
             CSV
           </button>
-          <button className="ghost-button" type="button" onClick={onPrint}>
+          <button className="ghost-button" type="button" disabled={!canExport} onClick={onPrint}>
             <Printer size={16} />
             Print/PDF
           </button>

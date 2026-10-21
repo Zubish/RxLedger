@@ -1,7 +1,8 @@
+import {loadServerModule} from "./helpers/load-server-module.mjs";
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createConnectionHandler } from '../server/rai/connection-handler.ts';
-import { resolveRaiAccessScope } from '../server/rai/access-policy.ts';
+const { resolveRaiAccessScope }=loadServerModule("server/rai/access-policy.ts");
 
 const user = { id: 'u', role: 'inventory', status: 'active', branchIds: ['b'], managedBranchIds: [] };
 const db = { users: [user], branches: [{ id: 'b', active: true }], settings: {} };

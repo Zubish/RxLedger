@@ -30,7 +30,7 @@ const sql = async (strings, ...values) => {
  if (/SELECT EXISTS/.test(statement)) return [{exists:workspaces.has(values[0])}];
  return [];
 };
-module.require = name => name.endsWith('patient-registry.js') ? loadServerModule('server/patient-registry.ts') : name.endsWith('workspaceIdentity.js') ? {tenantWorkspaceSlug} : name.endsWith('alertPolicy.js') ? {reconcileAlertPreferences} : name === '@neondatabase/serverless' ? {neon:()=>sql} : require(name);
+module.require = name => name.endsWith("accessPolicy.js") ? loadServerModule("src/accessPolicy.ts") : name.endsWith('patient-registry.js') ? loadServerModule('server/patient-registry.ts') : name.endsWith('workspaceIdentity.js') ? {tenantWorkspaceSlug} : name.endsWith('alertPolicy.js') ? {reconcileAlertPreferences} : name === '@neondatabase/serverless' ? {neon:()=>sql} : require(name);
 module._compile(ts.transpileModule(readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,filename);
 const previousUrl=process.env.DATABASE_URL;
 process.env.DATABASE_URL='postgresql://fixture.invalid/test';

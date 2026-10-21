@@ -1,3 +1,4 @@
+import {hasPermission} from "../src/accessPolicy.js";
 import {accessibleBranchIds,primaryAdminIdForDatabase} from './branch-scope.js';
 import {getAuthenticatedUser,getCompanySlugFromRequest,loadTenantDatabase,requireMethod,fail} from './_shared.js';
 import type {HandlerRequest,HandlerResponse} from './_shared.js';
@@ -12,6 +13,8 @@ export default async function handler(req:HandlerRequest & {query?:Record<string
   if(!db){fail(res,404,'Company portal not found');return;}
   const user=await getAuthenticatedUser(req,db);
   if(!user){fail(res,401,'Authentication required');return;}
+  if(user.accessPolicy && !hasPermission(user,"reports.sales",primaryAdminIdForDatabase(db))){fail(res,403,"Sales reports are not included in your staff access");return;}
+  if(req.query?.export && user.accessPolicy && !hasPermission(user,"reports.export",primaryAdminIdForDatabase(db))){fail(res,403,"Report export is not included in your staff access");return;}
   const ids=accessibleBranchIds(user,primaryAdminIdForDatabase(db));
   const param=(key:string)=>String(req.query?.[key] || '');
   const branchId=param('branchId');
@@ -35,6 +38,8 @@ export default async function handler(req:HandlerRequest & {query?:Record<string
    (ledgerByReference.get(sale.reference)||[]).forEach(entry=>actual.set(key(entry),(actual.get(key(entry))||0)-entry.quantity));
    if([...new Set([...expected.keys(),...actual.keys()])].some(key=>Math.abs((expected.get(key)||0)-(actual.get(key)||0))>1e-8))row.issues.push('POS stock movements differ from sold quantities');
   }
-  res.status(200).json({generatedAt:new Date().toISOString(),start,end,rows,totals:summarizeFinancial(rows)});
+  const costRestricted=Boolean(user.accessPolicy && !hasPermission(user,"reports.margin",primaryAdminIdForDatabase(db)));
+  if(costRestricted)rows.forEach(row=>{row.cost=null;row.grossMargin=null;});
+  res.status(200).json({costRestricted,generatedAt:new Date().toISOString(),start,end,rows,totals:summarizeFinancial(rows)});
  }catch{fail(res,500,'Sales reconciliation is unavailable. Try again.');}
 }

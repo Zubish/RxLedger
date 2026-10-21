@@ -1,3 +1,4 @@
+import {hasPermission,type Permission} from "../../src/accessPolicy.js";
 import type { Database, Role, User } from "../_shared.js";
 
 export type RaiCapability =
@@ -24,6 +25,8 @@ export function resolveRaiAccessScope(input: {
   if (input.user.status !== "active" || !input.requiredCapabilities.length || !input.requestedBranchIds.length) {
     return { ok: false as const, reason: "An active user, explicit branches and capabilities are required." };
   }
+  const required:Record<RaiCapability,Permission>={inventory_analytics:"inventory.view",sales_analytics:"sales.history",financial_analytics:"reports.margin",continuity_analytics:"patients.view"};
+  if(input.user.accessPolicy && input.requiredCapabilities.some(cap=>!hasPermission(input.user,required[cap],input.db.settings.primaryAdminId)))return {ok:false as const,reason:"Your individual staff access does not allow this analysis."};
   const capabilities = capabilityByRole[input.user.role] || [];
   const missingCapabilities = input.requiredCapabilities.filter((capability) => !capabilities.includes(capability));
   if (missingCapabilities.length) return { ok: false as const, reason: "Your RxLedger role cannot access this type of Rai analysis." };

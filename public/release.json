@@ -1,8 +1,8 @@
 {
   "application": "RxLedger",
-  "name": "Sales Reconciliation — Financial Snapshots",
-  "version": "sales-reconciliation-v1.0.0",
-  "tag": "release/sales-reconciliation-v1.0.0",
-  "changeRecord": "RXLEDGER-SALES-RECONCILIATION-01",
+  "name": "Staff Permissions — Role Presets And Individual Access",
+  "version": "staff-permissions-v1.0.0",
+  "tag": "release/staff-permissions-v1.0.0",
+  "changeRecord": "RXLEDGER-STAFF-PERMISSIONS-01",
   "date": "2026-10-21"
 }

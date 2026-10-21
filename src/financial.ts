@@ -9,7 +9,7 @@ export type FinancialRow = {
  cashTendered:number|null;change:number|null;taxStatus:string;issues:string[];
 };
 export type FinancialReport = {
- generatedAt:string;start:string;end:string;rows:FinancialRow[];
+ generatedAt:string;start:string;end:string;rows:FinancialRow[];costRestricted?:boolean;
  totals:{sales:number;gross:number;discount:number;net:number;cost:number|null;grossMargin:number|null;missingCostSales:number;issueSales:number;paymentTotals:Record<string,number>};
 };
 export function financialRows(sales:Sale[]):FinancialRow[] {

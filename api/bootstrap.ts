@@ -21,7 +21,7 @@ export default async function handler(
       tenantExists: Boolean(tenant),
       requestedSlug,
       settings: tenant
-        ? tenant.settings
+        ? {softwareName:tenant.settings.softwareName,accountName:tenant.settings.accountName,pharmacyName:tenant.settings.pharmacyName,branchName:tenant.settings.branchName,companySlug:tenant.settings.companySlug,companyCode:tenant.settings.companyCode,businessLicense:tenant.settings.businessLicense,mainBranchAddress:tenant.settings.mainBranchAddress,logoDataUrl:tenant.settings.logoDataUrl}
         : {
             softwareName: "RxLedger",
             accountName: "Pharmacy Account",

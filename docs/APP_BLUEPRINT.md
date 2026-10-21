@@ -230,7 +230,7 @@ Before adding a new `max-height` or `overflow`, prefer these variables and check
 - Automatic fulfilment from POS closes matching Continuity requests only in the sale's originating branch. Availability in another branch does not authorise changing that branch's patient workflow.
 - Stock adjustments accept positive quantities only: adjustment/customer return adds stock, write-off/supplier return removes it. Unsupported directions and reductions beyond available stock are rejected. A physical customer return is an inventory movement, not an automatic financial refund.
 - Receiving validates finite, nonnegative costs and manual selling prices on the server before applying least-unit conversion, markup and rounding.
-- Pharmacists and allowed branch roles can prepare/save drafts; only cashiers complete sales.
+- Legacy pharmacist/cashier and authorised manager roles retain checkout access. Explicit staff policies separately control preparation and completion within active branch scope.
 
 ## Financial Reconciliation And Recovery
 
@@ -283,6 +283,14 @@ Before adding a new `max-height` or `overflow`, prefer these variables and check
 - Use language like "review recommended" and "possible pattern".
 - Pharmacists should be able to resolve, dismiss, or document follow-up.
 - The assistant should not diagnose, prescribe, or autonomously block dispensing.
+
+## Staff Permissions
+
+- Follow [STAFF_PERMISSIONS.md](STAFF_PERMISSIONS.md): owner-controlled role presets, explicit feature permissions, personal denials and branch/date scope, with before/after audit and revision conflict checks.
+- Preserve legacy users until an explicit save. Reusable templates are copied when applied; creating one never silently changes other staff. Personal restrictions override preset grants and survive preset changes.
+- Enforce permissions in API actions, scoped data, history, financial reports and analytics, as well as controls and direct navigation. Protected owner administration and patient merging remain owner-only. Professional authority is not created by a job title or checkbox.
+- Prevent catalogue and receiving paths from bypassing manual price and stock-correction restrictions. Configured automatic pricing can still run when an authorised receipt changes cost.
+- Keep per-branch expiry dates intact unless deliberately changed. Refresh active-session access on focus and periodically; do not claim to erase previously viewed information.
 
 ## Branch and Access Rules
 

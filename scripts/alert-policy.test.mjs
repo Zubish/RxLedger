@@ -8,7 +8,7 @@ import {
   inventoryAlerts,
   reconcileAlertPreferences,
 } from "../src/alertPolicy.ts";
-import { scopeDatabaseForUser } from "../server/branch-scope.ts";
+const { scopeDatabaseForUser }=loadServerModule("server/branch-scope.ts");
 import fixture from "./fixtures/ux-database.mjs";
 const now = Date.parse("2026-10-10T12:00:00Z");
 const pref = (key, mode = "snoozed") => ({
@@ -141,7 +141,7 @@ test("users receive only their own alert preferences in authorized branches, inc
 const { Module, createRequire } = await import("node:module");
 const { readFileSync } = await import("node:fs");
 const { resolve } = await import("node:path");
-const scope = await import("../server/branch-scope.ts");
+const scope = loadServerModule("server/branch-scope.ts");
 const patches = await import("../src/databasePatch.ts");
 const require = createRequire(resolve("package.json"));
 const ts = require("typescript");
@@ -150,6 +150,8 @@ let stored,
   saves = 0;
 actionModule.require = (name) => {
  if(name.endsWith("patient-registry.js")) return loadServerModule("server/patient-registry.ts");
+ if(name.endsWith("staff-access.js")) return loadServerModule("server/staff-access.ts");
+ if(name.endsWith("accessPolicy.js")) return loadServerModule("src/accessPolicy.ts");
  if(name.endsWith("financial.js")) return loadServerModule("src/financial.ts");
  if(name.endsWith("patientRegistry.js")) return loadServerModule("src/patientRegistry.ts");
   if (name === "node:crypto") return require(name);

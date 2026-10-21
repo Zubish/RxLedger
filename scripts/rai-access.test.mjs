@@ -1,6 +1,7 @@
+import {loadServerModule} from "./helpers/load-server-module.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveRaiAccessScope } from "../server/rai/access-policy.ts";
+const { resolveRaiAccessScope }=loadServerModule("server/rai/access-policy.ts");
 
 const db = { settings: { primaryAdminId: "owner" }, branches: [{ id: "lagos", active: true }, { id: "abuja", active: true }] };
 const user = { id: "staff", role: "pharmacist", status: "active", branchIds: ["lagos"], managedBranchIds: [] };
@@ -20,4 +21,9 @@ test("rejects expired assignments, suspended users and wildcard branches", () =>
 test("only the primary admin has automatic company-wide branch scope", () => {
   assert.equal(resolveRaiAccessScope({ ...input, user: { ...user, role: "admin" }, requestedBranchIds: ["abuja"] }).ok, false);
   assert.equal(resolveRaiAccessScope({ ...input, user: { ...user, id: "owner", role: "admin" }, requestedBranchIds: ["abuja"] }).ok, true);
+});
+
+test("individual restrictions also block delegated analytics",()=>{
+ const restricted={...user,accessPolicy:{title:"Restricted",permissions:["inventory.view"],denied:["inventory.view"],revision:1}};
+ assert.equal(resolveRaiAccessScope({...input,user:restricted}).ok,false);
 });

@@ -1,3 +1,5 @@
+import {hasPermission,effectivePermissions} from "../src/accessPolicy.js";
+import type {StaffAccess,StaffRole} from "../src/accessPolicy.js";
 import {withPatientRegistry, legacyPatientId} from "./patient-registry.js";
 import type {PatientRecord} from "../src/patientRegistry.js";
 import type { PatientDetails } from "../src/patientDetails.js";
@@ -59,6 +61,8 @@ type User = {
   branchIds: string[];
   managedBranchIds: string[];
   branchAccessExpiresAt?: Record<string, string>;
+  accessPolicy?: StaffAccess;
+  accessRevision?: number;
   lastChatSeenAt?: string;
   lastChatSeenAtByBranch?: Record<string, string>;
   passwordHash?: string;
@@ -414,6 +418,7 @@ type MedicineLabelRule = {
 };
 
 type Database = {
+  staffRoles?: StaffRole[];
   patients?: PatientRecord[];
   alertPreferences?: AlertPreference[];
   users: User[];
@@ -1715,9 +1720,16 @@ export function withReadModels(db: Database): Database {
   return rebuilt;
 }
 
+function redactAuditSecrets(value:unknown):unknown {
+  if(Array.isArray(value))return value.map(redactAuditSecrets);
+  if(value && typeof value==="object")return Object.fromEntries(Object.entries(value).filter(([key])=>!["password","passwordhash","passwordsalt","codehash","authsecret","secret","accesstoken","refreshtoken","tokenhash"].includes(key.replaceAll("_","").toLowerCase())).map(([key,item])=>[key,redactAuditSecrets(item)]));
+  return value;
+}
+
 export function sanitizeDatabase(db: Database) {
   return {
     ...db,
+    auditLogs: db.auditLogs.map(entry=>({...entry,before:redactAuditSecrets(entry.before),after:redactAuditSecrets(entry.after)})),
     users: db.users.map((user) => {
       const clean = { ...user };
       delete clean.passwordHash;
@@ -1888,8 +1900,8 @@ export function addAudit(
     action,
     entity,
     entityId,
-    before,
-    after,
+    before: redactAuditSecrets(before),
+    after: redactAuditSecrets(after),
     createdAt: nowIso(),
   });
 }
@@ -1939,6 +1951,7 @@ export async function sendSecurityEmail(
 }
 
 export function canWrite(user: User) {
+  if(user.accessPolicy)return effectivePermissions(user).some(key=>key.startsWith("inventory.")&&key!=="inventory.view");
   return (
     user.role === "admin" ||
     user.role === "pharmacist" ||
@@ -1947,6 +1960,7 @@ export function canWrite(user: User) {
 }
 
 export function canAdjust(user: User) {
+  if(user.accessPolicy)return hasPermission(user,"inventory.adjust");
   return user.role === "admin" || user.role === "pharmacist";
 }
 

@@ -1,3 +1,5 @@
+import {redactStaffData} from "../src/dataAccess.js";
+import {hasPermission} from "../src/accessPolicy.js";
 import type { Database, User } from "../src/types.js";
 
 /** Null means global access; an empty array means no operational access. */
@@ -17,11 +19,12 @@ export function primaryAdminIdForDatabase(db: Pick<Database, "settings" | "users
 /** Shared identity is for active patient-facing staff; transactions stay scoped. */
 export function canAccessPatientRegistry(db: Database, user: User): boolean {
   const primary = primaryAdminIdForDatabase(db);
+  if(user.accessPolicy && !hasPermission(user,"patients.view",primary))return false;
   const ids = accessibleBranchIds(user, primary);
   if (user.status !== "active") return false;
   if (ids === null) return true;
   return db.branches.some(branch => branch.active && ids.includes(branch.id) &&
-    (["admin", "pharmacist", "cashier"].includes(user.role) || user.managedBranchIds.includes(branch.id)));
+    (Boolean(user.accessPolicy) || ["admin", "pharmacist", "cashier"].includes(user.role) || user.managedBranchIds.includes(branch.id)));
 }
 
 /** Product stock has no batches; its signed ledger movements carry branch ownership. */
@@ -31,7 +34,8 @@ export function productQuantityInBranches(db: Database, productId: string, branc
 }
 
 /** Scope every authenticated payload before serializing it, never the stored tenant. */
-export function scopeDatabaseForUser(db: Database, user: User): Database {
+export function scopeDatabaseForUser(db: Database,user:User):Database{return redactStaffData(branchScopedDatabase(db,user),user);}
+function branchScopedDatabase(db: Database, user: User): Database {
   const primaryAdminId = primaryAdminIdForDatabase(db);
   const ids = accessibleBranchIds(user, primaryAdminId);
   const quantityByProduct = new Map<string, Record<string, number>>();
