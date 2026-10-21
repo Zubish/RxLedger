@@ -2,6 +2,16 @@
 
 Record material changes using [the maintenance process](MAINTENANCE_AND_COLLABORATION.md). Group minor related edits. Keep implementation, technical verification, release and owner acceptance separate. Do not retroactively invent acceptance, test runs, schema checks or recovery exercises.
 
+## RXLEDGER-RECURRING-BACKUPS-01 — Encrypted Hourly Backups And Restore Verification
+
+- Request: implement recurring backups after native database scheduling was rejected. Hosting discussion is recommendation-only; the owner clarified no domain purchase and no intended Vercel hosting. No DNS or hosting migration is part of this change.
+- Implementation: host-independent GitHub Actions job, hourly at minute 23, seven-day retention, explicit enable gate, direct TLS database dump, custom-format archive validation, age recipient encryption before artifact upload, ciphertext checksum and nonclinical manifest. Recovery identity stays outside GitHub. Whole database, no branch/tenant filtering; no database mutations or schema changes.
+- Verification: four safety tests passed with real age 1.3.2 encryption, wrong-key/tampering rejection, configuration guards and failure cleanup; PostgreSQL 17.11 private Unix-socket cluster passed actual dump → encryption → decryption → transactional restore into empty database, with matching public tenant JSON and separate-schema audit content. Shell syntax, workflow YAML and focused diff checks passed. No production dump, hosted restore or login was tested; workflow uses PostgreSQL 18 and reruns the safety/restore tests before accessing its production secret.
+- Activation blocker: GitHub secret listing returned HTTP 403 `Resource not accessible by integration`; no secret, recipient or enable flag was configured. Workflow remains inactive. Current protection remains the expiring manual snapshot and six-hour provider history. [Setup and limitations](RECURRING_BACKUPS.md) distinguish this from an active schedule.
+- Release: infrastructure/repository change; no app runtime release, database migration or production tag. Record actual push result in the completion report. Owner acceptance not yet reviewed.
+- Recovery: disable `DATABASE_BACKUPS_ENABLED` to stop scheduled jobs; retain encrypted copies and recovery identity. Actual recovery requires isolated verification and incident reconciliation from the runbook; no automatic production cutover exists. No actual production routing, pharmacy record or external side effect was changed.
+- Next: repository administrator adds the direct database secret and public age recipient after retaining the private recovery key offline, enables the job, verifies a manual production backup plus isolated restore, then checks scheduled-run age and failure notification delivery. Automatic activation is not claimed.
+
 ## SCM-2026-10-20-01 — Assimilate SEN 401 Into Development Practice
 
 - Request/owner: Musa Ibrahim asked to assimilate the supplied guide and course reference into how RxLedger is built and how the AI assistant collaborates.

@@ -1,0 +1,52 @@
+name: Encrypted database backup
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: rxledger-database-backup
+  cancel-in-progress: false
+jobs:
+  backup:
+    # Explicit activation only after the owner has stored the recovery key offline.
+    if: vars.DATABASE_BACKUPS_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install backup clients
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y age postgresql-client-common curl ca-certificates
+          sudo install -d /usr/share/postgresql-common/pgdg
+          curl --fail --silent --show-error https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo tee /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc >/dev/null
+          echo 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt noble-pgdg main' | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-18
+      - name: Verify backup safety with synthetic data
+        run: |
+          export PATH="/usr/lib/postgresql/18/bin:$PATH"
+          python3 scripts/database-backup.test.py
+          python3 scripts/database-backup-postgres.test.py
+      - name: Dump, validate and encrypt
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_AGE_RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+          BACKUP_OUTPUT_DIR: ${{ runner.temp }}/encrypted-backups
+        run: |
+          export PATH="/usr/lib/postgresql/18/bin:$PATH"
+          bash scripts/database-backup.sh
+      - name: Store encrypted backup for seven days
+        uses: actions/upload-artifact@v4
+        with:
+          name: rxledger-encrypted-database-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/encrypted-backups/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove runner output
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/encrypted-backups"

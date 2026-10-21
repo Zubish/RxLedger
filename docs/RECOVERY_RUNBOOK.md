@@ -11,6 +11,8 @@ Project `crimson-hill-05547844` (RxLedger), original production branch `br-summe
 
 ## Rehearsal and incident record
 
+Recurring off-provider automation and setup are documented in [RECURRING_BACKUPS.md](RECURRING_BACKUPS.md). The encrypted backup workflow is prepared but **not activated**; repository secrets could not be configured with the current integration. Neither an implementation nor a hosting provider's hosted-content backup advertisement establishes recurring protection for the Neon database. This workflow is independent of the application host, including Vercel.
+
 Snapshot restore produced `br-floral-math-apym9rel`. The initial tool call omitted `finalize:false`; despite a drill name and no target branch, its default finalization moved the production compute and default/name onto the restored branch. This was an unintended production configuration change, not an isolated drill.
 
 The original branch was reinstated as default and renamed production. Endpoint `ep-sparkling-truth-apeqnmnx` was moved back onto `br-summer-rice-appce56c` at approximately 05:22:08 UTC. A temporary no-compute branch (`br-summer-boat-apcgzdi8`) allowed endpoint reassignment without deleting either database. The drill's compute (`ep-old-hall-apvddwv6`) was then assigned to the restored drill branch. Both temporary branches expire 2026-10-22 06:00 UTC; neither is the application's production target.
