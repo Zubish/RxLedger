@@ -4,6 +4,14 @@ Use descriptive commit subjects and annotated production tags. Report the releas
 
 For a new release, update `public/release.json`, its change record and this list. Link the annotated tag to the exact verified commit and confirm that production serves the named release manifest and tested assets. A named tag identifies code; deployment readiness and owner acceptance are recorded separately.
 
+## Sales Reconciliation — Financial Snapshots
+
+- Version: **sales-reconciliation-v1.0.0**
+- Annotated tag: **release/sales-reconciliation-v1.0.0**
+- Change record: **RXLEDGER-SALES-RECONCILIATION-01** in [CHANGE_RECORD.md](CHANGE_RECORD.md).
+- Complete server-side sales reconciliation, recorded costs/cash/change, consistent NGN rounding and transparent historical/tax limitations. CSV and print share report results.
+- [Financial contract](FINANCIAL_RECONCILIATION.md); [hosted recovery evidence and scheduling limitation](RECOVERY_RUNBOOK.md). This release does not claim automated backups, refunds, VAT compliance or bank settlement.
+
 ## Workspace Patient Registry — Cross-Branch Recognition
 
 - Version: **workspace-patient-registry-v1.0.0**

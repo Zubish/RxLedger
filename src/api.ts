@@ -245,3 +245,9 @@ export async function runAction(
     return result;
   } finally { if (timeout !== undefined) clearTimeout(timeout); }
 }
+
+export async function loadFinancialReport(input:{branchId:string;start:string;end:string}) {
+ const result=await request<import('./financial').FinancialReport>(`/api/state?scope=financial&${new URLSearchParams(input)}`);
+ if(!Array.isArray(result.rows) || !result.totals || !Number.isFinite(result.totals.net) || !Number.isFinite(result.totals.sales)) throw new Error('The reconciliation response was incomplete. Run the report again.');
+ return result;
+}

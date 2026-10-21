@@ -305,7 +305,7 @@ assertPresent(
 );
 assertPresent(
   blueprint,
-  /Saved patient profiles can be corrected[\s\S]*sales[\s\S]*continuity requests/,
+  /Profile edits are revision-checked and audited[\s\S]*historical financial values remain unchanged/,
   "RxLedger blueprint should document editable patient profile corrections.",
 );
 

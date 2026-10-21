@@ -64,6 +64,17 @@ Record material changes using [the maintenance process](MAINTENANCE_AND_COLLABOR
 - Recovery: legacy import rehearsed in isolation; preserve complete tenant JSON and quiesce writes before incompatible rollback. Prefer compatible forward fixes; old code can discard registry metadata. No production restore drill.
 - Owner acceptance: not yet reviewed. Existing ambiguous legacy identities require review, not silent merging; high-volume roster pagination remains future work.
 
+## RXLEDGER-SALES-RECONCILIATION-01 — Financial Snapshots And Recovery Checks
+
+- Date/owner/request: 2026-10-21; Musa Ibrahim authorised financial-report reconciliation followed by backup/recovery verification before the public pilot launch.
+- Outcome: Reports → Sales reconciliation calculates full-period totals server-side with branch authorisation, financial and stock arithmetic checks, payment totals, historical cost visibility, CSV and print. New sales persist cost and optional cash/change snapshots with kobo rounding. Remove UI-only unconfigured VAT assertion; preserve original transactions.
+- Category/scope: corrective/preventive; sale recording/normalisation, shared financial helpers, authenticated state report scope, focused Reports UI, PostgreSQL/browser verification, [financial contract](FINANCIAL_RECONCILIATION.md) and [recovery runbook](RECOVERY_RUNBOOK.md). No new SQL schema, environment variable, runtime dependency or Vercel function.
+- Verification: actual handler/PostgreSQL financial tests cover money, payment methods, rejected writes, physical returns, cost repricing independence, old missing snapshots, >1 page, stock mismatches and access/date boundaries. Browser flow covers saved POS values → report → downloaded CSV at 390/1440px; checkout browser regression passes at both widths. All 17 test files and build pass; lint reports only the pre-existing RaiConsent dependency warning. The navigation regression passes at 390/1440px (mocked backend), including refresh, Back/Forward and session expiry. Delivery evidence is reported at completion.
+- Recovery evidence/incident: hosted manual snapshot restored successfully; workspace JSON digests and all 21 public base-table names matched. Initial restore accidentally finalized and switched production/default/compute; original branch/default/name and endpoint were reinstated, workspace digests still matched. Temporary branches expire 2026-10-22 06:00 UTC. See the runbook for exact IDs/times, limitations and mandatory non-finalizing drill procedure. No claim of a fully isolated first drill, zero connection interruption or full restored-login validation.
+- Backup limitation: project history is six hours; no recurring schedule exists. Provider rejected daily seven-day scheduling. Manual snapshot expires 2026-10-28 06:00 UTC. Ongoing backup coverage requires a supported policy and monitoring; not marked complete.
+- Release: **Sales Reconciliation — Financial Snapshots**, `release/sales-reconciliation-v1.0.0`. Additive JSON fields; older code can omit cost snapshots, so prefer compatible forward fixes. Snapshot restoration is separate from code rollback and cannot undo external payments.
+- Owner acceptance: not yet reviewed. Remaining: recurring backup coverage, reviewed tax/refund/settlement contracts, hosted load and custom-domain setup once supplied.
+
 ## Compact Template For Future Material Changes
 
 - ID/date / request / owner:

@@ -1,3 +1,4 @@
+import financialReport from "../server/financial-report.js";
 import { accessibleBranchIds, primaryAdminIdForDatabase, scopeDatabaseForUser } from "../server/branch-scope.js";
 import {
   canAdmin,
@@ -36,6 +37,7 @@ export default async function handler(
     }
     const rawScope = req.query?.scope;
     const scope = String(Array.isArray(rawScope) ? rawScope[0] || "" : rawScope || "");
+    if (scope === "financial") {await financialReport(req,res);return;}
     if (scope === "sales") {
       const authLoadStartedAt = Date.now();
       const authDb = await loadTenantAuthDatabase(companySlug);

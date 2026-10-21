@@ -206,6 +206,9 @@ export type Sale = {
   pharmacistReviewNote?: string;
   safetyReviewSummary?: string[];
   soldAt: string;
+  cashTendered?: number;
+  changeGiven?: number;
+  taxStatus?: "unconfigured";
   subtotal: number;
   discount: number;
   total: number;
@@ -217,6 +220,7 @@ export type Sale = {
     batchId?: string;
     itemName?: string;
     quantity: number;
+    unitCost?: number;
     unitPrice: number;
     lineTotal: number;
     daysSupply?: number;

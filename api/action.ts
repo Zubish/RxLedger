@@ -1,3 +1,4 @@
+import {moneyAmount} from "../src/financial.js";
 import type {PatientRecord} from "../src/patientRegistry.js";
 import {canonicalPatient} from "../server/patient-registry.js";
 import {normalizePatientPhone as canonicalPhone, normalizePatientName, patientMatchesPhone, patientMatchesName} from "../src/patientRegistry.js";
@@ -2763,8 +2764,9 @@ function recordSale(
         productId: product.id,
         itemName: product.name,
         quantity,
+        unitCost: product.costPrice,
         unitPrice: product.sellingPrice,
-        lineTotal: quantity * product.sellingPrice,
+        lineTotal: moneyAmount(quantity * product.sellingPrice),
         daysSupply: input.daysSupply,
         counselingNote: input.counselingNote,
         labelInstruction: input.labelInstruction,
@@ -2820,13 +2822,14 @@ function recordSale(
         throw new Error(
           `${medicine.brandName} needs a selling price before it can be sold`,
         );
-      const lineTotal = take * unitPrice;
+      const lineTotal = moneyAmount(take * unitPrice);
       saleItems.push({
         itemType: "medicine",
         medicineId,
         batchId: row.batch.id,
         itemName: medicine.brandName,
         quantity: take,
+        unitCost: row.batch.unitCost,
         unitPrice,
         lineTotal,
         daysSupply: input.daysSupply,
@@ -2851,7 +2854,8 @@ function recordSale(
       remaining -= take;
     }
   }
-  const subtotal = saleItems.reduce((sum, item) => sum + item.lineTotal, 0);
+  const subtotal = moneyAmount(saleItems.reduce((sum, item) => sum + item.lineTotal, 0));
+  if (!Number.isSafeInteger(Math.round(subtotal*100))) throw new Error("Sale amount exceeds supported currency precision");
   const requestedDiscount = Math.min(
     Math.max(0, Number(payload?.discount ?? draft?.discount) || 0),
     subtotal,
@@ -2863,7 +2867,16 @@ function recordSale(
       `Discount exceeds your ${discountLimitPercent(db, { ...actor, role: actorRole })}% limit`,
     );
   }
-  const discount = requestedDiscount;
+  if (!Number.isFinite(Number(payload?.discount ?? draft?.discount ?? 0)) || Number(payload?.discount ?? draft?.discount ?? 0)<0) throw new Error("Enter a valid discount");
+  const discount = moneyAmount(requestedDiscount);
+  const total = moneyAmount(Math.max(0, subtotal-discount));
+  if (payload?.quotedTotal !== undefined && moneyAmount(requireNumber(payload.quotedTotal,"Quoted total"))!==total) throw new Error("The sale total changed. Refresh POS and review the current selling prices before confirming.");
+  const paymentMethod=optionalString(payload?.paymentMethod) || draft?.paymentMethod || "cash";
+  if (!["cash","card","transfer"].includes(paymentMethod)) throw new Error("Choose cash, card or transfer; split payments are not supported");
+  const tenderInput=payload?.cashTendered;
+  const cashTendered=paymentMethod==="cash" && tenderInput!==undefined && tenderInput!=="" ? moneyAmount(requireNumber(tenderInput,"Cash tendered")) : undefined;
+  if (cashTendered!==undefined && (!Number.isSafeInteger(Math.round(cashTendered*100)) || cashTendered<total)) throw new Error("Cash tendered must cover the sale total");
+  const changeGiven=cashTendered===undefined?undefined:moneyAmount(cashTendered-total);
   const reference = receiptReference();
   ledgerEntries.forEach((entry) => {
     if (entry.reason === "POS sale") entry.reference = reference;
@@ -2887,9 +2900,7 @@ function recordSale(
     patientRiskContext: normalizePatientRiskContext(
       payload?.patientRiskContext || clinicalDraft?.patientRiskContext,
     ),
-    paymentMethod: (optionalString(payload?.paymentMethod) ||
-      draft?.paymentMethod ||
-      "cash") as Sale["paymentMethod"],
+    paymentMethod: paymentMethod as Sale["paymentMethod"],
     reference,
     note: transactionText(payload,"note",clinicalDraft?.note || ""),
     followUpMessage:
@@ -2907,7 +2918,10 @@ function recordSale(
     soldAt: nowIso(),
     subtotal,
     discount,
-    total: Math.max(0, subtotal - discount),
+    total,
+    cashTendered,
+    changeGiven,
+    taxStatus: "unconfigured",
     bookingCode: draft?.bookingCode,
     items: saleItems,
   };

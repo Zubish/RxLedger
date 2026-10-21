@@ -1,8 +1,8 @@
 {
   "application": "RxLedger",
-  "name": "Workspace Patient Registry — Cross-Branch Recognition",
-  "version": "workspace-patient-registry-v1.0.0",
-  "tag": "release/workspace-patient-registry-v1.0.0",
-  "changeRecord": "RXLEDGER-WORKSPACE-PATIENT-REGISTRY-01",
+  "name": "Sales Reconciliation — Financial Snapshots",
+  "version": "sales-reconciliation-v1.0.0",
+  "tag": "release/sales-reconciliation-v1.0.0",
+  "changeRecord": "RXLEDGER-SALES-RECONCILIATION-01",
   "date": "2026-10-21"
 }

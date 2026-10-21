@@ -116,6 +116,7 @@ const globalAccess = (actor, primary) => accessibleBranchIds(actor, primary) ===
 const assignment = (actor, branch) => (accessibleBranchIds(actor) ?? []).includes(branch);
 mutationModule.require = (name) => {
  if(name.endsWith("patient-registry.js")) return loadServerModule("server/patient-registry.ts");
+ if(name.endsWith("financial.js")) return loadServerModule("src/financial.ts");
  if(name.endsWith("patientRegistry.js")) return loadServerModule("src/patientRegistry.ts");
  if(name === "node:crypto") return require(name);
  if(name.endsWith("alertPolicy.js")) return {inventoryAlerts};

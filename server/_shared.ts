@@ -277,6 +277,9 @@ type Sale = {
   pharmacistReviewNote?: string;
   safetyReviewSummary?: string[];
   soldAt: string;
+  cashTendered?: number;
+  changeGiven?: number;
+  taxStatus?: "unconfigured";
   subtotal: number;
   discount: number;
   total: number;
@@ -288,6 +291,7 @@ type Sale = {
     batchId?: string;
     itemName?: string;
     quantity: number;
+    unitCost?: number;
     unitPrice: number;
     lineTotal: number;
     daysSupply?: number;
@@ -1449,15 +1453,14 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
   });
   const sales = (raw.sales ?? empty.sales).map((sale) => {
     const subtotal =
-      Number(sale.subtotal) ||
-      sale.items?.reduce((sum, item) => sum + Number(item.lineTotal || 0), 0) ||
-      0;
+      sale.subtotal !== undefined ? Number(sale.subtotal) :
+      sale.items?.reduce((sum, item) => sum + Number(item.lineTotal || 0), 0) || 0;
     const discount = Number(sale.discount) || 0;
     return {
       ...sale,
       subtotal,
       discount,
-      total: Number(sale.total) || Math.max(0, subtotal - discount),
+      total: sale.total !== undefined ? Number(sale.total) : Math.max(0, subtotal - discount),
       followUpMessage: sale.followUpMessage || undefined,
       patientInfoReliability: sale.patientInfoReliability || undefined,
       patientRiskContext: sale.patientRiskContext || undefined,
@@ -1473,6 +1476,7 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
         batchId: item.batchId,
         itemName: item.itemName,
         quantity: Number(item.quantity) || 0,
+        unitCost: item.unitCost === undefined || item.unitCost === null ? undefined : Number(item.unitCost),
         unitPrice: Number(item.unitPrice) || 0,
         lineTotal: Number(item.lineTotal) || 0,
         daysSupply: Number(item.daysSupply) || undefined,

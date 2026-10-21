@@ -1,3 +1,5 @@
+import {moneyAmount} from "./financial";
+import {FinancialReconciliation} from "./components/FinancialReconciliation";
 import {normalizePatientPhone as registryPhone, normalizePatientName, patientMatchesPhone, patientMatchesName} from "./patientRegistry";
 import {PatientRegistrationDialog,PatientCareHistoryButton,PatientMergeDialog} from "./components/PatientRegistry";
 import type {PatientRecord} from "./patientRegistry.js";
@@ -328,6 +330,9 @@ type Sale = {
   pharmacistReviewNote?: string;
   safetyReviewSummary?: string[];
   soldAt: string;
+  cashTendered?: number;
+  changeGiven?: number;
+  taxStatus?: "unconfigured";
   subtotal: number;
   discount: number;
   total: number;
@@ -339,6 +344,7 @@ type Sale = {
     batchId?: string;
     itemName?: string;
     quantity: number;
+    unitCost?: number;
     unitPrice: number;
     lineTotal: number;
     daysSupply?: number;
@@ -7754,7 +7760,7 @@ function POSView({
       lineTotal: item.quantity * unitPrice,
     };
   });
-  const subtotal = cartRows.reduce((sum, item) => sum + item.lineTotal, 0);
+  const subtotal = moneyAmount(cartRows.reduce((sum, item) => sum + moneyAmount(item.lineTotal), 0));
   const discountInput = Math.max(0, Number(discount) || 0);
   const safeDiscount =
     discountMode === "percent"
@@ -7763,8 +7769,8 @@ function POSView({
   const maxDiscountPercent = discountLimitPercent(db, currentUser);
   const maxDiscountAmount = subtotal * (maxDiscountPercent / 100);
   const discountTooHigh = safeDiscount > maxDiscountAmount;
-  const total = Math.max(0, subtotal - safeDiscount);
-  const changeDue = Math.max(0, (Number(cashPaid) || 0) - total);
+  const total = moneyAmount(Math.max(0, subtotal - moneyAmount(safeDiscount)));
+  const changeDue = moneyAmount(Math.max(0, (Number(cashPaid) || 0) - total));
   const filteredSales = branchSales.filter((sale) => {
     const soldDate = sale.soldAt.slice(0, 10);
     return (
@@ -7995,7 +8001,7 @@ function POSView({
     hour: "2-digit",
     minute: "2-digit",
   });
-  const vatIncluded = total > 0 ? total - total / 1.075 : 0;
+
   const suggestedFollowUpMessage = buildPurchaseFollowUpMessage(db, cart);
 
   function updateCart(rowId: string, updates: Partial<CartItem>) {
@@ -8073,7 +8079,9 @@ function POSView({
       customerPhone,
       patientDetails,
       paymentMethod,
-      discount: safeDiscount,
+      cashTendered: paymentMethod === "cash" && cashPaid > 0 ? cashPaid : undefined,
+      discount: moneyAmount(safeDiscount),
+      quotedTotal: total,
       note,
       followUpMessage: followUpMessage.trim() || suggestedFollowUpMessage,
       items: cart.map((item) => ({
@@ -8971,8 +8979,8 @@ function POSView({
                 <strong>-{money.format(safeDiscount)}</strong>
               </div>
               <div>
-                <span>VAT (incl.)</span>
-                <strong>{money.format(vatIncluded)}</strong>
+                <span>Tax</span>
+                <strong>Not configured</strong>
               </div>
               <hr />
               <section>
@@ -10252,6 +10260,7 @@ function Reports({
   canLoadMoreLedgerHistory: boolean;
   onLoadMoreLedgerHistory: () => void;
 }) {
+  const [financialOpen,setFinancialOpen]=useState(false);
   const [report, setReport] = useState<
     "stock" | "movement" | "supplier" | "expiry" | "reorder"
   >("stock");
@@ -10659,7 +10668,9 @@ function Reports({
   const historyLoadMoreLabel = "Load older movements";
 
   return (
-    <ReportsPanel
+    <>
+    <div className="button-row"><button type="button" className="ghost-button" aria-pressed={!financialOpen} onClick={()=>setFinancialOpen(false)}>Inventory reports</button><button type="button" className="ghost-button" aria-pressed={financialOpen} onClick={()=>setFinancialOpen(true)}>Sales reconciliation</button></div>
+    {financialOpen ? <FinancialReconciliation key={activeBranch?.id || "all"} branchId={activeBranch?.id || ""}/> : <ReportsPanel
       report={report}
       setReport={setReport}
       rows={rows}
@@ -10698,7 +10709,8 @@ function Reports({
       onLoadMoreHistory={loadMoreHistory}
       onExportCsv={exportCsv}
       onPrint={() => window.print()}
-    />
+    />}
+    </>
   );
 }
 

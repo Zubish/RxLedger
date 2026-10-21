@@ -232,6 +232,14 @@ Before adding a new `max-height` or `overflow`, prefer these variables and check
 - Receiving validates finite, nonnegative costs and manual selling prices on the server before applying least-unit conversion, markup and rounding.
 - Pharmacists and allowed branch roles can prepare/save drafts; only cashiers complete sales.
 
+## Financial Reconciliation And Recovery
+
+- Follow [FINANCIAL_RECONCILIATION.md](FINANCIAL_RECONCILIATION.md). Reconcile complete server-side saved sales within the authorised branch scope, independently of frontend history pagination. UI, CSV and print use the same selected UTC period.
+- Round new NGN sale lines, discounts and totals to kobo. Persist cost snapshots and optional entered cash/change. Historical missing costs remain unknown; never infer historical margin from current catalogue prices.
+- Tax is explicitly unconfigured; remove unpersisted hard-coded VAT claims. Mixed payment splits, financial refunds/voids and settlement require separate explicit contracts; physical returns do not automatically refund sales.
+- Use the [recovery runbook](RECOVERY_RUNBOOK.md). A tested manual snapshot does not establish recurring backup coverage. Current six-hour provider history and rejected scheduling are launch limitations until a supported recurring policy is enabled and monitored.
+- Recovery drills must set `finalize:false` explicitly and verify production default/compute mappings immediately; a drill name alone does not isolate a restore. Preserve and reconcile later writes before a real cutover.
+
 ## Subscription Rules
 
 - Subscription plan definitions live in `src/subscriptionPlans.ts` and should be the source of truth for landing pricing, the Settings subscription panel, and future billing enforcement.

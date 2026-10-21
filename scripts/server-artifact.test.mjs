@@ -19,6 +19,7 @@ test("emitted server modules load with real relative dependencies and initialize
     symlinkSync(resolve("node_modules"), join(root, "node_modules"), "dir");
     for (const file of [
       "src/alertPolicy.ts",
+      "src/financial.ts",
       "src/patientRegistry.ts",
       "server/patient-registry.ts",
       "src/workspaceIdentity.ts",
@@ -26,6 +27,7 @@ test("emitted server modules load with real relative dependencies and initialize
       "server/branch-scope.ts",
       "server/_shared.ts",
       "api/action.ts",
+      "server/financial-report.ts",
       "api/bootstrap.ts",
     ]) {
       const destination = join(root, file.replace(/\.ts$/, ".js"));
@@ -40,6 +42,7 @@ test("emitted server modules load with real relative dependencies and initialize
     }
     const require = createRequire(join(root, "package.json"));
     const shared = require(join(root, "server/_shared.js"));
+    assert.equal(typeof require(join(root, "server/financial-report.js")).default,"function");
     const normalized = shared.normalizeDatabase(shared.createEmptyDatabase());
     assert.deepEqual(normalized.alertPreferences, []);
     assert.equal(shared.getCompanySlugFromRequest({ headers: { "x-rxledger-company": "demo" } }), "totalenergies-pharmacy");

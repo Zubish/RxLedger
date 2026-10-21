@@ -45,3 +45,9 @@ This closes the previously recorded checkout operation-key gap for clients using
 ## Workspace patient registry verification — 2026-10-21
 
 RX-01 access isolation, RX-09 patient identity and the cross-cutting audit requirements are extended by [the registry contract](WORKSPACE_PATIENT_REGISTRY.md). Shared identity is an explicit workspace-level exception; operational financial records stay branch-scoped. Actual handler/PostgreSQL tests cover role/tenant boundaries, redacted clinical history, migration audit, concurrent registration, stale revisions and owner merge. Browser checks at 390/1440px cover cross-branch recognition and current allergies, family separation and draft recovery. These checks do not establish owner acceptance, hosted high-volume performance or production restore readiness.
+
+## Financial reconciliation and recovery — 2026-10-21
+
+RX-04 now has actual handler/PostgreSQL and phone/desktop browser evidence for saved line/subtotal/discount/net/payment/cash-change/cost snapshots and complete selected-period report/CSV consistency. More than a history page, missing historical costs, stock mismatch flags and branch/session boundaries are tested. See [the financial contract](FINANCIAL_RECONCILIATION.md). Tax, financial refunds/voids and bank settlement remain unimplemented, not verified by a stock return.
+
+Hosted snapshot materialisation, matching workspace JSON digests and 21-table schema inventory are established. The first restore finalized unexpectedly; original production mappings were reinstated with matching tenant data. This is documented as an incident, not an isolated drill. [Recovery evidence](RECOVERY_RUNBOOK.md) records the expiring manual snapshot, six-hour history and provider rejection of automatic scheduling. Recurring backups, restored login and full-service cutover remain gaps.
