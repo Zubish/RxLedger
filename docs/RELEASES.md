@@ -4,6 +4,14 @@ Use descriptive commit subjects and annotated production tags. Report the releas
 
 For a new release, update `public/release.json`, its change record and this list. Link the annotated tag to the exact verified commit and confirm that production serves the named release manifest and tested assets. A named tag identifies code; deployment readiness and owner acceptance are recorded separately.
 
+## Workspace Patient Registry — Cross-Branch Recognition
+
+- Version: **workspace-patient-registry-v1.0.0**
+- Annotated tag: **release/workspace-patient-registry-v1.0.0**
+- Change record: **RXLEDGER-WORKSPACE-PATIENT-REGISTRY-01** in [CHANGE_RECORD.md](CHANGE_RECORD.md).
+- Shared patient identities and current allergy information across workspace branches, explicit family-contact selection, revision-checked edits and owner-reviewed merges. Audited professional care history is separate from branch-restricted financial data.
+- Contract, migration/recovery limits and verification: [WORKSPACE_PATIENT_REGISTRY.md](WORKSPACE_PATIENT_REGISTRY.md).
+
 ## Checkout Reliability — Incomplete Confirmation Protection (Patch)
 
 - Version: **checkout-reliability-v1.0.1**

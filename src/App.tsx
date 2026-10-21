@@ -1,3 +1,6 @@
+import {normalizePatientPhone as registryPhone, normalizePatientName, patientMatchesPhone, patientMatchesName} from "./patientRegistry";
+import {PatientRegistrationDialog,PatientCareHistoryButton,PatientMergeDialog} from "./components/PatientRegistry";
+import type {PatientRecord} from "./patientRegistry.js";
 import { AllergyNotice } from "./components/PatientDetailsFields";
 import type { PatientDetails } from "./patientDetails";
 import { publicWorkspaceSlug, tenantWorkspaceSlug } from "./workspaceIdentity";
@@ -311,6 +314,7 @@ type Sale = {
   cashierUserId: string;
   checkoutOperationId?: string;
   checkoutFingerprint?: string;
+  patientId?: string;
   customerName: string;
   customerPhone: string;
   patientDetails?: PatientDetails;
@@ -350,6 +354,7 @@ type PosDraft = {
   userId: string;
   branchId: string;
   bookingCode: string;
+  patientId?: string;
   customerName: string;
   customerPhone: string;
   patientDetails?: PatientDetails;
@@ -504,6 +509,7 @@ type ContinuityUrgency = "routine" | "important" | "urgent";
 
 type ContinuityRequest = {
   id: string;
+  patientId?: string;
   patientName: string;
   patientPhone: string;
   medicineId: string;
@@ -567,6 +573,7 @@ type AppSettings = {
 };
 
 type Database = {
+  patients?: PatientRecord[];
   alertPreferences?: AlertPreference[];
   users: User[];
   medicines: Medicine[];
@@ -646,6 +653,7 @@ type ReceivedStockNotification = {
 
 type ContinuityProcessTarget = {
   id: string;
+  patientId?: string;
   patientName: string;
   patientPhone: string;
   medicineId: string;
@@ -1322,11 +1330,12 @@ function getBranchName(db: Database, branchId: string) {
 
 function getUserName(db: Database, userId?: string) {
   if (!userId) return "Not recorded";
+  if (userId === "system") return "System";
   return db.users.find((user) => user.id === userId)?.name ?? "Unknown user";
 }
 
 function normalizePhone(value: string) {
-  return value.replace(/\D/g, "");
+  return registryPhone(value);
 }
 
 function addDaysToDate(dateIso: string, days: number) {
@@ -1649,22 +1658,27 @@ function buildPatientProfiles(db: Database) {
       totalSpent: number;
       lastVisit: string;
       details?: PatientDetails;
+      patientId?: string;
+      registry?: PatientRecord;
     }
   >();
+  (db.patients || []).filter(patient=>!patient.mergedIntoId).forEach(patient=>map.set(patient.id,{key:patient.id,patientId:patient.id,registry:patient,name:patient.name,phone:patient.phone,details:patient.details,sales:[],totalSpent:0,lastVisit:""}));
   db.sales.forEach((sale) => {
     const phone = normalizePhone(sale.customerPhone);
     if (!phone) return;
-    const key = `phone:${phone}`;
+    const key = sale.patientId || `phone:${phone}`;
     const existing = map.get(key);
     const total = sale.total ?? sale.subtotal;
     if (existing) {
       existing.sales.push(sale);
-      if (sale.patientDetails && (!existing.details || (sale.patientDetails.updatedAt || sale.soldAt) > (existing.details.updatedAt || existing.lastVisit))) existing.details = sale.patientDetails;
+      if (!existing.registry && sale.patientDetails && (!existing.details || (sale.patientDetails.updatedAt || sale.soldAt) > (existing.details.updatedAt || existing.lastVisit))) existing.details = sale.patientDetails;
       existing.totalSpent += total;
       if (sale.soldAt > existing.lastVisit) {
         existing.lastVisit = sale.soldAt;
-        existing.name = patientDisplayName(sale);
-        existing.phone = sale.customerPhone || existing.phone;
+        if (!existing.registry) {
+          existing.name = patientDisplayName(sale);
+          existing.phone = sale.customerPhone || existing.phone;
+        }
       }
       return;
     }
@@ -1712,7 +1726,8 @@ function buildRefillRows(db: Database) {
     string,
     {
       profileKey: string;
-      patientName: string;
+      patientId?: string;
+  patientName: string;
       phone: string;
       sale: Sale;
       item: Sale["items"][number];
@@ -2997,6 +3012,21 @@ function App() {
     }
   }
 
+  const refreshRegistry = useEffectEvent(async () => {
+    if (document.visibilityState === "hidden" || !activeBranch) return;
+    await executeAction("refreshPatientRegistry",{branchId:activeBranch.id},undefined,{quietError:true});
+  });
+  const registryEnabled = db.patients !== undefined;
+  useEffect(() => {
+    if (!sessionUserId || !canSell || !registryEnabled || !["patients","pos"].includes(activeView)) return;
+    const refresh=()=>{void refreshRegistry();};
+    refresh();
+    const timer=window.setInterval(refresh,30_000);
+    window.addEventListener("focus",refresh);
+    document.addEventListener("visibilitychange",refresh);
+    return ()=>{window.clearInterval(timer);window.removeEventListener("focus",refresh);document.removeEventListener("visibilitychange",refresh);};
+  },[activeView,activeBranch?.id,sessionUserId,canSell,registryEnabled]);
+
   async function createFirstAdmin(input: SetupInput) {
     setSigningIn(true);
     try {
@@ -3763,6 +3793,9 @@ function App() {
               key={`${currentUser.id}-${activeBranch?.id ?? "none"}`}
               db={activeBranchDb}
               activeBranch={activeBranch}
+              canRegisterPatient={canSell}
+              canViewCareHistory={canAdmin || currentUser.role==="pharmacist" || Boolean(activeBranch && canManageBranch(db,currentUser,activeBranch.id))}
+              canMergePatients={canAdmin}
               salesHistoryLoaded={salesHistoryLoaded}
               salesHistoryLoading={salesHistoryLoading}
               canLoadMoreSalesHistory={Boolean(salesHistoryCursor)}
@@ -7467,6 +7500,10 @@ function POSView({
   const [customerPhone, setCustomerPhone] = useState(
     continuityTarget?.patientPhone ?? currentDraft?.customerPhone ?? "",
   );
+  const [selectedRegistryId,setSelectedRegistryId] = useState(currentDraft?.patientId || "");
+  const [patientRegistrationOpen,setPatientRegistrationOpen] = useState(false);
+  const [patientLookupBusy,setPatientLookupBusy] = useState(Boolean(currentDraft?.patientId && db.patients));
+  const patientLookupSequence = useRef(0);
   const [patientDetailsEdit, setPatientDetailsEdit] = useState<{phone:string;details:PatientDetails} | null>(() => currentDraft?.patientDetails ? {phone:normalizePhone(currentDraft.customerPhone),details:currentDraft.patientDetails} : null);
   const [paymentMethod, setPaymentMethod] = useState<Sale["paymentMethod"]>(
     currentDraft?.paymentMethod ?? "cash",
@@ -7777,12 +7814,12 @@ function POSView({
   const selectedPatient = useMemo(() => {
     const phone = normalizePhone(customerPhone);
     if (!phone) return undefined;
-    return patientProfiles.find(
-      (profile) => normalizePhone(profile.phone) === phone,
-    );
-  }, [customerPhone, patientProfiles]);
+    return db.patients
+      ? patientProfiles.find(profile=>profile.patientId===selectedRegistryId && (profile.registry ? patientMatchesPhone(profile.registry,customerPhone) && patientMatchesName(profile.registry,customerName) : normalizePhone(profile.phone)===phone && normalizePatientName(profile.name)===normalizePatientName(customerName)))
+      : patientProfiles.find(profile=>normalizePhone(profile.phone)===phone);
+  }, [customerPhone, customerName, patientProfiles, selectedRegistryId, db.patients]);
   const patientDetails: PatientDetails = selectedPatient?.details || (
-    patientDetailsEdit?.phone === normalizePhone(customerPhone)
+    !db.patients && patientDetailsEdit?.phone === normalizePhone(customerPhone)
       ? patientDetailsEdit.details : {allergyStatus:"unknown",allergies:""}
   );
 
@@ -7793,7 +7830,7 @@ function POSView({
     return patientProfiles
       .filter(
         (profile) =>
-          profile.name.toLowerCase().includes(queryText) &&
+          [profile.name,...(profile.registry?.nameAliases || [])].some(name=>name.toLowerCase().includes(queryText)) &&
           normalizePhone(profile.phone) !== activePhone,
       )
       .slice(0, 5);
@@ -7804,7 +7841,7 @@ function POSView({
     if (selectedPatient && normalizePhone(selectedPatient.phone) === phone)
       return [];
     return patientProfiles
-      .filter((profile) => normalizePhone(profile.phone).includes(phone))
+      .filter((profile) => [profile.phone,...(profile.registry?.contactAliases || [])].some(contact=>normalizePhone(contact).includes(phone) || normalizePhone(contact).includes(phone.replace(/^0/,""))))
       .slice(0, 5);
   }, [customerPhone, patientProfiles, selectedPatient]);
 
@@ -8001,19 +8038,37 @@ function POSView({
     );
   }
 
-  function selectPatientProfile(
-    profile: ReturnType<typeof buildPatientProfiles>[number],
-  ) {
-    setCustomerName(profile.name === "Walk-in patient" ? "" : profile.name);
-    setCustomerPhone(profile.phone);
-    setPatientDetailsEdit({phone:normalizePhone(profile.phone),details:profile.details || {allergyStatus:"unknown",allergies:""}});
-    flash(`${profile.name} selected for this sale`);
+  async function selectPatientProfile(profile: ReturnType<typeof buildPatientProfiles>[number]) {
+    if (!profile.patientId) {
+      setCustomerName(profile.name === "Walk-in patient" ? "" : profile.name);setCustomerPhone(profile.phone);
+      setPatientDetailsEdit({phone:normalizePhone(profile.phone),details:profile.details || {allergyStatus:"unknown",allergies:""}});
+      flash(`${profile.name} selected for this sale`);return;
+    }
+    const sequence=++patientLookupSequence.current;
+    setSelectedRegistryId("");setPatientDetailsEdit(null);setPatientLookupBusy(true);
+    try {await executeAction("getRegistryPatient",{branchId:activeBranch.id,patientId:profile.patientId},undefined,{onResult:result=>{
+      if (sequence!==patientLookupSequence.current || !result.patient) return;
+      const patient=result.patient;setSelectedRegistryId(patient.id);setCustomerName(patient.name);setCustomerPhone(patient.phone);
+      setPatientDetailsEdit({phone:normalizePhone(patient.phone),details:patient.details});
+    }});} finally {if (sequence===patientLookupSequence.current)setPatientLookupBusy(false);}
   }
+  const verifyDraftPatient=useEffectEvent(()=>{
+    if (!selectedDraftId) return;
+    const draft=db.posDrafts.find(item=>item.id===selectedDraftId);
+    const profile=patientProfiles.find(item=>item.patientId===draft?.patientId);
+    if (profile) void selectPatientProfile(profile);
+    else setPatientLookupBusy(false);
+  });
+  useEffect(()=>{
+    const timer=window.setTimeout(()=>verifyDraftPatient(),0);
+    return ()=>window.clearTimeout(timer);
+  },[selectedDraftId]);
 
   function salePayload() {
     return {
       branchId: activeBranch.id,
       draftId: selectedDraftId,
+      patientId: selectedPatient?.patientId || "",
       customerName,
       customerPhone,
       patientDetails,
@@ -8038,6 +8093,7 @@ function POSView({
       {
         originBranchId: activeBranch.id,
         preferredBranchId: matchedBranchId || activeBranch.id,
+        patientId: selectedPatient?.patientId,
         patientName: customerName,
         patientPhone: customerPhone,
         medicineId: medicine.id,
@@ -8054,7 +8110,7 @@ function POSView({
   }
 
   async function saveDraft() {
-    if (checkoutLocked || checkoutBusy.current || !canSell || !cart.length) return;
+    if (patientLookupBusy || checkoutLocked || checkoutBusy.current || !canSell || !cart.length) return;
     if (discountTooHigh) {
       flash(`Discount exceeds your ${maxDiscountPercent}% limit`);
       return;
@@ -8069,6 +8125,7 @@ function POSView({
 
   function resetSaleForm() {
     setCart([]);
+    setSelectedRegistryId("");
     setCustomerName("");
     setCustomerPhone("");
     setPatientDetailsEdit(null);
@@ -8099,6 +8156,7 @@ function POSView({
   function loadDraft(draft: PosDraft) {
     if (checkoutLocked || checkoutBusy.current) return;
     setSelectedDraftId(draft.id);
+    setSelectedRegistryId(draft.patientId || "");
     setCart(
       draft.items.map((item) => ({
         rowId: id("pos"),
@@ -8205,7 +8263,7 @@ function POSView({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (checkoutBusy.current || checkoutLocked || !canCompleteSale || !cart.length) return;
+    if (patientLookupBusy || checkoutBusy.current || checkoutLocked || !canCompleteSale || !cart.length) return;
     if (discountTooHigh) {
       flash(`Discount exceeds your ${maxDiscountPercent}% limit`);
       return;
@@ -8359,8 +8417,9 @@ function POSView({
             )}
           </section>
         )}
+        {patientLookupBusy && <p role="status" className="registry-review-note">Confirming patient identity and current allergy information…</p>}
         <form className="pos-checkout-form" onSubmit={submit}>
-          <fieldset className="pos-terminal-grid pos-checkout-fields" disabled={checkoutLocked}>
+          <fieldset className="pos-terminal-grid pos-checkout-fields" disabled={checkoutLocked || patientLookupBusy}>
           <section className="pos-catalog-panel">
             <div className="pos-search-row">
               <label className="pos-search-control">
@@ -8694,6 +8753,10 @@ function POSView({
               )}
             </div>
 
+            <div className="patient-registry-actions">
+              {db.patients && canSell && <button type="button" className="ghost-button" onClick={()=>setPatientRegistrationOpen(true)}>Register patient</button>}
+              {selectedPatient?.patientId && (isSuperAdmin(db,currentUser) || currentUser.role==="pharmacist" || canManageBranch(db,currentUser,activeBranch.id)) && <PatientCareHistoryButton patientId={selectedPatient.patientId} branchId={activeBranch.id} executeAction={executeAction}/>}
+            </div>
             <div className="pos-customer-panel">
               <div className="pos-customer-field">
                 <label htmlFor="pos-customer-name">
@@ -8748,14 +8811,14 @@ function POSView({
                         <strong>{profile.name}</strong>
                         <span>
                           {profile.phone} / last seen{" "}
-                          {new Date(profile.lastVisit).toLocaleDateString()}
+                          {profile.lastVisit ? new Date(profile.lastVisit).toLocaleDateString() : "No visits in this branch"}
                         </span>
                       </button>
                     ))}
                   </div>
                 )}
               </div>
-              {selectedPatient && (
+              {selectedPatient && !patientLookupBusy && (
                 <button
                   className="pos-patient-snapshot"
                   type="button"
@@ -8770,11 +8833,11 @@ function POSView({
                     {selectedPatient.phone} / {selectedPatient.sales.length}{" "}
                     previous visit
                     {selectedPatient.sales.length === 1 ? "" : "s"} / last seen{" "}
-                    {new Date(selectedPatient.lastVisit).toLocaleDateString()}
+                    {selectedPatient.lastVisit ? new Date(selectedPatient.lastVisit).toLocaleDateString() : "No visits in this branch"}
                   </span>
                 </button>
               )}
-              {(customerPhone.trim() || selectedPatient) && <AllergyNotice details={patientDetails} compact/>}
+              {!patientLookupBusy && (customerPhone.trim() || selectedPatient) && <AllergyNotice details={patientDetails} compact/>}
               <div className="pos-payment-block">
                 <span>
                   <Wallet size={15} /> Payment method
@@ -8966,6 +9029,7 @@ function POSView({
         </form>
       </div>
 
+      {patientRegistrationOpen && <PatientRegistrationDialog branchId={activeBranch.id} patients={db.patients || []} initialName={customerName} initialPhone={customerPhone} executeAction={executeAction} onClose={()=>setPatientRegistrationOpen(false)} onSaved={patient=>{setSelectedRegistryId(patient.id);setCustomerName(patient.name);setCustomerPhone(patient.phone);setPatientDetailsEdit({phone:normalizePhone(patient.phone),details:patient.details});setPatientRegistrationOpen(false);}}/>}
       {historyOpen && (
         <div
           className="pos-modal-backdrop"
@@ -9302,7 +9366,8 @@ function ContinuityCentre({
     string,
     {
       key: string;
-      patientName: string;
+      patientId?: string;
+  patientName: string;
       patientPhone: string;
       requests: ContinuityRequest[];
     }
@@ -9586,6 +9651,9 @@ function PatientsView({
   db,
   scopeLabel,
   activeBranch,
+  canRegisterPatient,
+  canViewCareHistory,
+  canMergePatients,
   salesHistoryLoaded,
   salesHistoryLoading,
   canLoadMoreSalesHistory,
@@ -9596,6 +9664,9 @@ function PatientsView({
   db: Database;
   scopeLabel: string;
   activeBranch?: Branch;
+  canRegisterPatient: boolean;
+  canViewCareHistory: boolean;
+  canMergePatients: boolean;
   salesHistoryLoaded: boolean;
   salesHistoryLoading: boolean;
   canLoadMoreSalesHistory: boolean;
@@ -9604,9 +9675,12 @@ function PatientsView({
   flash: (message: string) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [registrationOpen,setRegistrationOpen] = useState(false);
+  const [mergeOpen,setMergeOpen] = useState(false);
   const [selectedKey, setSelectedKey] = useState("");
   const [selectedSaleId, setSelectedSaleId] = useState("");
   const [editingPatient, setEditingPatient] = useState(false);
+  const [patientEditRevision,setPatientEditRevision] = useState(0);
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [patientEdit, setPatientEdit] = useState<{name:string;phone:string;details:PatientDetails}>({ name: "", phone: "", details: {allergyStatus:"unknown",allergies:""} });
   const profiles = useMemo(() => buildPatientProfiles(db), [db]);
@@ -9646,8 +9720,9 @@ function PatientsView({
   ];
   const filteredProfiles = profiles.filter((profile) => {
     const text =
-      `${profile.name} ${profile.phone} ${profile.sales.map((sale) => sale.reference).join(" ")}`.toLowerCase();
-    return text.includes(query.toLowerCase());
+      `${profile.name} ${profile.phone} ${profile.registry?.contactAliases?.join(" ") || ""} ${profile.registry?.nameAliases?.join(" ") || ""} ${profile.sales.map((sale) => sale.reference).join(" ")}`.toLowerCase();
+    const phoneQuery=normalizePhone(query);
+    return text.includes(query.toLowerCase()) || (/^[+\d\s()-]+$/.test(query) && phoneQuery.length>=3 && (normalizePhone(profile.phone).includes(phoneQuery) || normalizePhone(profile.phone).includes(phoneQuery.replace(/^0/,""))));
   });
   const selectedProfile =
     filteredProfiles.find((profile) => profile.key === selectedKey) ??
@@ -9673,8 +9748,7 @@ function PatientsView({
     selectedProfile?.phone
       ? db.continuityRequests.filter(
           (request) =>
-            normalizePhone(request.patientPhone) ===
-              normalizePhone(selectedProfile.phone) &&
+            (selectedProfile.patientId ? request.patientId === selectedProfile.patientId : normalizePhone(request.patientPhone) === normalizePhone(selectedProfile.phone)) &&
             request.status !== "fulfilled" &&
             request.status !== "cancelled",
         )
@@ -9749,6 +9823,7 @@ function PatientsView({
 
   function startPatientEdit() {
     if (!selectedProfile) return;
+    setPatientEditRevision(selectedProfile.registry?.revision || 0);
     setPatientEdit({
       name: selectedProfile.name,
       phone: selectedProfile.phone,
@@ -9761,8 +9836,10 @@ function PatientsView({
     event.preventDefault();
     if (!selectedProfile) return;
     const updated = await executeAction(
-      "updatePatientProfile",
+      selectedProfile.patientId ? "updateRegistryPatient" : "updatePatientProfile",
       {
+        patientId:selectedProfile.patientId,
+        expectedRevision:patientEditRevision,
         branchId: activeBranch?.id,
         oldPatientName: selectedProfile.name,
         oldPatientPhone: selectedProfile.phone,
@@ -9777,6 +9854,8 @@ function PatientsView({
 
   return (
     <div className="page-grid patients-page">
+      {registrationOpen && activeBranch && <PatientRegistrationDialog branchId={activeBranch.id} patients={db.patients || []} executeAction={executeAction} onClose={()=>setRegistrationOpen(false)} onSaved={patient=>{setSelectedKey(patient.id);setQuery("");setRegistrationOpen(false);}}/>}
+      {mergeOpen && selectedProfile?.registry && <PatientMergeDialog source={selectedProfile.registry} patients={db.patients || []} executeAction={executeAction} onClose={()=>setMergeOpen(false)} onSaved={patient=>{setSelectedKey(patient.id);setQuery("");setEditingPatient(false);setMergeOpen(false);}}/>}
       <div className="patient-overview-disclosure">
       <button className="patient-overview-toggle" type="button" aria-expanded={overviewOpen} aria-controls="patient-overview-content" onClick={() => setOverviewOpen((open) => !open)}>
         <span>Patient overview · {dueRows.length} refills due soon</span>
@@ -9826,10 +9905,10 @@ function PatientsView({
           <div>
             <h2>Patient Lookup</h2>
             <p>
-              Search by phone, name, or receipt reference in {scopeLabel}.
+              Recognise patients across this workspace. Visit totals and receipts show {scopeLabel}.
             </p>
           </div>
-          <span className="pill active">{scopeLabel}</span>
+          <div className="patient-registry-actions"><span className="pill active">Workspace registry</span>{canRegisterPatient && db.patients && activeBranch && <button className="primary-button" type="button" onClick={()=>setRegistrationOpen(true)}>Register patient</button>}</div>
         </div>
         <label className="patient-search">
           <Search size={18} />
@@ -9863,13 +9942,12 @@ function PatientsView({
                 </span>
                 {(profile.details?.age !== undefined || profile.details?.gender) && <small>{profile.details.age !== undefined ? `Age ${profile.details.age} at recording` : "Age not recorded"} · {profile.details.gender?.replaceAll("_", " ") || "Gender not recorded"}</small>}
                 <small>
-                  Last seen {new Date(profile.lastVisit).toLocaleDateString()}{" "}
-                  at{" "}
-                  {getBranchName(
+                  {profile.lastVisit ? `Last seen ${new Date(profile.lastVisit).toLocaleDateString()}` : "No visits in this branch scope"}{" "}
+                  {profile.lastVisit && <>at {getBranchName(
                     db,
                     profile.sales[0]?.branchId || activeBranch?.id || "main",
                   )}{" "}
-                  / {money.format(profile.totalSpent)}
+                  / {money.format(profile.totalSpent)}</>}
                 </small>
               </button>
             ))}
@@ -9881,6 +9959,11 @@ function PatientsView({
           </div>
 
           <div className="patient-profile-panel">
+            {selectedProfile?.patientId && <div className="patient-registry-actions">
+              {canViewCareHistory && activeBranch && <PatientCareHistoryButton patientId={selectedProfile.patientId} branchId={activeBranch.id} executeAction={executeAction}/>}
+              {canMergePatients && (db.patients?.length || 0)>1 && <button type="button" className="ghost-button" onClick={()=>setMergeOpen(true)}>Review duplicate identity</button>}
+              {selectedProfile.registry?.needsReview && <p className="registry-review-note">Imported profile: confirm identity and allergy details with the patient.</p>}
+            </div>}
             <PatientProfilePanel
               profile={patientProfileSummary}
               workspaceLabel={scopeLabel}
@@ -9889,6 +9972,7 @@ function PatientsView({
               patientEdit={patientEdit}
               setPatientEdit={setPatientEdit}
               onStartEdit={startPatientEdit}
+              canEdit={canRegisterPatient}
               onCancelEdit={() => setEditingPatient(false)}
               onSaveEdit={(event) => {
                 void savePatientEdit(event);

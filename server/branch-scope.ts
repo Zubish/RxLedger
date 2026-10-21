@@ -14,6 +14,16 @@ export function primaryAdminIdForDatabase(db: Pick<Database, "settings" | "users
   return db.settings.primaryAdminId || db.users.find(user => user.role === "admin" && user.status === "active")?.id || "";
 }
 
+/** Shared identity is for active patient-facing staff; transactions stay scoped. */
+export function canAccessPatientRegistry(db: Database, user: User): boolean {
+  const primary = primaryAdminIdForDatabase(db);
+  const ids = accessibleBranchIds(user, primary);
+  if (user.status !== "active") return false;
+  if (ids === null) return true;
+  return db.branches.some(branch => branch.active && ids.includes(branch.id) &&
+    (["admin", "pharmacist", "cashier"].includes(user.role) || user.managedBranchIds.includes(branch.id)));
+}
+
 /** Product stock has no batches; its signed ledger movements carry branch ownership. */
 export function productQuantityInBranches(db: Database, productId: string, branchIds: string[]): number {
   const allowed = new Set(branchIds);
@@ -36,7 +46,7 @@ export function scopeDatabaseForUser(db: Database, user: User): Database {
     const quantityByBranch = Object.fromEntries(Object.entries(quantityByProduct.get(product.id) ?? {}).map(([id, quantity]) => [id, Math.max(0, quantity)]));
     return { ...product, quantityByBranch, quantity: ids === null ? product.quantity : Object.values(quantityByBranch).reduce((sum, quantity) => sum + quantity, 0) };
   });
-  if (ids === null) return { ...db, products, cancelledCheckouts: db.cancelledCheckouts?.filter(item => item.userId === user.id), alertPreferences: db.alertPreferences?.filter(item=>item.userId===user.id) };
+  if (ids === null) return { ...db, products, patients: canAccessPatientRegistry(db, user) ? db.patients?.filter(patient => !patient.mergedIntoId) : [], cancelledCheckouts: db.cancelledCheckouts?.filter(item => item.userId === user.id), alertPreferences: db.alertPreferences?.filter(item=>item.userId===user.id) };
   const allowed = new Set(ids);
   const branches = db.branches.filter(branch => allowed.has(branch.id));
   const batches = db.batches.filter(batch => allowed.has(batch.branchId));
@@ -53,6 +63,7 @@ export function scopeDatabaseForUser(db: Database, user: User): Database {
     knownDevices: staff.id === user.id ? staff.knownDevices : undefined,
   }));
   return { ...db, branches, batches, users,
+    patients: canAccessPatientRegistry(db, user) ? db.patients?.filter(patient => !patient.mergedIntoId) : [],
     cancelledCheckouts: db.cancelledCheckouts?.filter(item => item.userId === user.id && allowed.has(item.branchId)),
     alertPreferences: db.alertPreferences?.filter(item=>item.userId===user.id && (!item.branchId || allowed.has(item.branchId))),
     products,

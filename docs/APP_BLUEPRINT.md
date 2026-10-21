@@ -255,22 +255,17 @@ Before adding a new `max-height` or `overflow`, prefer these variables and check
 
 ## Patient Workflow Rules
 
-- Patients are derived from POS sales data, not a separate manual CRM table yet.
-- Saved patient profiles can be corrected from the patient page; edits update matching sales, draft carts, and continuity requests with an audit entry.
-- Search must work by name, phone, and receipt reference.
-- Patient cards should stay compact because each card carries only identity, visit count, last seen, and spend.
-- Medication history and follow-up messages are scrollable panel lists on desktop and natural lists on mobile.
-- WhatsApp/copy actions should never require leaving the patient context.
-- Patient Continuity is the strategic differentiator. Avoid adding scattered patient widgets that do not strengthen the patient journey.
-
-### Patient Identification And Allergy Awareness
-
-- Optional patient details carry recorded age in years, its recording date, gender and an explicit allergy status: unknown/not recorded, no known allergies confirmed, or documented allergies with reaction notes where known. Never interpret missing history as no known allergies.
-- Store profile metadata on the existing branch-scoped sales/draft records separately from historical clinical-risk snapshots. Profile edits update matching records only within the authorised branch scope, with before/after metadata in patient-profile audit entries; new sale/draft snapshots also include the recorded details in their existing audits.
-- Age is recorded at a point in time, not calculated from an assumed birth date. Keep the age-recording date when the same recorded age is carried forward. Gender/age aid identification but do not create a new automatic identity match or merge policy.
-- Patient profile selection and POS patient lookup must prominently show documented allergies or prompt the professional to ask when status is unknown. Confirmed no-known-allergies history still asks for reconfirmation.
-- Existing branch patient-profile metadata takes precedence over stale POS/draft snapshots. Correct existing demographics/allergies in Patients > Edit profile; checkout must not erase a newer allergy correction.
-- POS details are keyed to the current patient phone so they cannot silently carry over to a different patient. POS displays a compact age/gender badge (for example 44, M) and allergy summary without documentation forms. Edit demographics and allergies through Patients > Edit profile; carry the selected details into the sale/draft; keep branch authorisation and existing clinical decision boundaries.
+- Maintain a dedicated patient registry shared by branches within one pharmacy workspace, never across independent workspaces. See [Workspace Patient Registry](WORKSPACE_PATIENT_REGISTRY.md) for permissions, migration, concurrency and merge rules.
+- Use a stable patient ID for sales, drafts and continuity. Normalise Nigerian local/international phone formats. Require explicit selection of an existing contact; a phone number alone is not proof of identity.
+- Prevent duplicate registration of the same name/contact. A different person sharing a contact requires a documented reason; keep that person's allergies and visits separate.
+- Eligible active patient-facing staff can recognise workspace identities. Operational sales, stock, payments, receipts and financial reporting remain branch-scoped. Cross-branch care history is a separate audited, role-authorised request containing medicine details without financial values.
+- Register and edit demographics/allergies in focused dialogs or Patients. POS shows a compact age/gender badge and allergy summary without documentation forms.
+- Age is recorded at a point in time with its recording date. Gender/age support identification, not automatic merging. Allergy status is explicitly unknown, confirmed no known allergies, or documented allergies with reaction notes.
+- Fetch current registry information on selection and draft recovery. Unknown allergy status prompts the professional to ask; confirmed no-known-allergies still requires reconfirmation. Changing patients must not carry over another patient's clinical context.
+- Profile edits are revision-checked and audited before/after. Existing sale/draft clinical snapshots and historical financial values remain unchanged; subsequent transactions capture the current details.
+- Import legacy identities conservatively by branch, normalised name and contact. Flag them for review; never silently merge cross-branch legacy identities. Retain documented historical allergy information for review.
+- Only the workspace owner can merge reviewed duplicates, with identity confirmation, reason, revisions and explicitly reviewed final details. Relink identity references and retain source aliases/audit; do not rewrite transaction amounts or historical clinical snapshots.
+- Search supports names, contacts and receipt references. Keep patient cards compact; distinguish branch-scope visits from workspace identity and cross-branch clinical history. Keep follow-up, copy and WhatsApp actions in context.
 
 ## Clinical Safety Rules
 
@@ -285,7 +280,7 @@ Before adding a new `max-height` or `overflow`, prefer these variables and check
 
 - Stock belongs to branches/sites.
 - Only the designated global admin sees broad account context. Other users, including branch admins, receive operational records only for active assigned/managed branches; expired assignments grant no access. The selected branch narrows their work surface further.
-- Scope initial/login/action payloads and history pagination on the server, including stock summaries, patients, receipts, continuity, staff, drafts, messages, and response deltas. Patient history and edits remain branch-specific for users without global access.
+- Scope initial/login/action payloads and history pagination on the server, including stock summaries, patients, receipts, continuity, staff, drafts, messages, and response deltas. Financial/operational patient history remains branch-specific for users without global access; shared identity and separately authorised care history follow the registry contract.
 - Continuity status filters live under an expandable Continuity navigation entry, with a compact selector in the queue. On small devices, keep the queue before its collapsed creation form.
 - Mart quantity is derived by branch from signed product movements. Never attribute legacy aggregate stock to a branch without provenance; receiving or an explicit branch stock correction establishes ownership. Group and direct messages carry a branch ID; unattributed historical messages stay available only to the global admin.
 - Branch switching should feel like switching workspaces and preserve scoped operational context.

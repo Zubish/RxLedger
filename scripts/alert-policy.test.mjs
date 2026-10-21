@@ -1,3 +1,4 @@
+import {loadServerModule} from "./helpers/load-server-module.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -148,6 +149,8 @@ const actionModule = new Module(resolve("api/action.ts"));
 let stored,
   saves = 0;
 actionModule.require = (name) => {
+ if(name.endsWith("patient-registry.js")) return loadServerModule("server/patient-registry.ts");
+ if(name.endsWith("patientRegistry.js")) return loadServerModule("src/patientRegistry.ts");
   if (name === "node:crypto") return require(name);
   if (name.endsWith("alertPolicy.js")) return { inventoryAlerts };
   if (name.endsWith("branch-scope.js")) return scope;

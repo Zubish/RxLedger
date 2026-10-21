@@ -60,6 +60,7 @@ export function PatientProfilePanel({
   patientEdit,
   setPatientEdit,
   onStartEdit,
+  canEdit = true,
   onCancelEdit,
   onSaveEdit,
   continuityItems,
@@ -83,6 +84,7 @@ export function PatientProfilePanel({
   patientEdit: PatientEditForm;
   setPatientEdit: Dispatch<SetStateAction<PatientEditForm>>;
   onStartEdit: () => void;
+  canEdit?: boolean;
   onCancelEdit: () => void;
   onSaveEdit: (event: FormEvent) => void;
   continuityItems: PatientContinuityItem[];
@@ -120,9 +122,9 @@ export function PatientProfilePanel({
         </div>
         <div className="patient-profile-actions">
           <strong>{money.format(profile.totalSpent)}</strong>
-          <button type="button" onClick={onStartEdit}>
+          {canEdit && <button type="button" onClick={onStartEdit}>
             Edit profile
-          </button>
+          </button>}
         </div>
       </header>
 

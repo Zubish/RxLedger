@@ -53,6 +53,17 @@ Record material changes using [the maintenance process](MAINTENANCE_AND_COLLABOR
 - Recovery: same checkout data/rollback limits as the parent release; no production record repair or restore exercise.
 - Owner acceptance: not yet reviewed.
 
+## RXLEDGER-WORKSPACE-PATIENT-REGISTRY-01 — Cross-Branch Recognition
+
+- Date/owner/request: 2026-10-21; Musa Ibrahim authorised shared workspace patient recognition across pharmacy branches.
+- Outcome: dedicated identity registry; canonical contacts and explicit selection prevent accidental duplicate registration and family allergy mixing. Separate people may share a phone with a documented reason. Current allergies follow the patient; operational/financial access remains branch-restricted.
+- Scope/category: adaptive/preventive; tenant normalisation, API permissions/actions, POS/drafts/continuity identity links, Patients registration/edit/merge dialogs and clinical-history disclosure. [Contract](WORKSPACE_PATIENT_REGISTRY.md).
+- Implementation: implemented. Additive conservative legacy import, audited save-time initialisation, revision-checked edits, owner-only reviewed merge and redacted/audited professional care history. No SQL migration, environment variable or new dependency.
+- Verification: all 16 test files pass, including actual handler/isolated PostgreSQL registry and concurrency cases. Browser → API → isolated PostgreSQL registry flow passes at 390/1440px; checkout and patient-details browser regressions pass at both widths. Build passes. Lint passes with the existing RaiConsent dependency warning. Deployment evidence is recorded at release completion. No production patient test writes or enterprise load benchmark.
+- Release: **Workspace Patient Registry — Cross-Branch Recognition**, `release/workspace-patient-registry-v1.0.0`. Production delivery must be verified against the named manifest and served build separately.
+- Recovery: legacy import rehearsed in isolation; preserve complete tenant JSON and quiesce writes before incompatible rollback. Prefer compatible forward fixes; old code can discard registry metadata. No production restore drill.
+- Owner acceptance: not yet reviewed. Existing ambiguous legacy identities require review, not silent merging; high-volume roster pagination remains future work.
+
 ## Compact Template For Future Material Changes
 
 - ID/date / request / owner:

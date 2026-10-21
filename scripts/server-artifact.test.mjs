@@ -19,6 +19,8 @@ test("emitted server modules load with real relative dependencies and initialize
     symlinkSync(resolve("node_modules"), join(root, "node_modules"), "dir");
     for (const file of [
       "src/alertPolicy.ts",
+      "src/patientRegistry.ts",
+      "server/patient-registry.ts",
       "src/workspaceIdentity.ts",
       "src/databasePatch.ts",
       "server/branch-scope.ts",

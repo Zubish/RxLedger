@@ -1,10 +1,11 @@
+import {loadServerModule} from "./helpers/load-server-module.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire, Module } from "node:module";
 import { resolve } from "node:path";
 import test from "node:test";
 import { snapshotHeavyCollections, buildDatabasePatch } from "../src/databasePatch.ts";
-import { accessibleBranchIds, primaryAdminIdForDatabase, productQuantityInBranches, scopeDatabaseForUser } from "../server/branch-scope.ts";
+import { accessibleBranchIds, canAccessPatientRegistry, primaryAdminIdForDatabase, productQuantityInBranches, scopeDatabaseForUser } from "../server/branch-scope.ts";
 import { inventoryAlerts } from "../src/alertPolicy.ts";
 const user = { id: "local", role: "pharmacist", status: "active", branchIds: ["a", "expired"], managedBranchIds: [], branchAccessExpiresAt: { expired: "2000-01-01" } };
 const foreign = { ...user, id: "foreign", branchIds: ["b"] };
@@ -114,9 +115,11 @@ const patientAuditCalls = [];
 const globalAccess = (actor, primary) => accessibleBranchIds(actor, primary) === null;
 const assignment = (actor, branch) => (accessibleBranchIds(actor) ?? []).includes(branch);
 mutationModule.require = (name) => {
+ if(name.endsWith("patient-registry.js")) return loadServerModule("server/patient-registry.ts");
+ if(name.endsWith("patientRegistry.js")) return loadServerModule("src/patientRegistry.ts");
  if(name === "node:crypto") return require(name);
  if(name.endsWith("alertPolicy.js")) return {inventoryAlerts};
- if (name.endsWith("branch-scope.js")) return { accessibleBranchIds, primaryAdminIdForDatabase, productQuantityInBranches, scopeDatabaseForUser };
+ if (name.endsWith("branch-scope.js")) return { accessibleBranchIds, canAccessPatientRegistry, primaryAdminIdForDatabase, productQuantityInBranches, scopeDatabaseForUser };
  if (name.endsWith("databasePatch.js")) return { snapshotHeavyCollections, buildDatabasePatch };
  if (name.endsWith("_shared.js")) return {
   canAdmin: globalAccess, hasActiveBranchAssignment: assignment,

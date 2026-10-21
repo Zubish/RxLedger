@@ -36,7 +36,7 @@ Controlled items include code, dependency lockfiles, migration scripts, tests/fi
 
 ## Impact Analysis And Priorities
 
-Trace stock changes through receiving → pack/least-unit conversion → batch balance → sale/issue/return → movement ledger → reports → alerts. Trace access changes through workspace → branch assignment → server authorisation → query/response → interface. Patient-detail changes also touch profile lookup, selected-patient context, draft/sale snapshots, audit and branch scope.
+Trace stock changes through receiving → pack/least-unit conversion → batch balance → sale/issue/return → movement ledger → reports → alerts. Trace access changes through workspace → branch assignment → server authorisation → query/response → interface. Patient-detail changes also touch workspace identity links, profile lookup, selected-patient context, draft/sale snapshots, audit, clinical-history permissions and operational branch scope. Shared patient identity does not grant cross-branch financial access; see [the registry contract](WORKSPACE_PATIENT_REGISTRY.md).
 
 Prioritise unauthorised access, incorrect stock/financial effects and lost data, followed by blocked workflows and recurring support defects. Continue authorised usability work while recording material integrity gaps; this priority does not silently cancel the owner's requested work.
 

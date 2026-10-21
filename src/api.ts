@@ -1,3 +1,4 @@
+import type {PatientRecord,PatientCareVisit} from "./patientRegistry";
 import type { Database, RegisterInput, SetupInput, User, Sale } from "./types";
 import type { DatabasePatch } from "./databasePatch";
 
@@ -54,6 +55,8 @@ export type ActionResult = {
   db: Database;
   databasePatch: DatabasePatch;
   currentUser: User;
+  patient?: PatientRecord;
+  patientCareHistory?: PatientCareVisit[];
   checkout?: {state: "confirmed" | "cancelled" | "not_found"; sale?: Sale; replayed?: boolean};
 };
 

@@ -1,3 +1,5 @@
+import {withPatientRegistry, legacyPatientId} from "./patient-registry.js";
+import type {PatientRecord} from "../src/patientRegistry.js";
 import type { PatientDetails } from "../src/patientDetails.js";
 /// <reference types="node" />
 import { tenantWorkspaceSlug } from "../src/workspaceIdentity.js";
@@ -261,6 +263,7 @@ type Sale = {
   cashierUserId: string;
   checkoutOperationId?: string;
   checkoutFingerprint?: string;
+  patientId?: string;
   customerName: string;
   customerPhone: string;
   patientDetails?: PatientDetails;
@@ -300,6 +303,7 @@ type PosDraft = {
   userId: string;
   branchId: string;
   bookingCode: string;
+  patientId?: string;
   customerName: string;
   customerPhone: string;
   patientDetails?: PatientDetails;
@@ -373,6 +377,7 @@ type ContinuityUrgency = "routine" | "important" | "urgent";
 
 type ContinuityRequest = {
   id: string;
+  patientId?: string;
   patientName: string;
   patientPhone: string;
   medicineId: string;
@@ -405,6 +410,7 @@ type MedicineLabelRule = {
 };
 
 type Database = {
+  patients?: PatientRecord[];
   alertPreferences?: AlertPreference[];
   users: User[];
   medicines: Medicine[];
@@ -880,7 +886,7 @@ export async function saveRootState(root: RootState) {
 }
 
 // Keep persistence versions server-side; never serialize them into client payloads.
-const tenantVersions = new WeakMap<Database, { slug: string; revision: string }>();
+const tenantVersions = new WeakMap<Database, { slug: string; revision: string; registryBackfill?: boolean }>();
 
 export async function loadTenantDatabase(slug: string) {
   const normalizedSlug = normalizeCompanySlug(slug);
@@ -895,7 +901,8 @@ export async function loadTenantDatabase(slug: string) {
   `;
   if (rows[0]?.data) {
     const db = normalizeDatabase(rows[0].data as Partial<Database>);
-    tenantVersions.set(db, { slug: normalizedSlug, revision: String(rows[0].revision) });
+    tenantVersions.set(db, { slug: normalizedSlug, revision: String(rows[0].revision),
+      registryBackfill: db.patients!.length > 0 && (!(rows[0].data as Partial<Database>).patients || (rows[0].data as Database).sales?.some(sale=>Boolean(sale.customerPhone) && !sale.patientId)) });
     return db;
   }
 
@@ -1025,7 +1032,7 @@ export async function loadTenantSalesPage(
   );
   const page = sales.slice(0, safeLimit);
   return {
-    sales: page,
+    sales: page.map(sale => ({...sale, patientId: sale.patientId || legacyPatientId(sale.branchId, sale.customerName, sale.customerPhone)})),
     nextCursor: sales.length > safeLimit ? makeSalesCursor(page[page.length - 1]) : "",
   };
 }
@@ -1108,6 +1115,7 @@ export async function saveTenantDatabase(slug: string, db: Database, allowCreati
   const version = tenantVersions.get(db);
   if (!version || version.slug !== normalizedSlug)
     throw new Error("Reload the workspace before saving changes");
+  if (version.registryBackfill) addAudit(clean,"system","Initialized workspace patient registry","patient-registry","legacy-import",undefined,{patientCount:clean.patients?.length || 0,method:"Conservative branch/name/contact import; no cross-branch identity merges or transaction changes"});
   // The comparison and write are one atomic PostgreSQL operation. Concurrent
   // requests cannot silently replace a sale, profile correction or access change.
   const saved = await sql`
@@ -1555,6 +1563,7 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
         expiresAt: request.expiresAt ?? new Date(Date.now() - 1).toISOString(),
       };
     }),
+    patients: raw.patients ?? [],
     alertPreferences: raw.alertPreferences ?? [],
     cancelledCheckouts: raw.cancelledCheckouts ?? [],
     securityEvents: raw.securityEvents ?? empty.securityEvents,
@@ -1638,7 +1647,7 @@ export function normalizeDatabase(raw: Partial<Database>): Database {
       trialEndsAt: rawSettings.trialEndsAt || empty.settings.trialEndsAt,
     },
   };
-  return withReadModels(normalized);
+  return withReadModels(withPatientRegistry(normalized));
 }
 
 function buildStockSnapshot(db: Database): StockSnapshotEntry[] {

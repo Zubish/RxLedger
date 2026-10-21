@@ -12,7 +12,7 @@
     "test:mobile": "node scripts/browser-mobile-hierarchy.mjs",
     "test:navigation": "node scripts/browser-navigation.mjs",
     "test:colours": "node scripts/browser-colour-audit.mjs",
-    "test": "node --test scripts/pricing-policy.test.mjs scripts/rxledger-rules.test.mjs scripts/rai-access.test.mjs scripts/rai-delegation.test.mjs scripts/rai-connection.test.mjs scripts/rai-router.test.mjs scripts/dashboard-snapshot.test.mjs scripts/branch-scope.test.mjs scripts/workspace-deletion.test.mjs scripts/platform-auth.test.mjs scripts/alert-policy.test.mjs scripts/server-artifact.test.mjs scripts/integrity-postgres.test.mjs scripts/checkout-reliability.test.mjs scripts/checkout-client.test.mjs",
+    "test": "node --test scripts/pricing-policy.test.mjs scripts/rxledger-rules.test.mjs scripts/rai-access.test.mjs scripts/rai-delegation.test.mjs scripts/rai-connection.test.mjs scripts/rai-router.test.mjs scripts/dashboard-snapshot.test.mjs scripts/branch-scope.test.mjs scripts/workspace-deletion.test.mjs scripts/platform-auth.test.mjs scripts/alert-policy.test.mjs scripts/server-artifact.test.mjs scripts/integrity-postgres.test.mjs scripts/checkout-reliability.test.mjs scripts/checkout-client.test.mjs scripts/patient-registry.test.mjs",
     "preview": "vite preview",
     "test:patient-details": "node scripts/browser-patient-details.mjs",
     "test:sidebar": "node scripts/browser-sidebar.mjs",
@@ -20,7 +20,9 @@
     "test:platform": "node scripts/browser-platform.mjs",
     "test:integrity": "node scripts/integrity-postgres.test.mjs",
     "test:checkout": "node --test scripts/checkout-reliability.test.mjs scripts/checkout-client.test.mjs",
-    "test:checkout:browser": "node scripts/browser-checkout-reliability.mjs"
+    "test:checkout:browser": "node scripts/browser-checkout-reliability.mjs",
+    "test:registry": "node scripts/patient-registry.test.mjs",
+    "test:registry:browser": "node scripts/browser-patient-registry.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

@@ -1,8 +1,8 @@
 {
   "application": "RxLedger",
-  "name": "Checkout Reliability — Duplicate Sale Protection",
-  "version": "checkout-reliability-v1.0.1",
-  "tag": "release/checkout-reliability-v1.0.1",
-  "changeRecord": "RXLEDGER-CHECKOUT-RELIABILITY-02",
-  "date": "2026-10-20"
+  "name": "Workspace Patient Registry — Cross-Branch Recognition",
+  "version": "workspace-patient-registry-v1.0.0",
+  "tag": "release/workspace-patient-registry-v1.0.0",
+  "changeRecord": "RXLEDGER-WORKSPACE-PATIENT-REGISTRY-01",
+  "date": "2026-10-21"
 }

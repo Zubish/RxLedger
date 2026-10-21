@@ -1,3 +1,4 @@
+import type {PatientRecord} from "./patientRegistry.js";
 import type { PatientDetails } from "./patientDetails";
 import type { AlertPreference } from "./alertPolicy";
 export type Role = "admin" | "pharmacist" | "inventory" | "cashier" | "viewer";
@@ -191,6 +192,7 @@ export type Sale = {
   cashierUserId: string;
   checkoutOperationId?: string;
   checkoutFingerprint?: string;
+  patientId?: string;
   customerName: string;
   customerPhone: string;
   patientDetails?: PatientDetails;
@@ -230,6 +232,7 @@ export type PosDraft = {
   userId: string;
   branchId: string;
   bookingCode: string;
+  patientId?: string;
   customerName: string;
   customerPhone: string;
   patientDetails?: PatientDetails;
@@ -373,6 +376,7 @@ export type ContinuityUrgency = "routine" | "important" | "urgent";
 
 export type ContinuityRequest = {
   id: string;
+  patientId?: string;
   patientName: string;
   patientPhone: string;
   medicineId: string;
@@ -436,6 +440,7 @@ export type AppSettings = {
 };
 
 export type Database = {
+  patients?: PatientRecord[];
   alertPreferences?: AlertPreference[];
   users: User[];
   medicines: Medicine[];

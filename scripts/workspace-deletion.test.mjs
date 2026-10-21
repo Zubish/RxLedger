@@ -1,3 +1,4 @@
+import {loadServerModule} from "./helpers/load-server-module.mjs";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -29,7 +30,7 @@ const sql = async (strings, ...values) => {
  if (/SELECT EXISTS/.test(statement)) return [{exists:workspaces.has(values[0])}];
  return [];
 };
-module.require = name => name.endsWith('workspaceIdentity.js') ? {tenantWorkspaceSlug} : name.endsWith('alertPolicy.js') ? {reconcileAlertPreferences} : name === '@neondatabase/serverless' ? {neon:()=>sql} : require(name);
+module.require = name => name.endsWith('patient-registry.js') ? loadServerModule('server/patient-registry.ts') : name.endsWith('workspaceIdentity.js') ? {tenantWorkspaceSlug} : name.endsWith('alertPolicy.js') ? {reconcileAlertPreferences} : name === '@neondatabase/serverless' ? {neon:()=>sql} : require(name);
 module._compile(ts.transpileModule(readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,filename);
 const previousUrl=process.env.DATABASE_URL;
 process.env.DATABASE_URL='postgresql://fixture.invalid/test';

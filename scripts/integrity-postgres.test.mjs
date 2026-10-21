@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
+import {normalizePatientPhone} from '../src/patientRegistry.ts';
 import {readFileSync} from 'node:fs';
 import {createRequire, Module} from 'node:module';
 import {resolve} from 'node:path';
@@ -53,6 +54,11 @@ test('persisted API integrity: scope, reconciliation, allergy audit and concurre
   const expired=await shared.createSession('staff');
   await postgres.query("UPDATE sessions SET expires_at=now()-interval '1 minute' WHERE token_hash=$1",[shared.hashToken(expired.token)]);
   async function request(handler,{action:actionName,payload,slug='integrity-fixture',token=session.token,query={}}={}) {
+   if(['recordSale','savePosDraft'].includes(actionName) && payload?.customerPhone && !payload.patientId) {
+    const loaded=await shared.loadTenantDatabase(slug);
+    const patients=loaded?.patients?.filter(patient=>patient.normalizedPhone===normalizePatientPhone(payload.customerPhone) && patient.name===payload.customerName && !patient.mergedIntoId) || [];
+    if(patients.length===1)payload={...payload,patientId:patients[0].id};
+   }
    if(actionName==='recordSale') payload={operationId:randomUUID(),...payload};
    const req={method:handler===action?'POST':'GET',headers:{'x-rxledger-company':slug,authorization:`Bearer ${token}`},body:{action:actionName,payload},query};
    const res={code:200,body:null,status(code){this.code=code;return this;},json(body){this.body=body;},setHeader(){}};
@@ -84,11 +90,12 @@ test('persisted API integrity: scope, reconciliation, allergy audit and concurre
   });
   await t.test('allergy correction persists and is audited; stale checkout cannot erase it',async()=>{
    const details={age:44,gender:'male',allergyStatus:'recorded',allergies:'Penicillin: rash'};
-   assert.equal((await request(action,{action:'updatePatientProfile',payload:{branchId:'a',oldPatientPhone:salePayload.customerPhone,patientName:'Synthetic patient',patientPhone:salePayload.customerPhone,patientDetails:details}})).code,200);
+   const registered=(await shared.loadTenantDatabase('integrity-fixture')).patients[0];
+   assert.equal((await request(action,{action:'updateRegistryPatient',payload:{branchId:'a',patientId:registered.id,expectedRevision:registered.revision,patientName:'Synthetic patient',patientPhone:salePayload.customerPhone,patientDetails:details}})).code,200);
    let stored=await shared.loadTenantDatabase('integrity-fixture');
-   const audit=stored.auditLogs.find(row=>row.entity==='patient-profile');
-   assert.equal(audit.after.patientDetails.allergies,details.allergies);
-   assert.equal(audit.before.matchingSales[0].patientDetails,undefined);
+   const audit=stored.auditLogs.find(row=>row.entity==='patient');
+   assert.equal(audit.after.details.allergies,details.allergies);
+   assert.equal(audit.before.details.allergyStatus,'unknown');
    assert.equal((await request(action,{action:'recordSale',payload:{...salePayload,patientDetails:{allergyStatus:'none',allergies:''}}})).code,200);
    stored=await shared.loadTenantDatabase('integrity-fixture');
    assert.equal(stored.sales[0].patientDetails.allergies,details.allergies);

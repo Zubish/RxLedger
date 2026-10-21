@@ -1,7 +1,10 @@
+import type {PatientRecord} from "../src/patientRegistry.js";
+import {canonicalPatient} from "../server/patient-registry.js";
+import {normalizePatientPhone as canonicalPhone, normalizePatientName, patientMatchesPhone, patientMatchesName} from "../src/patientRegistry.js";
 import { createHash } from "node:crypto";
 import type {PatientDetails} from "../src/patientDetails.js";
 import { inventoryAlerts } from "../src/alertPolicy.js";
-import { accessibleBranchIds, productQuantityInBranches, scopeDatabaseForUser } from "../server/branch-scope.js";
+import { accessibleBranchIds, canAccessPatientRegistry, productQuantityInBranches, scopeDatabaseForUser } from "../server/branch-scope.js";
 import {
   addAudit,
   addSecurityEvent,
@@ -103,6 +106,8 @@ export default async function handler(
     let responseActor = actor;
     const heavySnapshot = snapshotHeavyCollections(scopeDatabaseForUser(db, actor));
 
+    let patientResult: PatientRecord | undefined;
+    let patientCareHistory: Array<{id:string;date:string;branchName:string;items:Array<{name:string;quantity:number;daysSupply?:number;instruction?:string}>}> | undefined;
     let checkoutResult: CheckoutResult | undefined;
     let skipSave = false;
     switch (body.action) {
@@ -217,6 +222,28 @@ export default async function handler(
       case "updateContinuityRequest":
         updateContinuityRequest(db, actor.id, actor.role, body.payload);
         break;
+      case "refreshPatientRegistry":
+        patientRegistryActor(db,actor.id,requireString(body.payload?.branchId,"Branch"));
+        skipSave = true;
+        break;
+      case "getRegistryPatient":
+        patientRegistryActor(db,actor.id,requireString(body.payload?.branchId,"Branch"));
+        patientResult = canonicalPatient(db.patients || [],requireString(body.payload?.patientId,"Patient"));
+        if (!patientResult) throw new Error("Patient not found in this workspace");
+        skipSave = true;
+        break;
+      case "createPatient":
+        patientResult = createRegistryPatient(db, actor.id, body.payload);
+        break;
+      case "updateRegistryPatient":
+        patientResult = updateRegistryPatient(db, actor.id, body.payload);
+        break;
+      case "mergeRegistryPatients":
+        patientResult = mergeRegistryPatients(db, actor.id, body.payload);
+        break;
+      case "getPatientCareHistory":
+        patientCareHistory = patientCareHistoryForUser(db, actor.id, body.payload);
+        break;
       case "updatePatientProfile":
         updatePatientProfile(db, actor.id, body.payload);
         break;
@@ -309,6 +336,8 @@ export default async function handler(
     }
     const response = {
       checkout: checkoutResult,
+      patient: patientResult,
+      patientCareHistory,
       db: stripHeavyCollections(clean),
       databasePatch,
       currentUser: clean.users.find((user) => user.id === responseActor.id),
@@ -361,7 +390,7 @@ function optionalString(value: unknown) {
 }
 
 function normalizePatientPhone(value: string) {
-  return value.replace(/\D/g, "");
+  return canonicalPhone(value);
 }
 
 function normalizePatientRiskContext(
@@ -1621,13 +1650,17 @@ function createContinuityRequest(
   if (!medicine) throw new Error("Active medicine not found");
   const patientName = optionalString(payload?.patientName) || "Walk-in patient";
   const patientPhone = optionalString(payload?.patientPhone);
+  const patient = payload?.patientId ? canonicalPatient(db.patients || [],optionalString(payload.patientId)) : undefined;
+  if (payload?.patientId && (!patient || !patientMatchesPhone(patient,patientPhone) || !patientMatchesName(patient,patientName)))
+    throw new Error("Select the correct workspace patient for this continuity request");
   if (!patientPhone && patientName === "Walk-in patient")
     throw new Error("Add a patient name or phone number for continuity follow-up");
   const normalizedPhone = normalizeContactPhone(patientPhone);
   const duplicate = normalizedPhone
     ? db.continuityRequests.find(
         (request) =>
-          normalizeContactPhone(request.patientPhone) === normalizedPhone &&
+          request.originBranchId===originBranchId &&
+          (patient ? request.patientId===patient.id : !request.patientId && normalizeContactPhone(request.patientPhone)===normalizedPhone && normalizePatientName(request.patientName)===normalizePatientName(patientName)) &&
           request.medicineId === medicineId &&
           !["fulfilled", "cancelled"].includes(request.status),
       )
@@ -1652,6 +1685,7 @@ function createContinuityRequest(
     id: id("ctr"),
     patientName,
     patientPhone,
+    patientId: patient?.id,
     medicineId,
     requestedMedicineName: optionalString(payload?.requestedMedicineName) || medicine.brandName,
     quantityRequested: Math.max(1, Number(payload?.quantityRequested) || 1),
@@ -1762,7 +1796,128 @@ function normalizePatientDetails(value: unknown, previous?: PatientDetails): Pat
     ageRecordedAt:age === undefined ? undefined : previous?.age === age ? previous.ageRecordedAt || previous.updatedAt || now : now};
 }
 
-function patientDetailsForSale(db: Database, branchId: string, phone: string, value: unknown, draft?: PosDraft) {
+function patientRegistryActor(db: Database, actorId: string, branchId: string) {
+  const actor = db.users.find(user => user.id === actorId);
+  if (!actor || !canAccessPatientRegistry(db, actor) || !db.branches.some(branch => branch.id === branchId && branch.active) ||
+      (!canAdmin(actor, getPrimaryAdminId(db)) && !hasActiveBranchAssignment(actor, branchId)))
+    throw new Error("You do not have permission to use the patient registry in this branch");
+  return actor;
+}
+function registryPhone(value: unknown) {
+  const phone = requireString(value, "Patient phone");
+  if (!/^\d{7,15}$/.test(canonicalPhone(phone))) throw new Error("Enter a valid patient phone number, including the country code where needed");
+  return phone;
+}
+function createRegistryPatient(db: Database, actorId: string, payload: Record<string, unknown> | undefined): PatientRecord {
+  const branchId = requireString(payload?.branchId, "Branch");
+  patientRegistryActor(db, actorId, branchId);
+  const name = requireString(payload?.patientName, "Patient name");
+  const phone = registryPhone(payload?.patientPhone);
+  const normalizedPhone = canonicalPhone(phone);
+  const candidates = (db.patients || []).filter(patient => !patient.mergedIntoId && patientMatchesPhone(patient,phone));
+  if (candidates.some(patient => patientMatchesName(patient,name)))
+    throw new Error("This patient already exists. Select their existing workspace profile.");
+  const sharedPhoneReason = optionalString(payload?.sharedPhoneReason);
+  if (candidates.length && !sharedPhoneReason)
+    throw new Error("This phone is already registered. Select the patient or explain why a different person shares this contact.");
+  const now = nowIso();
+  const patient: PatientRecord = {id:id("patient"), name, phone, normalizedPhone,
+    details:normalizePatientDetails(payload?.patientDetails || {allergyStatus:"unknown"})!,
+    createdAt:now,updatedAt:now,revision:1,createdBy:actorId,updatedBy:actorId,sharedPhoneReason:sharedPhoneReason || undefined};
+  db.patients = [...(db.patients || []),patient];
+  addAudit(db,actorId,"Registered workspace patient","patient",patient.id,undefined,patient);
+  return patient;
+}
+function updateRegistryPatient(db: Database, actorId: string, payload: Record<string, unknown> | undefined): PatientRecord {
+  patientRegistryActor(db,actorId,requireString(payload?.branchId,"Branch"));
+  const patient = canonicalPatient(db.patients || [],requireString(payload?.patientId,"Patient"));
+  if (!patient) throw new Error("Patient not found in this workspace");
+  if (patient.id!==payload?.patientId || Number(payload?.expectedRevision)!==(patient.revision || 0))
+    throw new Error("This patient profile changed or was merged. Refresh it and review the latest details before saving.");
+  const name = requireString(payload?.patientName,"Patient name");
+  const phone = registryPhone(payload?.patientPhone);
+  const normalizedPhone = canonicalPhone(phone);
+  const other = (db.patients || []).filter(item => !item.mergedIntoId && item.id !== patient.id && patientMatchesPhone(item,phone));
+  if (other.some(item => patientMatchesName(item,name)) || (other.length && normalizedPhone !== patient.normalizedPhone))
+    throw new Error("This contact matches another profile. Review the existing patient before changing identity or request an owner-reviewed merge.");
+  const before = structuredClone(patient);
+  const contactAliases = [...new Set([...(patient.contactAliases || []),...(normalizedPhone!==patient.normalizedPhone?[patient.phone]:[])])];
+  const nameAliases = [...new Set([...(patient.nameAliases || []),...(normalizePatientName(name)!==normalizePatientName(patient.name)?[patient.name]:[])])];
+  Object.assign(patient,{contactAliases,nameAliases,revision:(patient.revision || 0)+1,name,phone,normalizedPhone,details:normalizePatientDetails(payload?.patientDetails,patient.details),needsReview:false,updatedAt:nowIso(),updatedBy:actorId});
+  addAudit(db,actorId,"Updated workspace patient","patient",patient.id,before,{...patient});
+  return patient;
+}
+function mergeRegistryPatients(db: Database, actorId: string, payload: Record<string, unknown> | undefined): PatientRecord {
+  const actor = db.users.find(user => user.id === actorId);
+  if (!actor || !canAdmin(actor,getPrimaryAdminId(db))) throw new Error("Only the workspace owner can merge patient identities");
+  const source = canonicalPatient(db.patients || [],requireString(payload?.sourcePatientId,"Source patient"));
+  const target = canonicalPatient(db.patients || [],requireString(payload?.targetPatientId,"Target patient"));
+  if (!source || !target || source.id === target.id) throw new Error("Choose two distinct patients in this workspace");
+  if (source.id!==payload?.sourcePatientId || target.id!==payload?.targetPatientId || Number(payload?.sourceRevision)!==(source.revision || 0) || Number(payload?.targetRevision)!==(target.revision || 0))
+    throw new Error("A patient profile changed. Refresh and review both identities before merging.");
+  const reason = requireString(payload?.reason,"Identity confirmation reason");
+  if (payload?.identityConfirmed !== true || !payload.patientDetails) throw new Error("Confirm the same person and review allergy details before merging");
+  const details = normalizePatientDetails(payload.patientDetails,target.details)!;
+  const sourceIds = new Set((db.patients || []).filter(item => canonicalPatient(db.patients || [],item.id)?.id === source.id).map(item=>item.id));
+  const before = {source:structuredClone(source),target:structuredClone(target)};
+  const relinked = {sales:0,drafts:0,continuity:0};
+  db.sales.forEach(sale=>{if (sale.patientId && sourceIds.has(sale.patientId)){sale.patientId=target.id;relinked.sales++;}});
+  db.posDrafts.forEach(draft=>{if (draft.patientId && sourceIds.has(draft.patientId)){draft.patientId=target.id;relinked.drafts++;}});
+  db.continuityRequests.forEach(request=>{if (request.patientId && sourceIds.has(request.patientId)){request.patientId=target.id;relinked.continuity++;}});
+  source.revision=(source.revision || 0)+1;target.revision=(target.revision || 0)+1;
+  source.mergedIntoId=target.id;source.updatedAt=nowIso();source.updatedBy=actorId;
+  target.contactAliases=[...new Set([...(target.contactAliases || []),source.phone,...(source.contactAliases || [])])].filter(phone=>canonicalPhone(phone)!==target.normalizedPhone);
+  target.nameAliases=[...new Set([...(target.nameAliases || []),source.name,...(source.nameAliases || [])])].filter(name=>normalizePatientName(name)!==normalizePatientName(target.name));
+  target.details=details;target.updatedAt=nowIso();target.updatedBy=actorId;target.needsReview=false;
+  addAudit(db,actorId,"Merged confirmed patient identities","patient",target.id,before,{source:{...source},target:{...target},reason,relinked});
+  return target;
+}
+function patientCareHistoryForUser(db: Database, actorId: string, payload: Record<string, unknown> | undefined) {
+  const branchId=requireString(payload?.branchId,"Branch");
+  const actor=patientRegistryActor(db,actorId,branchId);
+  if (actor.role !== "pharmacist" && !canManageBranch(actor,branchId,getPrimaryAdminId(db)))
+    throw new Error("Cross-branch medication history requires pharmacist or branch-manager access");
+  const patient=canonicalPatient(db.patients || [],requireString(payload?.patientId,"Patient"));
+  if (!patient) throw new Error("Patient not found in this workspace");
+  const visits=db.sales.filter(sale=>canonicalPatient(db.patients || [],sale.patientId)?.id===patient.id)
+    .sort((a,b)=>b.soldAt.localeCompare(a.soldAt)).map(sale=>({id:sale.id,date:sale.soldAt,branchName:db.branches.find(branch=>branch.id===sale.branchId)?.name || "Workspace branch",
+      items:sale.items.filter(item=>item.itemType==="medicine").map(item=>({name:item.itemName || db.medicines.find(medicine=>medicine.id===item.medicineId)?.brandName || "Medicine",quantity:item.quantity,daysSupply:item.daysSupply,instruction:item.labelInstruction}))})).filter(visit=>visit.items.length);
+  addAudit(db,actorId,"Viewed cross-branch patient care history","patient",patient.id,undefined,{patientId:patient.id,branchId,visitCount:visits.length});
+  return visits;
+}
+function transactionText(payload: Record<string, unknown> | undefined, key: string, fallback = "") {
+  return typeof payload?.[key] === "string" ? (payload[key] as string).trim() : fallback;
+}
+function matchingPatientDraft(patient: PatientRecord | undefined, payload: Record<string, unknown> | undefined, draft?: PosDraft) {
+  if (!draft) return undefined;
+  if (patient) return draft.patientId===patient.id ? draft : undefined;
+  return !draft.patientId && canonicalPhone(transactionText(payload,"customerPhone",draft.customerPhone))===canonicalPhone(draft.customerPhone) &&
+    normalizePatientName(transactionText(payload,"customerName",draft.customerName))===normalizePatientName(draft.customerName) ? draft : undefined;
+}
+
+function patientForTransaction(db: Database, actorId: string, branchId: string, payload: Record<string, unknown> | undefined, draft?: PosDraft) {
+  if (!db.patients) return undefined; // Compatibility for unnormalised legacy fixtures/callers.
+  const patientId = "patientId" in (payload || {}) ? optionalString(payload?.patientId) : draft?.patientId;
+  const name = typeof payload?.customerName === "string" ? payload.customerName.trim() : draft?.customerName || "";
+  const phone = typeof payload?.customerPhone === "string" ? payload.customerPhone.trim() : draft?.customerPhone || "";
+  if (patientId) {
+    const patient=canonicalPatient(db.patients,patientId);
+    if (!patient) throw new Error("Patient not found in this workspace");
+    if (!patientMatchesPhone(patient,phone) || (name && !patientMatchesName(patient,name)))
+      throw new Error("Patient contact or name changed. Select the correct workspace profile again.");
+    return patient;
+  }
+  if (!phone) return undefined;
+  if (db.patients.some(patient=>!patient.mergedIntoId && patientMatchesPhone(patient,phone)))
+    throw new Error("This contact already has a workspace patient. Select the correct profile or register a different person sharing the number. Refresh POS if the registry is not shown.");
+  if (!name) throw new Error("Enter the patient's name to register this contact, or leave the sale anonymous.");
+  return createRegistryPatient(db,actorId,{branchId,patientName:name,patientPhone:phone,patientDetails:payload?.patientDetails});
+}
+
+function patientDetailsForSale(db: Database, branchId: string, phone: string, value: unknown, draft?: PosDraft, patientId?: string) {
+  const registered = canonicalPatient(db.patients || [],patientId);
+  if (registered) return registered.details;
+  if (db.patients) return normalizePatientDetails(value);
   const key = normalizePatientPhone(phone);
   const history = key ? db.sales.filter(sale => sale.branchId === branchId && normalizePatientPhone(sale.customerPhone) === key && sale.patientDetails)
     .sort((a,b)=>(b.patientDetails?.updatedAt || b.soldAt).localeCompare(a.patientDetails?.updatedAt || a.soldAt))[0]?.patientDetails : undefined;
@@ -1782,6 +1937,7 @@ function updatePatientProfile(
   if (!actor) throw new Error("Authentication required");
   if (actor.role === "viewer")
     throw new Error("Viewers cannot edit patient profiles");
+  if (db.patients) throw new Error("Refresh RxLedger and use the workspace patient editor to update this shared profile safely.");
   const allowedBranches = accessibleBranchIds(actor, getPrimaryAdminId(db));
   const branchId = allowedBranches === null ? "" : requireString(payload?.branchId, "Branch");
   if (allowedBranches !== null && (!allowedBranches.includes(branchId) || !db.branches.some(branch => branch.id === branchId && branch.active)))
@@ -2338,43 +2494,44 @@ function savePosDraft(
   if (!items.length)
     throw new Error("Add at least one item to save the POS cart");
   const existing = activeDraft(db, actorId, branchId);
+  const patient = patientForTransaction(db,actorId,branchId,payload,existing);
+  const clinicalDraft = matchingPatientDraft(patient,payload,existing);
   const now = nowIso();
   const expiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
   const draftDiscount = Math.max(0, Number(payload?.discount) || 0);
   const draft: PosDraft = {
     id: existing?.id || id("draft"),
+    patientId: patient?.id,
     userId: actorId,
     branchId,
     bookingCode: existing?.bookingCode || bookingCode(),
     customerName:
-      optionalString(payload?.customerName) || existing?.customerName || "",
+      transactionText(payload,"customerName",existing?.customerName || ""),
     customerPhone:
-      optionalString(payload?.customerPhone) || existing?.customerPhone || "",
-    patientDetails: patientDetailsForSale(db, branchId, optionalString(payload?.customerPhone) || existing?.customerPhone || "", payload?.patientDetails, existing),
+      transactionText(payload,"customerPhone",existing?.customerPhone || ""),
+    patientDetails: patientDetailsForSale(db, branchId, transactionText(payload,"customerPhone",existing?.customerPhone || ""), payload?.patientDetails, existing, patient?.id),
     patientInfoReliability: normalizePatientInfoReliability(
-      payload?.patientInfoReliability || existing?.patientInfoReliability,
+      payload?.patientInfoReliability || clinicalDraft?.patientInfoReliability,
     ),
     patientRiskContext: normalizePatientRiskContext(
-      payload?.patientRiskContext || existing?.patientRiskContext,
+      payload?.patientRiskContext || clinicalDraft?.patientRiskContext,
     ),
     paymentMethod: (optionalString(payload?.paymentMethod) ||
       existing?.paymentMethod ||
       "cash") as Sale["paymentMethod"],
     discount: draftDiscount,
-    note: optionalString(payload?.note) || existing?.note || "",
+    note: transactionText(payload,"note",clinicalDraft?.note || ""),
     followUpMessage:
-      optionalString(payload?.followUpMessage) ||
-      existing?.followUpMessage ||
-      "",
+      transactionText(payload,"followUpMessage",clinicalDraft?.followUpMessage || ""),
     pharmacistReviewOutcome: normalizePharmacistReviewOutcome(
-      payload?.pharmacistReviewOutcome || existing?.pharmacistReviewOutcome,
+      payload?.pharmacistReviewOutcome || clinicalDraft?.pharmacistReviewOutcome,
     ),
     pharmacistReviewNote:
       optionalString(payload?.pharmacistReviewNote) ||
-      existing?.pharmacistReviewNote ||
+      clinicalDraft?.pharmacistReviewNote ||
       "",
     safetyReviewSummary: normalizeSafetyReviewSummary(
-      payload?.safetyReviewSummary || existing?.safetyReviewSummary,
+      payload?.safetyReviewSummary || clinicalDraft?.safetyReviewSummary,
     ),
     items,
     createdAt: existing?.createdAt || now,
@@ -2431,6 +2588,7 @@ function patientMatchesContinuityRequest(
   request: Database["continuityRequests"][number],
   sale: Sale,
 ) {
+  if (request.patientId || sale.patientId) return Boolean(request.patientId && request.patientId === sale.patientId);
   const requestPhone = normalizePatientPhone(request.patientPhone);
   const salePhone = normalizePatientPhone(sale.customerPhone);
   if (requestPhone && salePhone) return requestPhone === salePhone;
@@ -2579,6 +2737,8 @@ function recordSale(
   const inputs = normalizeDraftItems(payload?.items ?? draft?.items);
   if (!inputs.length) throw new Error("Add at least one item to the POS cart");
 
+  const patient = patientForTransaction(db,actorId,branchId,payload,draft);
+  const clinicalDraft = matchingPatientDraft(patient,payload,draft);
   const saleItems: Sale["items"] = [];
   const ledgerEntries: Database["ledger"] = [];
   for (const input of inputs) {
@@ -2712,36 +2872,37 @@ function recordSale(
   const sale: Sale = {
     id: id("sale"),
     checkoutOperationId: operationId,
+    patientId: patient?.id,
     checkoutFingerprint: fingerprint,
     branchId,
     cashierUserId: actorId,
     customerName:
-      optionalString(payload?.customerName) || draft?.customerName || "",
+      transactionText(payload,"customerName",draft?.customerName || ""),
     customerPhone:
-      optionalString(payload?.customerPhone) || draft?.customerPhone || "",
-    patientDetails: patientDetailsForSale(db, branchId, optionalString(payload?.customerPhone) || draft?.customerPhone || "", payload?.patientDetails, draft),
+      transactionText(payload,"customerPhone",draft?.customerPhone || ""),
+    patientDetails: patientDetailsForSale(db, branchId, transactionText(payload,"customerPhone",draft?.customerPhone || ""), payload?.patientDetails, draft, patient?.id),
     patientInfoReliability: normalizePatientInfoReliability(
-      payload?.patientInfoReliability || draft?.patientInfoReliability,
+      payload?.patientInfoReliability || clinicalDraft?.patientInfoReliability,
     ),
     patientRiskContext: normalizePatientRiskContext(
-      payload?.patientRiskContext || draft?.patientRiskContext,
+      payload?.patientRiskContext || clinicalDraft?.patientRiskContext,
     ),
     paymentMethod: (optionalString(payload?.paymentMethod) ||
       draft?.paymentMethod ||
       "cash") as Sale["paymentMethod"],
     reference,
-    note: optionalString(payload?.note) || draft?.note || "",
+    note: transactionText(payload,"note",clinicalDraft?.note || ""),
     followUpMessage:
-      optionalString(payload?.followUpMessage) || draft?.followUpMessage || "",
+      transactionText(payload,"followUpMessage",clinicalDraft?.followUpMessage || ""),
     pharmacistReviewOutcome: normalizePharmacistReviewOutcome(
-      payload?.pharmacistReviewOutcome || draft?.pharmacistReviewOutcome,
+      payload?.pharmacistReviewOutcome || clinicalDraft?.pharmacistReviewOutcome,
     ),
     pharmacistReviewNote:
       optionalString(payload?.pharmacistReviewNote) ||
-      draft?.pharmacistReviewNote ||
+      clinicalDraft?.pharmacistReviewNote ||
       "",
     safetyReviewSummary: normalizeSafetyReviewSummary(
-      payload?.safetyReviewSummary || draft?.safetyReviewSummary,
+      payload?.safetyReviewSummary || clinicalDraft?.safetyReviewSummary,
     ),
     soldAt: nowIso(),
     subtotal,
